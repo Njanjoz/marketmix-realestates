@@ -1,4 +1,4 @@
-// src/components/Navbar.jsx - FIXED AND OPTIMIZED
+// src/components/Navbar.jsx - COMPLETE WITH USER PROFILE DROPDOWN
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +9,13 @@ import {
   ArrowDownToLine, ArrowUpFromLine, RefreshCw,
   Target, Award, TrendingUp, Globe, Compass,
   Navigation, Map, Building, TreePine, Hotel,
-  Eye, EyeOff, MousePointer
+  Eye, EyeOff, MousePointer, ShoppingBag, Bell,
+  MessageSquare, Settings, ChevronLeft, CreditCard,
+  Shield, Calendar, Bookmark, TrendingUp as TrendingUpIcon,
+  Briefcase, DollarSign, ShieldCheck, Building2 as BuildingIcon,
+  Key, Star as StarIcon, Lock, Mail, UserCircle,
+  FileText, HelpCircle, LogOut as LogOutIcon,
+  LayoutDashboard, Users, Package, BarChart
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,11 +24,14 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const containerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const notificationsRef = useRef(null);
   
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHomePage, setIsHomePage] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   
   // Pull-to-reveal states
   const [showHero, setShowHero] = useState(false);
@@ -31,7 +40,7 @@ const Navbar = () => {
   const [isAtTop, setIsAtTop] = useState(true);
   const [startY, setStartY] = useState(0);
   const [currentY, setCurrentY] = useState(0);
-  const [lastScrollY, setLastScrollY] = useState(0); // ADDED THIS
+  const [lastScrollY, setLastScrollY] = useState(0);
   
   // Desktop hover states
   const [showRegularNav, setShowRegularNav] = useState(false);
@@ -46,11 +55,28 @@ const Navbar = () => {
     setIsMobile(isMobileDevice);
     setIsDesktop(window.innerWidth >= 1024);
     
-    // On mobile, always show regular nav
     if (isMobileDevice) {
       setShowRegularNav(true);
     }
   }, [location]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+      if (showHero && containerRef.current && !containerRef.current.contains(event.target)) {
+        setShowHero(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showHero]);
 
   // Mouse hover detection for desktop
   useEffect(() => {
@@ -59,14 +85,12 @@ const Navbar = () => {
     let hideTimeout;
 
     const handleMouseMove = (e) => {
-      // Show regular nav when mouse is near top (top 50px)
       if (e.clientY < 50) {
         setIsHoveringTop(true);
         setShowRegularNav(true);
         clearTimeout(hideTimeout);
       } else {
         setIsHoveringTop(false);
-        // Hide after delay if not at top
         if (window.scrollY > 100) {
           hideTimeout = setTimeout(() => {
             if (!isHoveringTop) setShowRegularNav(false);
@@ -98,7 +122,7 @@ const Navbar = () => {
   useEffect(() => {
     let touchStartY = 0;
     let isTouching = false;
-    let pullThreshold = 100; // Increased for gentler pull
+    let pullThreshold = 100;
     let hideTimeout;
 
     const handleTouchStart = (e) => {
@@ -116,20 +140,15 @@ const Navbar = () => {
       const currentTouchY = e.touches[0].clientY;
       const distance = currentTouchY - touchStartY;
       
-      // Only allow gentle pull down (positive distance)
       if (distance > 0 && window.scrollY === 0) {
         setCurrentY(currentTouchY);
-        
-        // Calculate progress (0 to 1)
         const progress = Math.min(1, distance / pullThreshold);
         setPullProgress(progress);
         
-        // Start showing hero at 20% progress (more gentle)
         if (progress > 0.2 && !showHero) {
           setShowHero(true);
         }
         
-        // Hide hero if pulling back up
         if (progress < 0.15 && showHero) {
           setShowHero(false);
         }
@@ -141,10 +160,8 @@ const Navbar = () => {
         isTouching = false;
         setIsPulling(false);
         
-        // If pulled enough (40%), keep hero visible
         if (pullProgress > 0.4) {
           setShowHero(true);
-          // Auto-hide after 5 seconds (longer)
           clearTimeout(hideTimeout);
           hideTimeout = setTimeout(() => {
             setShowHero(false);
@@ -153,7 +170,6 @@ const Navbar = () => {
           setShowHero(false);
         }
         
-        // Smooth reset
         setTimeout(() => {
           setPullProgress(0);
           setStartY(0);
@@ -162,7 +178,6 @@ const Navbar = () => {
       }
     };
 
-    // Mouse events for desktop (gentle drag)
     const handleMouseDown = (e) => {
       if (isHomePage && window.scrollY === 0 && e.clientY < 50) {
         touchStartY = e.clientY;
@@ -179,7 +194,6 @@ const Navbar = () => {
       
       if (distance > 0 && window.scrollY === 0) {
         setCurrentY(e.clientY);
-        
         const progress = Math.min(1, distance / pullThreshold);
         setPullProgress(progress);
         
@@ -216,23 +230,19 @@ const Navbar = () => {
       }
     };
 
-    // Scroll detection
     const handleScroll = () => {
       const scrollY = window.scrollY;
       setIsAtTop(scrollY === 0);
       
-      // Hide hero when scrolling down
       if (scrollY > 50) {
         setShowHero(false);
         clearTimeout(hideTimeout);
       }
       
-      // Show regular nav on mobile when scrolling up
       if (isMobile && scrollY < lastScrollY && scrollY > 100) {
         setShowRegularNav(true);
       }
       
-      // Hide regular nav on mobile when scrolling down
       if (isMobile && scrollY > lastScrollY && scrollY > 100) {
         setShowRegularNav(false);
       }
@@ -240,7 +250,6 @@ const Navbar = () => {
       setLastScrollY(scrollY);
     };
 
-    // Add event listeners
     if (isHomePage) {
       document.addEventListener('touchstart', handleTouchStart, { passive: true });
       document.addEventListener('touchmove', handleTouchMove, { passive: true });
@@ -263,27 +272,99 @@ const Navbar = () => {
     };
   }, [isHomePage, showHero, pullProgress, lastScrollY, isMobile]);
 
-  // Hide hero when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (showHero && containerRef.current && !containerRef.current.contains(e.target)) {
-        setShowHero(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showHero]);
-
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/');
       setIsMenuOpen(false);
+      setDropdownOpen(false);
     } catch (error) {
       console.error("Logout failed:", error);
     }
   };
+
+  const navItems = [
+    { name: 'Buy', path: '/properties?status=sale', icon: <Gem className="w-4 h-4" /> },
+    { name: 'Rent', path: '/properties?status=rent', icon: <Home className="w-4 h-4" /> },
+    { name: 'Explore', path: '/explore', icon: <Compass className="w-4 h-4" /> },
+    { name: 'Luxury', path: '/luxury', icon: <Crown className="w-4 h-4" /> },
+    { name: 'Agents', path: '/agents', icon: <User className="w-4 h-4" /> },
+    { name: 'Contact', path: '/contact', icon: <Phone className="w-4 h-4" /> },
+  ];
+
+  // Role-based dashboard links
+  const getDashboardLinks = () => {
+    const userType = userProfile?.userType || 'user';
+    
+    const baseLinks = [
+      { name: 'My Profile', path: '/dashboard/profile', icon: <UserCircle className="w-4 h-4" /> },
+      { name: 'My Properties', path: '/dashboard/properties', icon: <BuildingIcon className="w-4 h-4" /> },
+      { name: 'Favorites', path: '/favorites', icon: <Heart className="w-4 h-4" /> },
+      { name: 'Messages', path: '/messages', icon: <MessageSquare className="w-4 h-4" /> },
+      { name: 'Notifications', path: '/notifications', icon: <Bell className="w-4 h-4" /> },
+      { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
+    ];
+
+    if (userType === 'admin') {
+      return [
+        { name: 'Admin Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard className="w-4 h-4" />, badge: 'Admin' },
+        { name: 'Manage Users', path: '/admin/users', icon: <Users className="w-4 h-4" /> },
+        { name: 'Manage Properties', path: '/admin/properties', icon: <Package className="w-4 h-4" /> },
+        { name: 'Analytics', path: '/admin/analytics', icon: <BarChart className="w-4 h-4" /> },
+        { name: 'System Settings', path: '/admin/settings', icon: <Settings className="w-4 h-4" /> },
+        ...baseLinks
+      ];
+    } else if (userType === 'agent') {
+      return [
+        { name: 'Agent Dashboard', path: '/agent/dashboard', icon: <Briefcase className="w-4 h-4" />, badge: 'Agent' },
+        { name: 'My Listings', path: '/agent/listings', icon: <Building className="w-4 h-4" /> },
+        { name: 'Leads', path: '/agent/leads', icon: <TrendingUpIcon className="w-4 h-4" /> },
+        { name: 'Commissions', path: '/agent/commissions', icon: <DollarSign className="w-4 h-4" /> },
+        ...baseLinks
+      ];
+    } else if (userType === 'seller' || userType === 'landlord') {
+      return [
+        { name: 'Seller Dashboard', path: '/seller/dashboard', icon: <Key className="w-4 h-4" />, badge: 'Seller' },
+        { name: 'List Property', path: '/seller/list', icon: <Plus className="w-4 h-4" /> },
+        { name: 'My Listings', path: '/seller/listings', icon: <Building className="w-4 h-4" /> },
+        { name: 'Offers', path: '/seller/offers', icon: <CreditCard className="w-4 h-4" /> },
+        ...baseLinks
+      ];
+    } else if (userType === 'investor') {
+      return [
+        { name: 'Investor Dashboard', path: '/investor/dashboard', icon: <TrendingUpIcon className="w-4 h-4" />, badge: 'Investor' },
+        { name: 'Investment Opportunities', path: '/investor/opportunities', icon: <StarIcon className="w-4 h-4" /> },
+        { name: 'Portfolio', path: '/investor/portfolio', icon: <Briefcase className="w-4 h-4" /> },
+        { name: 'Market Analysis', path: '/investor/analysis', icon: <BarChart className="w-4 h-4" /> },
+        ...baseLinks
+      ];
+    } else { // Regular user/buyer/renter
+      return [
+        { name: 'My Dashboard', path: '/dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+        ...baseLinks
+      ];
+    }
+  };
+
+  const dashboardLinks = getDashboardLinks();
+
+  // Account links (shown to all logged in users)
+  const accountLinks = [
+    { name: 'Account Settings', path: '/account/settings', icon: <Settings className="w-4 h-4" /> },
+    { name: 'Security', path: '/account/security', icon: <Lock className="w-4 h-4" /> },
+    { name: 'Billing', path: '/account/billing', icon: <CreditCard className="w-4 h-4" /> },
+    { name: 'Help & Support', path: '/help', icon: <HelpCircle className="w-4 h-4" /> },
+  ];
+
+  // Mock notifications
+  const notifications = [
+    { id: 1, title: 'New Property Match', description: 'A property matching your criteria was just listed', time: '2 min ago', read: false, type: 'property' },
+    { id: 2, title: 'Price Drop Alert', description: 'Property in Karen is now KES 25M', time: '1 hour ago', read: false, type: 'price' },
+    { id: 3, title: 'Viewing Confirmed', description: 'Your viewing at 3 PM today is confirmed', time: '2 hours ago', read: true, type: 'appointment' },
+    { id: 4, title: 'Agent Response', description: 'John replied to your inquiry', time: '1 day ago', read: true, type: 'message' },
+  ];
+
+  const unreadNotifications = notifications.filter(n => !n.read).length;
 
   // Glass effect styles
   const glassStyle = {
@@ -300,16 +381,222 @@ const Navbar = () => {
     boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
   };
 
-  const navItems = [
-    { name: 'Buy', path: '/properties?status=sale', icon: <Gem className="w-4 h-4" /> },
-    { name: 'Rent', path: '/properties?status=rent', icon: <Home className="w-4 h-4" /> },
-    { name: 'Explore', path: '/explore', icon: <Compass className="w-4 h-4" /> },
-    { name: 'Luxury', path: '/luxury', icon: <Crown className="w-4 h-4" /> },
-    { name: 'Agents', path: '/agents', icon: <User className="w-4 h-4" /> },
-    { name: 'Contact', path: '/contact', icon: <Phone className="w-4 h-4" /> },
-  ];
+  const darkGlassStyle = {
+    background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.1) 100%)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+  };
 
-  // Pull indicator component - More subtle
+  // User Profile Component
+  const UserProfileDropdown = () => (
+    <AnimatePresence>
+      {dropdownOpen && (
+        <motion.div
+          ref={dropdownRef}
+          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-xl z-50"
+          style={darkGlassStyle}
+        >
+          {/* User Profile Header */}
+          <div className="p-4 border-b border-white/10">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center">
+                  <span className="text-lg font-bold text-white">
+                    {userProfile?.name?.charAt(0) || currentUser?.email?.charAt(0)}
+                  </span>
+                </div>
+                {userProfile?.userType === 'admin' && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                    <Shield className="w-3 h-3 text-white" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">
+                  {userProfile?.name || currentUser?.email?.split('@')[0]}
+                </p>
+                <p className="text-xs text-white/60 truncate">
+                  {currentUser?.email}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    userProfile?.userType === 'admin' 
+                      ? 'bg-red-500/20 text-red-300' 
+                      : userProfile?.userType === 'agent'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : userProfile?.userType === 'seller'
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : userProfile?.userType === 'investor'
+                      ? 'bg-purple-500/20 text-purple-300'
+                      : 'bg-emerald-500/20 text-emerald-300'
+                  }`}>
+                    {userProfile?.userType === 'admin' ? 'Administrator' : 
+                     userProfile?.userType === 'agent' ? 'Verified Agent' :
+                     userProfile?.userType === 'seller' ? 'Property Seller' :
+                     userProfile?.userType === 'investor' ? 'Investor' :
+                     'Premium Member'}
+                  </span>
+                  <span className="text-xs text-white/40">•</span>
+                  <span className="text-xs text-white/40">
+                    Member since {userProfile?.createdAt ? new Date(userProfile.createdAt).getFullYear() : '2024'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Dashboard Links */}
+          <div className="p-2 max-h-96 overflow-y-auto">
+            <div className="px-3 py-2">
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Dashboard</p>
+              {dashboardLinks.slice(0, 6).map((item) => (
+                <Link
+                  key={item.name}
+                  to={item.path}
+                  onClick={() => setDropdownOpen(false)}
+                  className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-all duration-200 mb-1"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className={`${
+                      item.badge ? 'text-amber-300' : 'text-emerald-300'
+                    }`}>
+                      {item.icon}
+                    </div>
+                    <span>{item.name}</span>
+                  </div>
+                  {item.badge && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      item.badge === 'Admin' ? 'bg-red-500/20 text-red-300' :
+                      item.badge === 'Agent' ? 'bg-blue-500/20 text-blue-300' :
+                      item.badge === 'Seller' ? 'bg-amber-500/20 text-amber-300' :
+                      item.badge === 'Investor' ? 'bg-purple-500/20 text-purple-300' :
+                      'bg-emerald-500/20 text-emerald-300'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              ))}
+              
+              {/* View All Dashboard Links */}
+              {dashboardLinks.length > 6 && (
+                <Link
+                  to="/dashboard"
+                  onClick={() => setDropdownOpen(false)}
+                  className="flex items-center justify-center px-3 py-2.5 rounded-lg text-sm text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/10 transition-all duration-200 mt-2"
+                >
+                  <span>View All Dashboard Features</span>
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Link>
+              )}
+            </div>
+
+            {/* Account Settings */}
+            <div className="px-3 py-2 border-t border-white/10 mt-2">
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Account</p>
+              {accountLinks.map((item) => (
+                <Link
+                  key={item.name}
+                  to={item.path}
+                  onClick={() => setDropdownOpen(false)}
+                  className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-all duration-200 mb-1"
+                >
+                  <div className="text-cyan-300">{item.icon}</div>
+                  <span>{item.name}</span>
+                </Link>
+              ))}
+            </div>
+
+            {/* Logout Button */}
+            <div className="p-3 border-t border-white/10 mt-2">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-lg text-sm text-white/90 hover:text-white bg-red-500/20 hover:bg-red-500/30 transition-all duration-200"
+              >
+                <LogOutIcon className="w-4 h-4" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  // Notifications Dropdown
+  const NotificationsDropdown = () => (
+    <AnimatePresence>
+      {notificationsOpen && (
+        <motion.div
+          ref={notificationsRef}
+          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-xl z-50"
+          style={darkGlassStyle}
+        >
+          <div className="p-4 border-b border-white/10 flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-white">Notifications</h3>
+            <span className="text-xs text-emerald-300 cursor-pointer hover:text-emerald-200">
+              Mark all as read
+            </span>
+          </div>
+          
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`p-3 border-b border-white/5 hover:bg-white/5 transition-colors ${
+                  !notification.read ? 'bg-emerald-500/5' : ''
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    notification.type === 'property' ? 'bg-blue-500/20 text-blue-300' :
+                    notification.type === 'price' ? 'bg-green-500/20 text-green-300' :
+                    notification.type === 'appointment' ? 'bg-amber-500/20 text-amber-300' :
+                    'bg-purple-500/20 text-purple-300'
+                  }`}>
+                    {notification.type === 'property' ? <Building className="w-4 h-4" /> :
+                     notification.type === 'price' ? <DollarSign className="w-4 h-4" /> :
+                     notification.type === 'appointment' ? <Calendar className="w-4 h-4" /> :
+                     <MessageSquare className="w-4 h-4" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-white">{notification.title}</p>
+                    <p className="text-xs text-white/60 mt-1">{notification.description}</p>
+                    <p className="text-xs text-white/40 mt-1">{notification.time}</p>
+                  </div>
+                  {!notification.read && (
+                    <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="p-3 border-t border-white/10">
+            <Link
+              to="/notifications"
+              onClick={() => setNotificationsOpen(false)}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-sm text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/10 transition-all duration-200"
+            >
+              <span>View All Notifications</span>
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  // Pull indicator component
   const PullIndicator = () => (
     <motion.div
       className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center py-2"
@@ -351,7 +638,7 @@ const Navbar = () => {
     </motion.div>
   );
 
-  // Hero Banner Component - More elegant
+  // Hero Banner Component
   const HeroBanner = () => (
     <motion.div
       ref={containerRef}
@@ -393,7 +680,7 @@ const Navbar = () => {
       </div>
 
       <div className="container mx-auto px-4 py-10 text-center relative">
-        {/* Main Logo with elegant animation */}
+        {/* Main Logo */}
         <motion.div
           className="mb-6"
           initial={{ scale: 0.9, y: -20 }}
@@ -418,10 +705,8 @@ const Navbar = () => {
               className="relative px-10 py-6 md:px-14 md:py-8 rounded-3xl"
               style={glassStyle}
             >
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter mb-2">
-                <span className="bg-gradient-to-r from-white via-emerald-100 to-amber-100 bg-clip-text text-transparent">
-                  MARKETMIX
-                </span>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter mb-2 text-white">
+                MARKETMIX
               </h1>
               
               {/* Animated underline */}
@@ -465,7 +750,7 @@ const Navbar = () => {
             style={glassStyle}
           >
             <Target className="w-4 h-4 text-emerald-300" />
-            <span className="text-base font-medium tracking-wide bg-gradient-to-r from-emerald-200 to-amber-200 bg-clip-text text-transparent">
+            <span className="text-base font-medium tracking-wide text-white drop-shadow-sm">
               Premium Real Estate Excellence
             </span>
             <Award className="w-4 h-4 text-amber-300" />
@@ -489,10 +774,10 @@ const Navbar = () => {
           }}
         >
           {[
-            { value: '5,000+', label: 'Properties', gradient: 'from-emerald-400 to-green-400' },
-            { value: '98%', label: 'Satisfaction', gradient: 'from-amber-400 to-yellow-400' },
-            { value: '15+', label: 'Years', gradient: 'from-cyan-400 to-blue-400' },
-            { value: '200+', label: 'Agents', gradient: 'from-purple-400 to-pink-400' },
+            { value: '5,000+', label: 'Properties', color: 'text-emerald-300' },
+            { value: '98%', label: 'Satisfaction', color: 'text-amber-300' },
+            { value: '15+', label: 'Years', color: 'text-cyan-300' },
+            { value: '200+', label: 'Agents', color: 'text-purple-300' },
           ].map((stat, idx) => (
             <motion.div
               key={idx}
@@ -502,10 +787,10 @@ const Navbar = () => {
               }}
               className="text-center"
             >
-              <div className={`text-xl md:text-2xl font-bold bg-gradient-to-r ${stat.gradient} bg-clip-text text-transparent mb-1`}>
+              <div className={`text-xl md:text-2xl font-bold ${stat.color} mb-1 drop-shadow-sm`}>
                 {stat.value}
               </div>
-              <div className="text-xs md:text-sm text-white/60">{stat.label}</div>
+              <div className="text-xs md:text-sm text-white/80">{stat.label}</div>
             </motion.div>
           ))}
         </motion.div>
@@ -518,7 +803,7 @@ const Navbar = () => {
           className="mt-4"
         >
           <div className="flex items-center justify-center gap-2">
-            <span className="text-xs text-white/50">Scroll down or click outside to close</span>
+            <span className="text-xs text-white/70">Scroll down or click outside to close</span>
           </div>
         </motion.div>
       </div>
@@ -568,16 +853,16 @@ const Navbar = () => {
                     </div>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-base md:text-lg font-bold bg-gradient-to-r from-white to-emerald-100 bg-clip-text text-transparent">
+                    <span className="text-base md:text-lg font-bold text-white">
                       MarketMix
                     </span>
-                    <span className="text-[9px] md:text-[10px] font-medium tracking-wider uppercase bg-gradient-to-r from-emerald-300 to-amber-300 bg-clip-text text-transparent">
+                    <span className="text-[9px] md:text-[10px] font-medium tracking-wider uppercase text-emerald-300">
                       Real Estate
                     </span>
                   </div>
                 </motion.div>
 
-                {/* Desktop Navigation - More compact */}
+                {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center space-x-0.5">
                   {navItems.map((item, idx) => (
                     <motion.div
@@ -599,15 +884,82 @@ const Navbar = () => {
 
                 {/* Actions */}
                 <div className="flex items-center space-x-1.5 md:space-x-2">
+                  {/* Search Button */}
                   <motion.button
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setIsSearchOpen(true)}
                     className="p-1.5 md:p-2 hover:bg-white/10 rounded-lg transition-colors"
                   >
-                    <Search className="w-4 h-4 md:w-5 md:h-5 text-white/80" />
+                    <Search className="w-4 h-4 md:w-5 md:h-5 text-white" />
                   </motion.button>
                   
+                  {/* Notifications Button (Logged in users) */}
+                  {currentUser && (
+                    <div className="relative" ref={notificationsRef}>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setNotificationsOpen(!notificationsOpen)}
+                        className="p-1.5 md:p-2 hover:bg-white/10 rounded-lg transition-colors relative"
+                      >
+                        <Bell className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                        {unreadNotifications > 0 && (
+                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-xs rounded-full flex items-center justify-center">
+                            {unreadNotifications}
+                          </span>
+                        )}
+                      </motion.button>
+                      <NotificationsDropdown />
+                    </div>
+                  )}
+                  
+                  {/* User Profile Button (Logged in users) */}
+                  {currentUser ? (
+                    <div className="relative" ref={dropdownRef}>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                        className="flex items-center space-x-2 px-2 py-1.5 md:px-3 md:py-2 rounded-lg hover:bg-white/10 transition-all duration-200"
+                      >
+                        <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center">
+                          <span className="text-xs font-bold text-white">
+                            {userProfile?.name?.charAt(0) || currentUser.email?.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="hidden md:block text-left">
+                          <div className="text-xs font-medium text-white">
+                            {userProfile?.name?.split(' ')[0] || currentUser.email?.split('@')[0]}
+                          </div>
+                          <div className="text-[10px] text-emerald-300 capitalize">
+                            {userProfile?.userType || 'User'}
+                          </div>
+                        </div>
+                        <ChevronDown className={`w-3 h-3 md:w-4 md:h-4 text-white transition-transform ${
+                          dropdownOpen ? 'rotate-180' : ''
+                        }`} />
+                      </motion.button>
+                      <UserProfileDropdown />
+                    </div>
+                  ) : (
+                    // Sign In Button (Not logged in)
+                    !isMobile && (
+                      <motion.div
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                      >
+                        <Link
+                          to="/login"
+                          className="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-emerald-600 to-amber-600 text-white rounded-lg hover:opacity-90 transition-opacity"
+                        >
+                          Sign In
+                        </Link>
+                      </motion.div>
+                    )
+                  )}
+                  
+                  {/* Mobile Menu Button */}
                   {isMobile && (
                     <motion.button
                       whileHover={{ scale: 1.1 }}
@@ -615,27 +967,160 @@ const Navbar = () => {
                       onClick={() => setIsMenuOpen(true)}
                       className="p-1.5 md:p-2 hover:bg-white/10 rounded-lg transition-colors"
                     >
-                      <Menu className="w-4 h-4 md:w-5 md:h-5 text-white/80" />
+                      <Menu className="w-4 h-4 md:w-5 md:h-5 text-white" />
                     </motion.button>
-                  )}
-                  
-                  {!isMobile && !currentUser && (
-                    <motion.div
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                    >
-                      <Link
-                        to="/login"
-                        className="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-emerald-600 to-amber-600 text-white rounded-lg hover:opacity-90 transition-opacity"
-                      >
-                        Sign In
-                      </Link>
-                    </motion.div>
                   )}
                 </div>
               </div>
             </div>
           </motion.nav>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Menu Drawer */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <>
+            {/* Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+            
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25 }}
+              className="fixed right-0 top-0 h-full w-80 bg-gradient-to-b from-gray-900 to-black z-50 overflow-y-auto"
+            >
+              <div className="p-4">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-gradient-to-r from-emerald-600 to-amber-600 rounded-lg">
+                      <Home className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">MarketMix</h2>
+                      <p className="text-xs text-emerald-300">Real Estate</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsMenuOpen(false)}
+                    className="p-2 hover:bg-white/10 rounded-lg"
+                  >
+                    <X className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+
+                {/* User Info */}
+                {currentUser && (
+                  <div className="mb-6 p-4 rounded-xl bg-white/10">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center">
+                        <span className="text-lg font-bold text-white">
+                          {userProfile?.name?.charAt(0) || currentUser.email?.charAt(0)}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-white">
+                          {userProfile?.name || currentUser.email?.split('@')[0]}
+                        </h3>
+                        <p className="text-xs text-white/60">{currentUser.email}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${
+                          userProfile?.userType === 'admin' 
+                            ? 'bg-red-500/20 text-red-300' 
+                            : 'bg-emerald-500/20 text-emerald-300'
+                        }`}>
+                          {userProfile?.userType === 'admin' ? 'Administrator' : 'Member'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Navigation Links */}
+                <div className="space-y-1">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.path}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center justify-between px-4 py-3 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-all"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="text-emerald-300">{item.icon}</div>
+                        <span>{item.name}</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4" />
+                    </Link>
+                  ))}
+                </div>
+
+                {/* User Links (Logged in) */}
+                {currentUser && (
+                  <>
+                    <div className="my-4 border-t border-white/10 pt-4">
+                      <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3 px-4">
+                        My Account
+                      </h4>
+                      <div className="space-y-1">
+                        {dashboardLinks.slice(0, 4).map((item) => (
+                          <Link
+                            key={item.name}
+                            to={item.path}
+                            onClick={() => setIsMenuOpen(false)}
+                            className="flex items-center justify-between px-4 py-3 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-all"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="text-cyan-300">{item.icon}</div>
+                              <span>{item.name}</span>
+                            </div>
+                            <ChevronRight className="w-4 h-4" />
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-white/90 hover:text-white bg-red-500/20 hover:bg-red-500/30 transition-all"
+                      >
+                        <LogOutIcon className="w-4 h-4" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Sign In Button (Not logged in) */}
+                {!currentUser && (
+                  <div className="mt-8 space-y-3">
+                    <Link
+                      to="/login"
+                      onClick={() => setIsMenuOpen(false)}
+                      className="block w-full text-center px-4 py-3 bg-gradient-to-r from-emerald-600 to-amber-600 text-white rounded-lg font-medium"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      to="/register"
+                      onClick={() => setIsMenuOpen(false)}
+                      className="block w-full text-center px-4 py-3 border border-emerald-500 text-emerald-300 rounded-lg font-medium"
+                    >
+                      Create Account
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
@@ -646,9 +1131,9 @@ const Navbar = () => {
           animate={{ opacity: 0.7 }}
           className="fixed top-2 left-0 right-0 z-30 flex justify-center pointer-events-none"
         >
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/30 backdrop-blur-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm">
             <ArrowDownToLine className="w-3 h-3 text-emerald-300" />
-            <span className="text-xs text-white/80">Pull down gently</span>
+            <span className="text-xs text-white">Pull down gently</span>
           </div>
         </motion.div>
       )}
@@ -660,9 +1145,9 @@ const Navbar = () => {
           animate={{ opacity: 0.6 }}
           className="fixed top-1 left-0 right-0 z-30 flex justify-center pointer-events-none"
         >
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/20 backdrop-blur-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm">
             <MousePointer className="w-3 h-3 text-amber-300" />
-            <span className="text-xs text-white/60">Hover near top for menu</span>
+            <span className="text-xs text-white">Hover near top for menu</span>
           </div>
         </motion.div>
       )}

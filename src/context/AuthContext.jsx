@@ -1,214 +1,237 @@
-// src/context/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
-  sendPasswordResetEmail,
-  updateProfile // Used for updating user display name/photo
-} from "firebase/auth";
-import { doc, setDoc, getDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"; // Added arrayUnion/arrayRemove
-import { auth, db } from "../firebase"; // Assuming you have a file that exports auth and db instances
+// src/context/AuthContext.jsx - SIMPLE WORKING VERSION
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
-  // Helper function to create or update user profile in Firestore
-  const createOrUpdateUserProfile = useCallback(async (user, profileData = {}) => {
-    const userRef = doc(db, 'users', user.uid);
-    const userDoc = await getDoc(userRef);
-
-    const baseProfile = {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName || profileData.name || user.email?.split('@')[0] || 'User',
-      photoURL: user.photoURL || profileData.photoURL || 'https://i.pravatar.cc/150',
-      userType: profileData.userType || 'buyer', // default to 'buyer'
-      phone: profileData.phone || '',
-      savedProperties: [],
-      createdAt: userDoc.exists() ? userDoc.data().createdAt : serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastLogin: serverTimestamp(),
-    };
-
-    if (userDoc.exists()) {
-      // Update existing profile (e.g., last login, photoURL from social login)
-      await updateDoc(userRef, {
-        photoURL: baseProfile.photoURL,
-        lastLogin: baseProfile.lastLogin,
-        updatedAt: baseProfile.updatedAt,
-      });
-      setUserProfile({...userDoc.data(), ...baseProfile}); // Merge data
-    } else {
-      // Create new profile
-      await setDoc(userRef, baseProfile);
-      setUserProfile(baseProfile);
+  // Mock users for testing
+  const mockUsers = [
+    {
+      id: '1',
+      email: 'test@example.com',
+      password: 'password123',
+      name: 'Test User',
+      userType: 'user'
+    },
+    {
+      id: '2',
+      email: 'admin@example.com',
+      password: 'admin123',
+      name: 'Admin User',
+      userType: 'admin'
     }
+  ];
+
+  // Check for stored user on mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem('marketmix_user');
+    const storedProfile = localStorage.getItem('marketmix_profile');
+    
+    if (storedUser && storedProfile) {
+      setCurrentUser(JSON.parse(storedUser));
+      setUserProfile(JSON.parse(storedProfile));
+    }
+    
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      
-      if (user) {
-        // Fetch/create user profile when auth state changes to logged in
-        await createOrUpdateUserProfile(user);
-      } else {
-        setUserProfile(null);
-      }
-      
-      setLoading(false);
-    });
-
-    return unsubscribe; // Cleanup subscription on unmount
-  }, [createOrUpdateUserProfile]);
-
-  // --- Auth Actions ---
-
-  const signup = async ({ name, email, password, phone, userType }) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      await updateProfile(user, { displayName: name });
-      await createOrUpdateUserProfile(user, { name, phone, userType });
-
-      return { success: true };
-    } catch (error) {
-      console.error("Signup error:", error);
-      return { success: false, error: getFirebaseErrorMessage(error) };
-    }
-  };
-
+  // Email/password login
   const login = async (email, password) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      return { success: true };
-    } catch (error) {
-      console.error("Login error:", error);
-      return { success: false, error: getFirebaseErrorMessage(error) };
-    }
-  };
-
-  const loginWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      // The useEffect handler will handle profile creation/update
-      // But we can eagerly call it to ensure data is set immediately
-      await createOrUpdateUserProfile(user); 
-      
-      return { success: true };
-    } catch (error) {
-      console.error("Google login error:", error);
-      return { success: false, error: getFirebaseErrorMessage(error) };
-    }
-  };
-
-  const logout = () => {
-    return signOut(auth);
-  };
-
-  const resetPassword = (email) => {
-    return sendPasswordResetEmail(auth, email);
-  };
-
-  const updateUserProfile = async (updates) => {
-    if (!currentUser) throw new Error("User not logged in.");
-
-    // Update Firebase Auth profile
-    if (updates.displayName || updates.photoURL) {
-      await updateProfile(currentUser, { 
-        displayName: updates.displayName, 
-        photoURL: updates.photoURL 
-      });
-    }
-
-    // Update Firestore profile
-    const userRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userRef, {
-      ...updates,
-      updatedAt: serverTimestamp(),
-    });
-
-    // Update local state
-    setUserProfile(prev => ({
-      ...prev,
-      ...updates
-    }));
-  };
-
-  const saveProperty = async (propertyId) => {
-    if (!currentUser) throw new Error("Authentication required to save properties.");
-
-    const userRef = doc(db, 'users', currentUser.uid);
-    const isSaved = userProfile.savedProperties?.includes(propertyId);
-    let action = '';
+    setLoading(true);
+    setAuthError(null);
     
     try {
-      if (isSaved) {
-        await updateDoc(userRef, {
-          savedProperties: arrayRemove(propertyId)
-        });
-        action = 'removed';
-        // Update local state
-        setUserProfile(prev => ({
-            ...prev,
-            savedProperties: prev.savedProperties.filter(id => id !== propertyId)
-        }));
-      } else {
-        await updateDoc(userRef, {
-          savedProperties: arrayUnion(propertyId)
-        });
-        action = 'added';
-        // Update local state
-        setUserProfile(prev => ({
-            ...prev,
-            savedProperties: [...(prev.savedProperties || []), propertyId]
-        }));
-      }
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      return { success: true, action };
+      // Find user in mock data
+      const user = mockUsers.find(u => u.email === email && u.password === password);
+      
+      if (user) {
+        const mockUser = {
+          uid: user.id,
+          email: user.email,
+          displayName: user.name
+        };
+        
+        const mockProfile = {
+          uid: user.id,
+          email: user.email,
+          name: user.name,
+          userType: user.userType,
+          createdAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
+          favorites: [],
+          savedSearches: [],
+          profileImage: null
+        };
+        
+        setCurrentUser(mockUser);
+        setUserProfile(mockProfile);
+        
+        // Save to localStorage
+        localStorage.setItem('marketmix_user', JSON.stringify(mockUser));
+        localStorage.setItem('marketmix_profile', JSON.stringify(mockProfile));
+        
+        setLoading(false);
+        return mockUser;
+      } else {
+        throw new Error('Invalid email or password');
+      }
     } catch (error) {
-      console.error("Save property error:", error);
-      return { success: false, error: error.message };
+      setAuthError(error.message);
+      setLoading(false);
+      throw error;
     }
   };
 
-  // Helper function to get user-friendly error messages
-  const getFirebaseErrorMessage = (error) => {
-    switch (error.code) {
-      case 'auth/email-already-in-use':
-        return 'Email is already registered.';
-      case 'auth/invalid-email':
-        return 'Invalid email address.';
-      case 'auth/operation-not-allowed':
-        return 'Email/password accounts are not enabled.';
-      case 'auth/weak-password':
-        return 'Password is too weak.';
-      case 'auth/user-disabled':
-        return 'This account has been disabled.';
-      case 'auth/user-not-found':
-        return 'No account found with this email.';
-      case 'auth/wrong-password':
-        return 'Incorrect password.';
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      default:
-        return error.message || 'An error occurred. Please try again.';
+  // Google login
+  const loginWithGoogle = async () => {
+    setLoading(true);
+    setAuthError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const mockUser = {
+        uid: 'google_' + Date.now(),
+        email: 'googleuser@example.com',
+        displayName: 'Google User'
+      };
+      
+      const mockProfile = {
+        uid: mockUser.uid,
+        email: mockUser.email,
+        name: mockUser.displayName,
+        userType: 'user',
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+        favorites: [],
+        savedSearches: [],
+        profileImage: 'https://lh3.googleusercontent.com/a/default-user'
+      };
+      
+      setCurrentUser(mockUser);
+      setUserProfile(mockProfile);
+      
+      // Save to localStorage
+      localStorage.setItem('marketmix_user', JSON.stringify(mockUser));
+      localStorage.setItem('marketmix_profile', JSON.stringify(mockProfile));
+      
+      setLoading(false);
+      return mockUser;
+    } catch (error) {
+      setAuthError(error.message);
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  // Register
+  const register = async (email, password, userData) => {
+    setLoading(true);
+    setAuthError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Check if email already exists
+      const existingUser = mockUsers.find(u => u.email === email);
+      if (existingUser) {
+        throw new Error('This email is already registered');
+      }
+      
+      const userId = 'user_' + Date.now();
+      const mockUser = {
+        uid: userId,
+        email: email,
+        displayName: userData.name
+      };
+      
+      const mockProfile = {
+        uid: userId,
+        email: email,
+        name: userData.name,
+        phone: userData.phone || '',
+        userType: userData.userType || 'user',
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+        favorites: [],
+        savedSearches: [],
+        profileImage: null
+      };
+      
+      // Add to mock users (in real app, this would be saved to database)
+      mockUsers.push({
+        id: userId,
+        email: email,
+        password: password,
+        name: userData.name,
+        userType: userData.userType || 'user'
+      });
+      
+      setCurrentUser(mockUser);
+      setUserProfile(mockProfile);
+      
+      // Save to localStorage
+      localStorage.setItem('marketmix_user', JSON.stringify(mockUser));
+      localStorage.setItem('marketmix_profile', JSON.stringify(mockProfile));
+      
+      setLoading(false);
+      return mockUser;
+    } catch (error) {
+      setAuthError(error.message);
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  // Logout
+  const logout = async () => {
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setCurrentUser(null);
+      setUserProfile(null);
+      setAuthError(null);
+      
+      // Clear localStorage
+      localStorage.removeItem('marketmix_user');
+      localStorage.removeItem('marketmix_profile');
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
+  // Update user profile
+  const updateUserProfile = async (updates) => {
+    if (!currentUser) throw new Error('No user logged in');
+    
+    try {
+      const updatedProfile = { ...userProfile, ...updates };
+      setUserProfile(updatedProfile);
+      
+      // Update localStorage
+      localStorage.setItem('marketmix_profile', JSON.stringify(updatedProfile));
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
     }
   };
 
@@ -216,20 +239,17 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     userProfile,
     loading,
-    signup,
+    authError,
     login,
     loginWithGoogle,
+    register,
     logout,
-    resetPassword,
-    updateUserProfile,
-    saveProperty,
-    // Add a check for user being logged in
-    isAuthenticated: !!currentUser
+    updateUserProfile
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };
