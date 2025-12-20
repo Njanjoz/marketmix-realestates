@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { 
   UserCircle, Mail, Phone, MapPin, Calendar,
   Edit, Save, Camera, Shield, Bell,
-  CreditCard, Lock, Globe, CheckCircle
+  CreditCard, Lock, Globe, CheckCircle,
+  Eye, Heart, MessageSquare // ADDED THESE MISSING IMPORTS
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
