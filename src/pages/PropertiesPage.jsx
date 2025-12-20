@@ -6,8 +6,8 @@ import styled from 'styled-components';
 import { useProperties } from '../context/PropertyContext';
 import { useSearch } from '../context/SearchContext';
 // Assuming PropertyCard and PropertyFilter are separate components
-import PropertyCard from '../components/PropertyCard';
-import PropertyFilter from '../components/PropertyFilter';
+import PropertyCard from '../components/PropertyCard.jsx';
+import PropertyFilter from '../components/PropertyFilter.jsx';
 import { FaFilter, FaTh, FaThList, FaSort, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
 // --- COLOR AND STYLE CONSTANTS ---
