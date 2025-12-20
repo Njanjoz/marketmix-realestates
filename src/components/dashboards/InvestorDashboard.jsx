@@ -1,6 +1,6 @@
-// src/pages/dashboards/InvestorDashboard.jsx
+// src/components/dashboards/InvestorDashboard.jsx
 import React from 'react';
-import DashboardLayout from '../../components/dashboard/DashboardLayout';
+import DashboardLayout from '../dashboard/DashboardLayout';
 import { motion } from 'framer-motion';
 import { 
   TrendingUp, DollarSign, PieChart, Building, 

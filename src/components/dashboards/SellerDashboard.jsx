@@ -1,6 +1,6 @@
-// src/pages/dashboards/SellerDashboard.jsx
+// src/components/dashboards/SellerDashboard.jsx
 import React from 'react';
-import DashboardLayout from './DashboardLayout';
+import DashboardLayout from '../dashboard/DashboardLayout';
 import { motion } from 'framer-motion';
 import { 
   Building, DollarSign, Eye, Heart, MessageSquare,

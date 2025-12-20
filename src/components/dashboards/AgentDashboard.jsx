@@ -1,6 +1,6 @@
-// src/pages/dashboards/AgentDashboard.jsx
+// src/components/dashboards/AgentDashboard.jsx
 import React from 'react';
-import DashboardLayout from './DashboardLayout';
+import DashboardLayout from '../dashboard/DashboardLayout';
 import { motion } from 'framer-motion';
 import { 
   Building, TrendingUp, DollarSign, Users, 

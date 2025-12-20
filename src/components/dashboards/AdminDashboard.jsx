@@ -1,6 +1,6 @@
-// src/pages/dashboards/AdminDashboard.jsx
+// src/components/dashboards/AdminDashboard.jsx
 import React, { useState } from 'react';
-import DashboardLayout from './DashboardLayout';
+import DashboardLayout from '../dashboard/DashboardLayout';
 import { motion } from 'framer-motion';
 import { 
   Users, Building, BarChart, Shield, AlertTriangle, 
