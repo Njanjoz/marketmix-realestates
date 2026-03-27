@@ -1,4 +1,4 @@
-// src/pages/RegisterPage.jsx
+// src/pages/RegisterPage.jsx - FIXED VERSION WITH ROLE SELECTION
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Home, User, Mail, Lock, Phone, Eye, EyeOff, 
   CheckCircle, Building, Briefcase, TrendingUp,
-  ArrowRight, Shield, Star
+  ArrowRight, Shield, Star, Key
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -20,7 +20,8 @@ const RegisterPage = () => {
     phone: '',
     password: '',
     confirmPassword: '',
-    userType: 'buyer'
+    userType: 'buyer',
+    role: 'user'
   });
   
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +33,11 @@ const RegisterPage = () => {
     { value: 'seller', label: 'Seller/Landlord', icon: <Building className="w-4 h-4" />, description: 'Want to sell or rent out property' },
     { value: 'agent', label: 'Real Estate Agent', icon: <Briefcase className="w-4 h-4" />, description: 'Professional agent or broker' },
     { value: 'investor', label: 'Investor', icon: <TrendingUp className="w-4 h-4" />, description: 'Investing in real estate' },
+  ];
+
+  const roles = [
+    { value: 'user', label: 'Regular User', icon: <User className="w-4 h-4" />, description: 'Browse and interact with properties' },
+    { value: 'agent', label: 'Real Estate Agent', icon: <Briefcase className="w-4 h-4" />, description: 'List and manage properties' },
   ];
 
   const handleSubmit = async (e) => {
@@ -56,12 +62,13 @@ const RegisterPage = () => {
       const userData = {
         name: formData.name,
         phone: formData.phone,
-        userType: formData.userType
+        userType: formData.userType,
+        role: formData.role
       };
       
       await register(formData.email, formData.password, userData);
       toast.success('Account created successfully! Welcome to MarketMix!');
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
       toast.error(error.message || 'Registration failed. Please try again.');
     }
@@ -162,25 +169,44 @@ const RegisterPage = () => {
                         key={type.value}
                         type="button"
                         onClick={() => setFormData({...formData, userType: type.value})}
-                        className={`p-3 rounded-lg border-2 text-left transition-all ${
-                          formData.userType === type.value
-                            ? 'border-emerald-500 bg-emerald-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                        className={`p-3 rounded-lg border-2 text-left transition-all ${formData.userType === type.value ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
                       >
                         <div className="flex items-center space-x-2 mb-1">
-                          <div className={`${
-                            formData.userType === type.value ? 'text-emerald-600' : 'text-gray-500'
-                          }`}>
+                          <div className={formData.userType === type.value ? 'text-emerald-600' : 'text-gray-500'}>
                             {type.icon}
                           </div>
-                          <span className={`font-medium ${
-                            formData.userType === type.value ? 'text-emerald-700' : 'text-gray-700'
-                          }`}>
+                          <span className={formData.userType === type.value ? 'font-medium text-emerald-700' : 'font-medium text-gray-700'}>
                             {type.label}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500">{type.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Role Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Account Type *
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {roles.map((role) => (
+                      <button
+                        key={role.value}
+                        type="button"
+                        onClick={() => setFormData({...formData, role: role.value})}
+                        className={`p-3 rounded-lg border-2 text-left transition-all ${formData.role === role.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                      >
+                        <div className="flex items-center space-x-2 mb-1">
+                          <div className={formData.role === role.value ? 'text-blue-600' : 'text-gray-500'}>
+                            {role.icon}
+                          </div>
+                          <span className={formData.role === role.value ? 'font-medium text-blue-700' : 'font-medium text-gray-700'}>
+                            {role.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">{role.description}</p>
                       </button>
                     ))}
                   </div>

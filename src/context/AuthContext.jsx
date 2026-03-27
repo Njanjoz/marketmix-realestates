@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// src/context/AuthContext.jsx - DEBUG VERSION
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,12 +9,14 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
-  sendPasswordResetEmail  // Added this import
+  sendPasswordResetEmail
 } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
+import { doc, setDoc, getDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
+let renderCount = 0;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -24,319 +27,279 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
+  renderCount++;
+  console.log(`🔐 AuthProvider RENDER #${renderCount}`, new Date().toISOString());
+  
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-
-  // Google Auth Provider with better configuration
-  const googleProvider = new GoogleAuthProvider();
   
-  // Important: Add these configuration options
-  googleProvider.addScope('email');
-  googleProvider.addScope('profile');
-  googleProvider.setCustomParameters({
-    prompt: 'select_account',
-    display: 'popup'
-  });
+  const listenerUnsubscribeRef = useRef(null);
+  const isListenerSetupRef = useRef(false);
+  
+  const loading = useMemo(() => authLoading || profileLoading, [authLoading, profileLoading]);
 
-  // Create user profile in Firestore
-  const createUserProfile = async (user, additionalData = {}) => {
+  const googleProvider = useMemo(() => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    return provider;
+  }, []);
+
+  const createUserProfile = useCallback(async (user, additionalData = {}) => {
+    console.log('📝 Creating user profile for:', user.email);
     try {
       const userRef = doc(db, 'users', user.uid);
       const userData = {
         uid: user.uid,
         email: user.email,
-        name: user.displayName || additionalData.name || '',
+        name: user.displayName || additionalData.name || 'User',
         phone: additionalData.phone || '',
-        userType: additionalData.userType || 'buyer',
+        userType: additionalData.userType || 'user',
+        role: additionalData.role || 'user',
         createdAt: serverTimestamp(),
         lastLogin: serverTimestamp(),
-        favorites: [],
-        savedSearches: [],
-        profileImage: user.photoURL || null,
         emailVerified: user.emailVerified || false,
         provider: user.providerData?.[0]?.providerId || 'email'
       };
-
-      await setDoc(userRef, userData);
+      await setDoc(userRef, userData, { merge: true });
+      console.log('✅ User profile created:', userData);
       return userData;
     } catch (error) {
       console.error('Error creating user profile:', error);
       throw error;
     }
-  };
+  }, []);
 
-  // Fetch user profile from Firestore
-  const fetchUserProfile = async (userId) => {
+  const fetchUserProfile = useCallback(async (userId) => {
+    console.log('🔍 Fetching user profile for:', userId);
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
-      
-      if (userSnap.exists()) {
-        return userSnap.data();
-      }
-      return null;
+      const data = userSnap.exists() ? userSnap.data() : null;
+      console.log('📋 Profile fetched:', data);
+      return data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      throw error;
+      return null;
     }
-  };
+  }, []);
 
-  // Listen for auth state changes
+  // Auth state listener
   useEffect(() => {
+    console.log('🔐 Setting up auth state listener');
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('📡 Auth state changed:', user?.email || 'No user');
       try {
         if (user) {
           setCurrentUser(user);
+          setAuthLoading(false);
+          setProfileLoading(true);
           
-          // Fetch user profile from Firestore
           let profile = await fetchUserProfile(user.uid);
-          
-          // If no profile exists and user is from Google, create one
-          if (!profile && user.providerData?.[0]?.providerId === 'google.com') {
-            profile = await createUserProfile(user);
+          if (!profile) {
+            console.log('No profile found, creating one');
+            profile = await createUserProfile(user, { userType: 'user', role: 'user' });
           }
           
+          console.log('📋 Setting userProfile:', profile);
           setUserProfile(profile);
+          setProfileLoading(false);
           
-          // Update last login
-          if (profile) {
-            const userRef = doc(db, 'users', user.uid);
-            await setDoc(userRef, {
-              lastLogin: serverTimestamp()
-            }, { merge: true });
-          }
+          const userRef = doc(db, 'users', user.uid);
+          setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true }).catch(() => {});
         } else {
+          console.log('No user, clearing state');
           setCurrentUser(null);
           setUserProfile(null);
+          setAuthLoading(false);
+          setProfileLoading(false);
         }
       } catch (error) {
-        console.error('Error in auth state change:', error);
+        console.error('Auth error:', error);
         setAuthError(error.message);
-      } finally {
-        setLoading(false);
+        setAuthLoading(false);
+        setProfileLoading(false);
       }
     });
+    
+    return () => {
+      console.log('🔐 Cleaning up auth state listener');
+      unsubscribe();
+    };
+  }, [fetchUserProfile, createUserProfile]);
 
-    return unsubscribe;
+  // Real-time profile listener
+  useEffect(() => {
+    console.log('🔊 Setting up real-time listener effect. currentUser:', currentUser?.email);
+    
+    if (listenerUnsubscribeRef.current) {
+      console.log('🔊 Cleaning up previous listener');
+      listenerUnsubscribeRef.current();
+      listenerUnsubscribeRef.current = null;
+      isListenerSetupRef.current = false;
+    }
+    
+    if (currentUser && !isListenerSetupRef.current) {
+      console.log('📡 Setting up real-time profile listener for:', currentUser.uid);
+      isListenerSetupRef.current = true;
+      
+      const userRef = doc(db, 'users', currentUser.uid);
+      const unsubscribe = onSnapshot(userRef, 
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const updatedProfile = docSnap.data();
+            const oldRole = userProfile?.role;
+            const newRole = updatedProfile.role;
+            
+            console.log('🔄 Profile updated in real-time:', {
+              oldRole,
+              newRole,
+              name: updatedProfile.name,
+              hasChanges: JSON.stringify(userProfile) !== JSON.stringify(updatedProfile)
+            });
+            
+            if (JSON.stringify(userProfile) !== JSON.stringify(updatedProfile)) {
+              console.log('🔄 Updating userProfile state');
+              setUserProfile(updatedProfile);
+              
+              if (oldRole && oldRole !== newRole) {
+                console.log(`🎭 Role changed from ${oldRole} to ${newRole}`);
+                toast.success(`Your role has been updated to ${newRole.toUpperCase()}!`, {
+                  icon: '🔄',
+                  duration: 4000,
+                });
+              }
+            } else {
+              console.log('🔄 No changes detected, skipping update');
+            }
+          }
+        },
+        (error) => {
+          console.error('Error listening to profile changes:', error);
+        }
+      );
+      
+      listenerUnsubscribeRef.current = unsubscribe;
+      
+      return () => {
+        console.log('🔊 Cleaning up real-time listener');
+        if (listenerUnsubscribeRef.current) {
+          listenerUnsubscribeRef.current();
+          listenerUnsubscribeRef.current = null;
+          isListenerSetupRef.current = false;
+        }
+      };
+    }
+  }, [currentUser]); // Only depend on currentUser
+
+  const login = useCallback(async (email, password) => {
+    console.log('🔑 Login attempt:', email);
+    setAuthError(null);
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      console.log('✅ Login successful:', result.user.email);
+      return result.user;
+    } catch (error) {
+      let errorMessage = 'Login failed. Please check your credentials.';
+      if (error.code === 'auth/invalid-credential') errorMessage = 'Invalid email or password.';
+      else if (error.code === 'auth/user-not-found') errorMessage = 'No account found with this email.';
+      else if (error.code === 'auth/wrong-password') errorMessage = 'Incorrect password.';
+      else if (error.code === 'auth/too-many-requests') errorMessage = 'Too many attempts. Try again later.';
+      setAuthError(errorMessage);
+      console.error('❌ Login error:', error);
+      throw new Error(errorMessage);
+    }
   }, []);
 
-  // Email/password login
-  const login = async (email, password) => {
-    setLoading(true);
+  const loginWithGoogle = useCallback(async () => {
+    console.log('🔑 Google login attempt');
     setAuthError(null);
-    
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      return user;
-    } catch (error) {
-      console.error('Login error:', error);
-      
-      let errorMessage = 'Login failed. Please check your credentials.';
-      switch (error.code) {
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-          errorMessage = 'Invalid email or password.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/user-disabled':
-          errorMessage = 'This account has been disabled.';
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = 'Too many failed attempts. Please try again later.';
-          break;
-        default:
-          errorMessage = error.message;
-      }
-      
-      setAuthError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Google login with improved error handling
-  const loginWithGoogle = async () => {
-    setLoading(true);
-    setAuthError(null);
-    
-    try {
-      // Check if popups are blocked
-      if (window.innerWidth === 0 && window.innerHeight === 0) {
-        throw new Error('Popups might be blocked. Please enable popups for this site.');
-      }
-
       const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      
-      // Check if user profile exists, create if not
-      let userProfile = await fetchUserProfile(user.uid);
-      if (!userProfile) {
-        userProfile = await createUserProfile(user);
-      }
-      
-      return user;
+      console.log('✅ Google login successful:', result.user.email);
+      return result.user;
     } catch (error) {
-      console.error('Google login error:', error);
-      
-      let errorMessage = 'Google login failed. Please try again.';
-      switch (error.code) {
-        case 'auth/popup-closed-by-user':
-          errorMessage = 'Google login was cancelled.';
-          break;
-        case 'auth/popup-blocked':
-          errorMessage = 'Popup was blocked. Please allow popups for this site and try again.';
-          break;
-        case 'auth/cancelled-popup-request':
-          errorMessage = 'Google login was cancelled.';
-          break;
-        case 'auth/account-exists-with-different-credential':
-          errorMessage = 'An account already exists with this email. Try logging in with email/password.';
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = 'Network error. Please check your internet connection and try again.';
-          break;
-        default:
-          errorMessage = error.message || 'Google authentication failed. Please try again.';
-      }
-      
+      let errorMessage = 'Google login failed.';
+      if (error.code === 'auth/popup-closed-by-user') errorMessage = 'Login cancelled.';
+      else if (error.code === 'auth/popup-blocked') errorMessage = 'Popup blocked. Please allow popups.';
       setAuthError(errorMessage);
+      console.error('❌ Google login error:', error);
       throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [googleProvider]);
 
-  // Register
-  const register = async (email, password, userData) => {
-    setLoading(true);
+  const register = useCallback(async (email, password, userData) => {
+    console.log('📝 Registration attempt:', email);
     setAuthError(null);
-    
     try {
-      // Create user with email and password
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      
-      // Update profile with name
-      if (userData.name) {
-        await updateProfile(user, {
-          displayName: userData.name
-        });
-      }
-      
-      // Create user profile in Firestore
-      await createUserProfile(user, userData);
-      
-      // Send email verification
+      if (userData.name) await updateProfile(user, { displayName: userData.name });
+      await createUserProfile(user, {
+        name: userData.name,
+        phone: userData.phone || '',
+        userType: userData.userType || 'user',
+        role: userData.userType || 'user'
+      });
       await sendEmailVerification(user);
-      
+      console.log('✅ Registration successful:', user.email);
       return user;
     } catch (error) {
-      console.error('Registration error:', error);
-      
-      let errorMessage = 'Registration failed. Please try again.';
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'This email is already registered.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = 'Email/password accounts are not enabled.';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'Password is too weak. Please choose a stronger password (at least 6 characters).';
-          break;
-        default:
-          errorMessage = error.message;
-      }
-      
+      let errorMessage = 'Registration failed.';
+      if (error.code === 'auth/email-already-in-use') errorMessage = 'Email already registered.';
+      else if (error.code === 'auth/invalid-email') errorMessage = 'Invalid email address.';
+      else if (error.code === 'auth/weak-password') errorMessage = 'Password must be at least 6 characters.';
       setAuthError(errorMessage);
+      console.error('❌ Registration error:', error);
       throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [createUserProfile]);
 
-  // Logout
-  const logout = async () => {
+  const logout = useCallback(async () => {
+    console.log('🚪 Logout attempt');
     try {
       await signOut(auth);
-      setCurrentUser(null);
-      setUserProfile(null);
-      setAuthError(null);
+      console.log('✅ Logout successful');
     } catch (error) {
-      console.error('Logout error:', error);
-      setAuthError(error.message);
+      console.error('❌ Logout error:', error);
       throw error;
     }
-  };
+  }, []);
 
-  // Update user profile
-  const updateUserProfile = async (updates) => {
+  const updateUserProfile = useCallback(async (updates) => {
+    console.log('📝 Updating user profile:', updates);
     if (!currentUser) throw new Error('No user logged in');
-    
     try {
-      // Update in Firebase Auth if name is being changed
-      if (updates.name) {
-        await updateProfile(auth.currentUser, {
-          displayName: updates.name
-        });
-      }
-      
-      // Update in Firestore
+      if (updates.name) await updateProfile(auth.currentUser, { displayName: updates.name });
       const userRef = doc(db, 'users', currentUser.uid);
-      await setDoc(userRef, {
-        ...updates,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      
-      // Update local state
-      setUserProfile(prev => ({ ...prev, ...updates }));
+      await setDoc(userRef, { ...updates, updatedAt: serverTimestamp() }, { merge: true });
+      toast.success('Profile updated successfully!');
+      console.log('✅ Profile updated successfully');
     } catch (error) {
-      console.error('Update profile error:', error);
-      setAuthError(error.message);
+      console.error('❌ Update profile error:', error);
       throw error;
     }
-  };
+  }, [currentUser]);
 
-  // Reset password
-  const resetPassword = async (email) => {
+  const resetPassword = useCallback(async (email) => {
+    console.log('🔑 Password reset requested for:', email);
     try {
       await sendPasswordResetEmail(auth, email);
+      console.log('✅ Password reset email sent');
     } catch (error) {
-      console.error('Reset password error:', error);
-      
-      let errorMessage = 'Failed to send reset email.';
-      switch (error.code) {
-        case 'auth/user-not-found':
-          errorMessage = 'No account found with this email.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = 'Too many attempts. Please try again later.';
-          break;
-        default:
-          errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
+      console.error('❌ Reset password error:', error);
+      throw new Error('Failed to send reset email.');
     }
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     currentUser,
     userProfile,
     loading,
+    profileLoading,
+    authLoading,
     authError,
     login,
     loginWithGoogle,
@@ -344,7 +307,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUserProfile,
     resetPassword
-  };
+  }), [currentUser, userProfile, loading, profileLoading, authLoading, authError]);
 
   return (
     <AuthContext.Provider value={value}>

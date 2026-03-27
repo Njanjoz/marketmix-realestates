@@ -7,7 +7,8 @@ import {
   Bell, Settings, Users, Package, BarChart, Briefcase, 
   DollarSign, TrendingUp, Key, CreditCard, Shield, 
   FileText, HelpCircle, LogOut, ChevronRight, UserCircle,
-  Calendar, PieChart, Eye, Edit, Plus, Filter, Search
+  Calendar, PieChart, Eye, Edit, Plus, Filter, Search,
+  Star // ADDED MISSING IMPORT
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
