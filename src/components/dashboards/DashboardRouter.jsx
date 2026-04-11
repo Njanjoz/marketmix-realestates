@@ -1,73 +1,76 @@
-// src/components/dashboards/DashboardRouter.jsx - DEBUG VERSION
-import React, { useEffect } from 'react';
+// src/components/dashboards/DashboardRouter.jsx
+import React, { lazy, Suspense, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import LoadingSpinner from '../LoadingSpinner';
 
-import AdminDashboard from './AdminDashboard';
-import AgentDashboard from './AgentDashboard';
-import SellerDashboard from './SellerDashboard';
-import InvestorDashboard from './InvestorDashboard';
-import UserDashboard from './UserDashboard';
+// Lazy load dashboards
+const AdminDashboard = lazy(() => import('./AdminDashboard'));
+const AgentDashboard = lazy(() => import('./AgentDashboard'));
+const SellerDashboard = lazy(() => import('./SellerDashboard'));
+const InvestorDashboard = lazy(() => import('./InvestorDashboard'));
+const UserDashboard = lazy(() => import('./UserDashboard'));
+
+// Preload all dashboards on component mount
+const preloadDashboards = () => {
+  const dashboards = [AdminDashboard, AgentDashboard, SellerDashboard, InvestorDashboard, UserDashboard];
+  dashboards.forEach(dashboard => {
+    if (dashboard && typeof dashboard === 'object') {
+      // Trigger lazy load
+      dashboard._preload?.();
+    }
+  });
+};
 
 const DashboardRouter = () => {
-  const { currentUser, userProfile, loading, profileLoading } = useAuth();
-  
-  // Debug logging
-  console.log('🎛️ DashboardRouter - RENDERED:', {
-    timestamp: new Date().toISOString(),
-    loading,
-    profileLoading,
-    hasUser: !!currentUser,
-    userEmail: currentUser?.email,
-    hasProfile: !!userProfile,
-    userType: userProfile?.userType,
-    role: userProfile?.role,
-    fullProfile: userProfile
-  });
-  
-  // Track render count
+  const { currentUser, userProfile, authLoading, profileLoading } = useAuth();
+
+  // Preload dashboards immediately
   useEffect(() => {
-    console.log('🎛️ DashboardRouter - EFFECT RAN');
-    return () => {
-      console.log('🎛️ DashboardRouter - EFFECT CLEANUP');
-    };
-  });
-  
-  if (loading || profileLoading) {
-    console.log('🎛️ DashboardRouter - SHOWING LOADING SPINNER', { loading, profileLoading });
-    return <LoadingSpinner />;
+    preloadDashboards();
+  }, []);
+
+  // Minimal loading state
+  if (authLoading || profileLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
-  
-  if (!currentUser || !userProfile) {
-    console.log('🎛️ DashboardRouter - NO USER/PROFILE, REDIRECTING TO LOGIN', {
-      hasUser: !!currentUser,
-      hasProfile: !!userProfile
-    });
+
+  if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
-  
-  const userRole = userProfile.userType || userProfile.role;
-  console.log('🎛️ DashboardRouter - USER ROLE DETECTED:', userRole);
-  
-  switch (userRole) {
-    case 'admin':
-      console.log('🎛️ DashboardRouter - RENDERING ADMIN DASHBOARD');
-      return <AdminDashboard />;
-    case 'agent':
-      console.log('🎛️ DashboardRouter - RENDERING AGENT DASHBOARD');
-      return <AgentDashboard />;
-    case 'seller':
-    case 'landlord':
-      console.log('🎛️ DashboardRouter - RENDERING SELLER DASHBOARD');
-      return <SellerDashboard />;
-    case 'investor':
-      console.log('🎛️ DashboardRouter - RENDERING INVESTOR DASHBOARD');
-      return <InvestorDashboard />;
-    default:
-      console.log('🎛️ DashboardRouter - RENDERING USER DASHBOARD (default)', { userRole });
-      return <UserDashboard />;
-  }
+
+  // Get role with fallback
+  const role = userProfile?.role || userProfile?.userType || 'user';
+
+  // Render appropriate dashboard
+  const renderDashboard = () => {
+    switch (role) {
+      case 'admin':
+        return <AdminDashboard />;
+      case 'agent':
+        return <AgentDashboard />;
+      case 'seller':
+      case 'landlord':
+        return <SellerDashboard />;
+      case 'investor':
+        return <InvestorDashboard />;
+      default:
+        return <UserDashboard />;
+    }
+  };
+
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      {renderDashboard()}
+    </Suspense>
+  );
 };
 
 export default DashboardRouter;

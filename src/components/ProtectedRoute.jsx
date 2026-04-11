@@ -1,35 +1,24 @@
-// src/components/ProtectedRoute.jsx - DEBUG VERSION
-import React, { useEffect } from 'react';
+// src/components/ProtectedRoute.jsx
+import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 
-const ProtectedRoute = ({ children }) => {
-  const { currentUser, userProfile, loading, profileLoading } = useAuth();
-  
-  console.log('🛡️ ProtectedRoute - RENDERED:', {
-    loading,
-    profileLoading,
-    hasUser: !!currentUser,
-    hasProfile: !!userProfile,
-    path: window.location.pathname
-  });
-  
-  useEffect(() => {
-    console.log('🛡️ ProtectedRoute - EFFECT RAN');
-  });
-  
-  if (loading || profileLoading) {
-    console.log('🛡️ ProtectedRoute - SHOWING SPINNER');
+const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+  const { currentUser, userProfile, authLoading, profileLoading } = useAuth();
+
+  if (authLoading || profileLoading) {
     return <LoadingSpinner />;
   }
-  
-  if (!currentUser || !userProfile) {
-    console.log('🛡️ ProtectedRoute - NO USER/PROFILE, REDIRECTING TO LOGIN');
+
+  if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
-  
-  console.log('🛡️ ProtectedRoute - ACCESS GRANTED');
+
+  if (allowedRoles.length > 0 && !allowedRoles.includes(userProfile?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 };
 

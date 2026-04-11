@@ -1,201 +1,326 @@
-// src/components/dashboards/InvestorDashboard.jsx
-import React from 'react';
-import DashboardLayout from '../dashboard/DashboardLayout';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  TrendingUp, DollarSign, PieChart, Building, 
-  BarChart, Target, TrendingDown, ArrowUpRight,
-  Filter, Download, Plus, Eye
-} from 'lucide-react';
 
-const InvestorDashboard = () => {
-  const portfolioStats = [
-    { label: 'Total Portfolio Value', value: 'KES 245M', change: '+18.2%', icon: <DollarSign />, color: 'emerald' },
-    { label: 'Active Investments', value: '12', change: '+2', icon: <Building />, color: 'blue' },
-    { label: 'Annual Return', value: '24.8%', change: '+3.2%', icon: <TrendingUp />, color: 'amber' },
-    { label: 'Risk Level', value: 'Medium', change: 'Stable', icon: <Target />, color: 'purple' },
-  ];
+/* ─────────────────────────────────────────
+   DATA
+───────────────────────────────────────── */
+const portfolioStats = [
+  { label: 'Annual return',    value: '24.8%',   delta: '↑ +3.2 pts YoY' },
+  { label: 'Positions',        value: '12',       delta: '↑ 2 new'        },
+  { label: 'Risk level',       value: 'Medium',   delta: '— Unchanged',   flat: true },
+  { label: 'Unrealised gain',  value: '+38M',     delta: '↑ KES YTD'     },
+];
 
-  const investmentOpportunities = [
-    { name: 'Luxury Apartment Complex', location: 'Westlands', roi: '28%', minInvestment: 'KES 10M', risk: 'Medium' },
-    { name: 'Commercial REIT', location: 'Nairobi CBD', roi: '22%', minInvestment: 'KES 5M', risk: 'Low' },
-    { name: 'Student Housing', location: 'Kileleshwa', roi: '32%', minInvestment: 'KES 15M', risk: 'High' },
-    { name: 'Mixed-Use Development', location: 'Karen', roi: '26%', minInvestment: 'KES 20M', risk: 'Medium' },
-  ];
+const allocation = [
+  { name: 'Residential', pct: 49, value: 'KES 120M' },
+  { name: 'Commercial',  pct: 35, value: 'KES 85M'  },
+  { name: 'Industrial',  pct: 10, value: 'KES 25M'  },
+  { name: 'Land',        pct: 6,  value: 'KES 15M'  },
+];
 
-  const portfolioDistribution = [
-    { type: 'Residential', value: 'KES 120M', percentage: '49%', color: 'blue' },
-    { type: 'Commercial', value: 'KES 85M', percentage: '35%', color: 'emerald' },
-    { type: 'Industrial', value: 'KES 25M', percentage: '10%', color: 'amber' },
-    { type: 'Land', value: 'KES 15M', percentage: '6%', color: 'purple' },
-  ];
+const trends = [
+  { name: 'Luxury',      desc: 'High-end demand',  pct: '+12.4%', soft: false },
+  { name: 'Residential', desc: 'Suburban surge',   pct: '+8.2%',  soft: false },
+  { name: 'Commercial',  desc: 'Recovery phase',   pct: '+5.7%',  soft: false },
+  { name: 'Rental',      desc: 'Yields stable',    pct: '+2.1%',  soft: true  },
+];
+
+const riskPositions = [
+  { name: 'Commercial', level: 'low',    width: '100%' },
+  { name: 'Westlands',  level: 'medium', width: '80%'  },
+  { name: 'Karen',      level: 'medium', width: '80%'  },
+  { name: 'Student',    level: 'high',   width: '60%'  },
+];
+
+const opportunities = [
+  { name: 'Luxury Apartment Complex', location: 'Westlands',   roi: '28%', min: 'KES 10M', risk: 'medium' },
+  { name: 'Commercial REIT',          location: 'Nairobi CBD', roi: '22%', min: 'KES 5M',  risk: 'low'    },
+  { name: 'Student Housing',          location: 'Kileleshwa',  roi: '32%', min: 'KES 15M', risk: 'high'   },
+  { name: 'Mixed-Use Development',    location: 'Karen',       roi: '26%', min: 'KES 20M', risk: 'medium' },
+];
+
+/* ─────────────────────────────────────────
+   TOKENS / HELPERS
+───────────────────────────────────────── */
+const riskMeta = {
+  low:    { label: 'Low',    bg: 'rgba(30,110,66,0.14)',    color: '#1e6e42', border: 'rgba(30,110,66,0.25)'    },
+  medium: { label: 'Medium', bg: 'rgba(122,90,0,0.12)',     color: '#7a5a00', border: 'rgba(122,90,0,0.22)'     },
+  high:   { label: 'High',   bg: 'rgba(139,26,26,0.12)',    color: '#8b1a1a', border: 'rgba(139,26,26,0.22)'    },
+};
+
+/* ─────────────────────────────────────────
+   STYLE CONSTANTS  (inline objects reused)
+───────────────────────────────────────── */
+const glass = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(20px) saturate(1.3)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  borderRadius: 20,
+};
+
+const glassDim = {
+  background: 'rgba(255,255,255,0.38)',
+  backdropFilter: 'blur(16px) saturate(1.2)',
+  WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
+  border: '1px solid rgba(255,255,255,0.2)',
+  borderRadius: 16,
+};
+
+const serif = "'Cormorant Garamond', 'Georgia', serif";
+const sans  = "'Inter', system-ui, sans-serif";
+
+const ink  = '#1c1c1e';
+const ink2 = '#4a4a52';
+const ink3 = '#8e8e99';
+const up   = '#1e6e42';
+const upS  = 'rgba(30,110,66,0.12)';
+const rule = 'rgba(255,255,255,0.2)';
+
+/* ─────────────────────────────────────────
+   SUB-COMPONENTS
+───────────────────────────────────────── */
+
+function Nav() {
+  return (
+    <nav style={{ ...glass, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', marginBottom: 24 }}>
+      <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: ink, letterSpacing: -0.2 }}>
+        Investor <em style={{ fontStyle: 'italic', color: ink2 }}>Overview</em>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {[true, false, false].map((active, i) => (
+          <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: active ? up : ink3, opacity: active ? 1 : 0.35 }} />
+        ))}
+        <button style={{
+          fontFamily: sans, fontSize: 11, fontWeight: 400, color: ink2,
+          background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 20, padding: '7px 16px', cursor: 'pointer', letterSpacing: '0.03em',
+        }}>
+          + New investment
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function HeroCard() {
+  return (
+    <div style={{ ...glass, padding: '32px 32px 28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 200 }}>
+      <div>
+        <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: ink3, marginBottom: 12 }}>
+          Q1 2025 &nbsp;·&nbsp; Nairobi, KE
+        </div>
+        <div style={{ fontFamily: serif, fontSize: 56, fontWeight: 300, lineHeight: 1, color: ink, letterSpacing: -2, marginBottom: 6 }}>
+          245<sup style={{ fontSize: 22, verticalAlign: 'super', letterSpacing: -0.5, opacity: 0.5, fontWeight: 300 }}>M</sup>
+        </div>
+        <div style={{ fontFamily: sans, fontSize: 13, color: ink2, fontWeight: 300, lineHeight: 1.5 }}>
+          Total portfolio value in KES across 12 active positions.
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 24, paddingTop: 18, borderTop: `1px solid ${rule}` }}>
+        <span style={{ fontFamily: sans, fontSize: 11, padding: '4px 10px', borderRadius: 20, background: upS, color: up, border: '1px solid rgba(30,110,66,0.2)' }}>
+          ↑ 18.2% this quarter
+        </span>
+        <span style={{ fontFamily: sans, fontSize: 11, color: ink3 }}>3.2 pts above benchmark</span>
+      </div>
+    </div>
+  );
+}
+
+function StatMosaic() {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr',
+      gap: 1, borderRadius: 20, overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.45)',
+      background: 'rgba(255,255,255,0.45)',
+    }}>
+      {portfolioStats.map((s) => (
+        <div key={s.label} style={{
+          background: 'rgba(255,255,255,0.62)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          padding: '20px 22px',
+          display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        }}>
+          <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: ink3 }}>{s.label}</div>
+          <div style={{ fontFamily: serif, fontSize: s.value.length > 6 ? 22 : 32, fontWeight: 300, color: ink, letterSpacing: -1, lineHeight: 1, margin: '6px 0 4px' }}>{s.value}</div>
+          <div style={{ fontFamily: sans, fontSize: 11, color: s.flat ? ink3 : up }}>{s.delta}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AllocationPanel() {
+  return (
+    <div style={{ ...glass, padding: '24px 24px 20px' }}>
+      <PanelLabel>Allocation</PanelLabel>
+      {allocation.map((a) => (
+        <div key={a.name} style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+            <span style={{ fontFamily: sans, fontSize: 13, color: ink }}>{a.name}</span>
+            <span style={{ fontFamily: serif, fontSize: 16, color: ink2, fontWeight: 300 }}>{a.pct}%</span>
+          </div>
+          <div style={{ height: 3, background: 'rgba(0,0,0,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: `${a.pct}%`, height: '100%', borderRadius: 2, background: ink, opacity: 0.18 + (a.pct / 100) * 0.82 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrendsPanel() {
+  return (
+    <div style={{ ...glass, padding: '24px 24px 20px' }}>
+      <PanelLabel>Market trends</PanelLabel>
+      {trends.map((t, i) => (
+        <div key={t.name} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          padding: `${i === 0 ? 0 : 11}px 0 11px`,
+          borderBottom: i < trends.length - 1 ? `1px solid ${rule}` : 'none',
+        }}>
+          <div>
+            <div style={{ fontFamily: sans, fontSize: 13, color: ink }}>{t.name}</div>
+            <div style={{ fontFamily: sans, fontSize: 11, color: ink3, marginTop: 1 }}>{t.desc}</div>
+          </div>
+          <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 300, letterSpacing: -0.5, color: t.soft ? '#7a5a00' : up }}>{t.pct}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskPanel() {
+  return (
+    <div style={{ ...glass, padding: '24px 24px 20px' }}>
+      <PanelLabel>Risk by position</PanelLabel>
+      {riskPositions.map((r, i) => {
+        const m = riskMeta[r.level];
+        return (
+          <div key={r.name} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: `${i === 0 ? 0 : 10}px 0 10px`,
+            borderBottom: i < riskPositions.length - 1 ? `1px solid ${rule}` : 'none',
+          }}>
+            <span style={{ fontFamily: sans, fontSize: 12, color: ink, minWidth: 64 }}>{r.name}</span>
+            <div style={{ flex: 1, height: 20, background: 'rgba(0,0,0,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: r.width, height: '100%', background: m.bg, borderRadius: 4, display: 'flex', alignItems: 'center', padding: '0 8px' }}>
+                <span style={{ fontFamily: sans, fontSize: 10, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: m.color }}>{m.label}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OpportunitiesTable() {
+  const colStyle = { fontFamily: sans, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 };
+  const gridCols = '1fr 70px 96px 80px 60px';
 
   return (
-    <DashboardLayout 
-      title="Investor Dashboard" 
-      subtitle="Track your real estate investments and opportunities"
-    >
-      {/* Welcome Section */}
-      <div className="mb-8 p-6 bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl border border-purple-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Smart Investments, Smart Returns</h1>
-            <p className="text-gray-600 mt-1">Your portfolio has grown by 18.2% this quarter.</p>
-          </div>
-          <button className="px-4 py-2 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center">
-            <Plus className="w-4 h-4 mr-2" /> New Investment
-          </button>
-        </div>
-      </div>
-
-      {/* Portfolio Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {portfolioStats.map((stat, index) => (
-          <motion.div
-            key={index}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className={`p-2 rounded-lg bg-${stat.color}-100`}>
-                <div className={`text-${stat.color}-600`}>{stat.icon}</div>
-              </div>
-              <span className={`text-sm font-medium text-${stat.color}-600 flex items-center`}>
-                <ArrowUpRight className="w-3 h-3 mr-1" /> {stat.change}
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-            <p className="text-sm text-gray-600">{stat.label}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Portfolio Distribution */}
-      <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Portfolio Distribution</h2>
-            <button className="text-sm text-purple-600 hover:text-purple-700 flex items-center">
-              <PieChart className="w-4 h-4 mr-1" /> Details
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {portfolioDistribution.map((item, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-900">{item.type}</span>
-                  <span className="text-sm font-semibold text-gray-900">{item.value}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full bg-${item.color}-500`}
-                    style={{ width: item.percentage }}
-                  />
-                </div>
-                <div className="flex justify-between">
-                  <span className={`text-xs text-${item.color}-600`}>{item.percentage}</span>
-                  <span className="text-xs text-gray-500">of portfolio</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Market Trends */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Market Trends</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 flex items-center">
-              <BarChart className="w-4 h-4 mr-1" /> View Report
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {[
-              { sector: 'Residential', trend: 'Up', change: '+8.2%', description: 'Strong demand in suburban areas' },
-              { sector: 'Commercial', trend: 'Up', change: '+5.7%', description: 'Office spaces recovering post-pandemic' },
-              { sector: 'Luxury', trend: 'Up', change: '+12.4%', description: 'High-end properties in high demand' },
-              { sector: 'Rental', trend: 'Stable', change: '+2.1%', description: 'Steady rental yields maintained' },
-            ].map((trend, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{trend.sector}</p>
-                  <p className="text-xs text-gray-500">{trend.description}</p>
-                </div>
-                <div className="text-right">
-                  <div className={`flex items-center justify-end ${
-                    trend.change.includes('+') ? 'text-emerald-600' : 'text-red-600'
-                  }`}>
-                    {trend.trend === 'Up' ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                    <span className="font-semibold">{trend.change}</span>
-                  </div>
-                  <span className="text-xs text-gray-500">Quarterly</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Investment Opportunities */}
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Top Investment Opportunities</h2>
-          <div className="flex space-x-2">
-            <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center">
-              <Filter className="w-4 h-4 mr-1" /> Filter
-            </button>
-            <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center">
-              <Download className="w-4 h-4 mr-1" /> Export
-            </button>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {investmentOpportunities.map((opportunity, index) => (
-            <div key={index} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{opportunity.name}</h3>
-                  <p className="text-sm text-gray-500">{opportunity.location}</p>
-                </div>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  opportunity.risk === 'Low' ? 'bg-emerald-100 text-emerald-800' :
-                  opportunity.risk === 'Medium' ? 'bg-amber-100 text-amber-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {opportunity.risk} Risk
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="p-3 bg-emerald-50 rounded">
-                  <p className="text-2xl font-bold text-emerald-600">{opportunity.roi}</p>
-                  <p className="text-xs text-emerald-700">Projected ROI</p>
-                </div>
-                <div className="p-3 bg-blue-50 rounded">
-                  <p className="text-xl font-bold text-blue-600">{opportunity.minInvestment}</p>
-                  <p className="text-xs text-blue-700">Min Investment</p>
-                </div>
-              </div>
-              
-              <div className="flex space-x-2">
-                <button className="flex-1 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center">
-                  <Eye className="w-3 h-3 mr-1" /> Details
-                </button>
-                <button className="flex-1 px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center">
-                  <TrendingUp className="w-3 h-3 mr-1" /> Invest
-                </button>
-              </div>
-            </div>
+    <div style={{ ...glass, padding: '0 26px 26px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 0 14px', borderBottom: `1px solid ${rule}` }}>
+        <span style={{ ...colStyle }}>Open opportunities</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['Filter', 'Export'].map(btn => (
+            <button key={btn} style={{
+              fontFamily: sans, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase',
+              color: ink3, background: 'none', border: `1px solid ${rule}`, borderRadius: 20,
+              padding: '5px 12px', cursor: 'pointer',
+            }}>{btn}</button>
           ))}
         </div>
       </div>
-    </DashboardLayout>
-  );
-};
 
-export default InvestorDashboard;
+      <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 8, padding: '10px 0 8px', borderBottom: `1px solid ${rule}` }}>
+        {['Property', 'ROI', 'Min. invest', 'Risk', ''].map((h, i) => (
+          <span key={i} style={{ ...colStyle, textAlign: i >= 1 && i <= 2 ? 'right' : 'left' }}>{h}</span>
+        ))}
+      </div>
+
+      {opportunities.map((o, i) => {
+        const m = riskMeta[o.risk];
+        return (
+          <motion.div
+            key={o.name}
+            whileHover={{ backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 8 }}
+            style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 8, alignItems: 'center', padding: '14px 0', borderBottom: i < opportunities.length - 1 ? `1px solid ${rule}` : 'none' }}
+          >
+            <div>
+              <div style={{ fontFamily: sans, fontSize: 13, color: ink }}>{o.name}</div>
+              <div style={{ fontFamily: sans, fontSize: 11, color: ink3, marginTop: 1 }}>{o.location}</div>
+            </div>
+            <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 300, color: ink, letterSpacing: -0.5, textAlign: 'right' }}>{o.roi}</div>
+            <div style={{ fontFamily: sans, fontSize: 12, color: ink2, textAlign: 'right' }}>{o.min}</div>
+            <div>
+              <span style={{ fontFamily: sans, fontSize: 10, fontWeight: 400, padding: '3px 8px', borderRadius: 20, background: m.bg, color: m.color, border: `1px solid ${m.border}`, letterSpacing: '0.04em' }}>
+                {m.label}
+              </span>
+            </div>
+            <button style={{ fontFamily: sans, fontSize: 11, color: ink3, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right', letterSpacing: '0.04em' }}>
+              Invest →
+            </button>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PanelLabel({ children }) {
+  return (
+    <div style={{
+      fontFamily: sans, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+      color: ink3, fontWeight: 400, marginBottom: 18, paddingBottom: 12,
+      borderBottom: `1px solid ${rule}`,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+export default function InvestorDashboard() {
+  return (
+    <div style={{
+      background: 'linear-gradient(145deg, #d8dde8 0%, #c9cfd9 30%, #dde0e8 60%, #cfd4de 100%)',
+      minHeight: '100vh',
+      padding: '32px 40px 56px',
+      fontFamily: sans,
+      fontWeight: 300,
+      color: ink,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* background orbs */}
+      <div style={{ position: 'absolute', top: '8%', left: '18%', width: 340, height: 340, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '12%', right: '14%', width: 280, height: 280, borderRadius: '50%', background: 'rgba(200,210,230,0.35)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', position: 'relative', zIndex: 1 }}>
+        <Nav />
+
+        {/* Hero row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
+          <HeroCard />
+          <StatMosaic />
+        </div>
+
+        {/* Mid row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <AllocationPanel />
+          <TrendsPanel />
+          <RiskPanel />
+        </div>
+
+        {/* Opportunities */}
+        <OpportunitiesTable />
+      </div>
+    </div>
+  );
+}

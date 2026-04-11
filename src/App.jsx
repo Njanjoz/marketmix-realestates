@@ -1,4 +1,4 @@
-// src/App.jsx - COMPLETE FIXED VERSION (NO CONFLICTING ROUTES)
+// src/App.jsx - COMPLETE WITH ADMIN DASHBOARD
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -26,8 +26,11 @@ const PropertyDetailsPage = lazy(() => import('./pages/PropertyDetailspage'));
 const LuxuryPage = lazy(() => import('./pages/LuxuryPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 
-// Dashboard Router - Handles ALL dashboard routing
+// Dashboard Router
 const DashboardRouter = lazy(() => import('./components/dashboards/DashboardRouter'));
+
+// Admin Dashboard
+const AdminDashboard = lazy(() => import('./components/dashboards/AdminDashboard'));
 
 // User Pages
 const ProfilePage = lazy(() => import('./pages/user/ProfilePage'));
@@ -62,10 +65,17 @@ function App() {
                       <Route path="/luxury" element={<LuxuryPage />} />
                       <Route path="/explore" element={<ExplorePage />} />
                       
-                      {/* ✅ ONLY ONE DASHBOARD ROUTE */}
+                      {/* User Dashboard */}
                       <Route path="/dashboard" element={
                         <ProtectedRoute>
                           <DashboardRouter />
+                        </ProtectedRoute>
+                      } />
+                      
+                      {/* Admin Dashboard - Only accessible by admin */}
+                      <Route path="/admin/dashboard" element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                          <AdminDashboard />
                         </ProtectedRoute>
                       } />
                       
