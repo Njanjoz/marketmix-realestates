@@ -1,4 +1,4 @@
-// src/components/dashboards/AdminDashboard.jsx - FIXED VERSION
+// src/components/dashboards/AdminDashboard.jsx - WITH GLASS THEME
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
@@ -8,214 +8,112 @@ import {
   Globe, Mail, Phone, Award, CheckCircle, XCircle,
   Save, AlertCircle, Crown, Shield, Image as ImageIcon, 
   Facebook, Twitter, Instagram, Linkedin, Youtube, MessageCircle,
-  Maximize2, Crop, Loader
+  Maximize2, Crop, Loader, UserCog, UserCheck, UserX, Filter, Search,
+  Briefcase, User, Shield as ShieldIcon, UserMinus
 } from 'lucide-react';
 import { db } from '../../firebase/config';
 import { 
   collection, getDocs, query, orderBy, deleteDoc, doc, 
-  addDoc, serverTimestamp, setDoc, getDoc 
+  addDoc, serverTimestamp, setDoc, getDoc, updateDoc, where
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+
+// Glassmorphism styles
+const glass = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(20px) saturate(1.3)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  borderRadius: 20,
+};
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.55)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  border: '1px solid rgba(255,255,255,0.3)',
+  borderRadius: 16,
+  padding: '20px',
+};
+
+const serif = "'Cormorant Garamond', 'Georgia', serif";
+const sans = "'Inter', system-ui, sans-serif";
+const ink = '#1c1c1e';
+const ink2 = '#4a4a52';
+const ink3 = '#8e8e99';
+const rule = 'rgba(255,255,255,0.2)';
+const red = '#dc2626';
+const redLight = 'rgba(220,38,38,0.12)';
 
 // Cloudflare R2 upload URL
 const CLOUDFLARE_WORKER_URL = 'https://marketmix-uploader.johnnjanjo4.workers.dev';
 
 const AdminDashboard = () => {
-  const [activeSection, setActiveSection] = useState('properties');
+  const [activeSection, setActiveSection] = useState('users');
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [updatingRole, setUpdatingRole] = useState(null);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
-  const [showHeroImageModal, setShowHeroImageModal] = useState(false);
-  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalProperties: 0,
+    activeListings: 0,
+    totalRevenue: 0
+  });
   
-  // Multiple images state
-  const [uploadedImages, setUploadedImages] = useState([]);
-  const [uploadingImages, setUploadingImages] = useState(false);
-  
-  // Homepage settings
-  const [homepageSettings, setHomepageSettings] = useState({
-    hero: {
-      title: 'Discover Timeless Properties in Kenya',
-      subtitle: 'Premium real estate with uncompromising standards.',
-      backgroundImage: 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1920',
-      searchPlaceholder: 'Search properties by location or type...'
-    },
-    stats: [
-      { number: '5,000+', label: 'Properties Listed' },
-      { number: '98%', label: 'Client Satisfaction' },
-      { number: '15+', label: 'Years Experience' },
-      { number: '200+', label: 'Expert Agents' }
-    ],
-    propertyTypes: [
-      { name: 'APARTMENTS', count: 0, type: 'apartment', enabled: true },
-      { name: 'HOUSES', count: 0, type: 'house', enabled: true },
-      { name: 'COMMERCIAL', count: 0, type: 'commercial', enabled: true },
-      { name: 'LAND', count: 0, type: 'land', enabled: true },
-      { name: 'VILLAS', count: 0, type: 'villa', enabled: true },
-      { name: 'OFFICES', count: 0, type: 'office', enabled: true }
-    ],
-    cta: {
-      title: 'Begin Your Property Journey',
-      subtitle: 'Connect with our expert agents for personalized property consultations',
-      button1Text: 'Browse Properties',
-      button1Link: '/properties',
-      button2Text: 'Schedule Consultation',
-      button2Link: '/contact'
-    },
-    socialLinks: {
-      facebook: '',
-      twitter: '',
-      instagram: '',
-      linkedin: '',
-      youtube: ''
-    },
-    contactInfo: {
-      email: 'info@realestate.com',
-      phone: '+254 700 000 000',
-      address: 'Nairobi, Kenya'
-    }
+  // User form state
+  const [userForm, setUserForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    role: 'user',
+    userType: 'buyer',
+    status: 'active'
   });
 
-  const [formData, setFormData] = useState({
-    title: '',
-    location: '',
-    price: '',
-    status: 'sale',
-    bedrooms: '',
-    bathrooms: '',
-    area: '',
-    description: ''
-  });
+  // Role options
+  const roles = [
+    { value: 'admin', label: 'Administrator', icon: <ShieldIcon size={16} />, color: 'red', description: 'Full system access' },
+    { value: 'moderator', label: 'Moderator', icon: <CheckCircle size={16} />, color: 'purple', description: 'Content moderation' },
+    { value: 'agent', label: 'Real Estate Agent', icon: <Briefcase size={16} />, color: 'blue', description: 'List and sell properties' },
+    { value: 'seller', label: 'Seller/Landlord', icon: <Home size={16} />, color: 'orange', description: 'List properties for sale/rent' },
+    { value: 'investor', label: 'Investor', icon: <TrendingUp size={16} />, color: 'green', description: 'Investment opportunities' },
+    { value: 'user', label: 'Regular User', icon: <Users size={16} />, color: 'gray', description: 'Browse and save properties' }
+  ];
 
-  // Upload image to Cloudflare R2
-  const uploadToCloudflare = async (file) => {
-    const formDataObj = new FormData();
-    formDataObj.append('file', file);
+  const userTypes = [
+    { value: 'buyer', label: 'Buyer/Tenant', color: 'emerald' },
+    { value: 'seller', label: 'Seller/Landlord', color: 'orange' },
+    { value: 'investor', label: 'Investor', color: 'green' },
+    { value: 'agent', label: 'Real Estate Agent', color: 'blue' },
+    { value: 'admin', label: 'Administrator', color: 'red' }
+  ];
 
+  // Load users from Firestore
+  const loadUsers = async () => {
+    setLoading(true);
     try {
-      const response = await fetch(`${CLOUDFLARE_WORKER_URL}/upload`, {
-        method: 'POST',
-        body: formDataObj,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return { url: data.url, key: data.key };
+      const usersRef = collection(db, 'users');
+      const querySnapshot = await getDocs(usersRef);
+      const usersList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUsers(usersList);
+      setFilteredUsers(usersList);
+      setStats(prev => ({ ...prev, totalUsers: usersList.length }));
     } catch (error) {
-      console.error('Cloudflare upload error:', error);
-      throw error;
+      console.error('Error loading users:', error);
+      toast.error('Failed to load users');
+    } finally {
+      setLoading(false);
     }
-  };
-
-  // Resize image before upload (client-side)
-  const resizeImageFile = (file, maxWidth = 1200, maxHeight = 800) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        const imgElement = new Image();
-        imgElement.src = e.target.result;
-        imgElement.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = imgElement.width;
-          let height = imgElement.height;
-          
-          if (width > height) {
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-          } else {
-            if (height > maxHeight) {
-              width = Math.round((width * maxHeight) / height);
-              height = maxHeight;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(imgElement, 0, 0, width, height);
-          
-          canvas.toBlob((blob) => {
-            const resizedFile = new File([blob], file.name, {
-              type: file.type,
-              lastModified: Date.now(),
-            });
-            resolve(resizedFile);
-          }, file.type, 0.85);
-        };
-      };
-    });
-  };
-
-  // Upload single image to Cloudflare with resize
-  const uploadSingleImage = async (file, index) => {
-    try {
-      // Resize image first
-      const resizedFile = await resizeImageFile(file);
-      
-      // Update status to uploading
-      setUploadedImages(prev => prev.map((img, i) => 
-        i === index ? { ...img, status: 'uploading' } : img
-      ));
-      
-      // Upload to Cloudflare R2
-      const result = await uploadToCloudflare(resizedFile);
-      
-      // Update with URL
-      setUploadedImages(prev => prev.map((img, i) => 
-        i === index ? { ...img, url: result.url, key: result.key, status: 'uploaded' } : img
-      ));
-      
-      return result.url;
-    } catch (error) {
-      console.error('Upload error:', error);
-      setUploadedImages(prev => prev.map((img, i) => 
-        i === index ? { ...img, status: 'error', error: error.message } : img
-      ));
-      return null;
-    }
-  };
-
-  // Handle multiple image selection
-  const handleMultipleImagesChange = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-    
-    // Add previews
-    const newImages = files.map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
-      status: 'pending',
-      url: null,
-      key: null
-    }));
-    
-    setUploadedImages(prev => [...prev, ...newImages]);
-    setUploadingImages(true);
-    
-    // Upload each image
-    for (let i = 0; i < newImages.length; i++) {
-      const globalIndex = uploadedImages.length + i;
-      await uploadSingleImage(newImages[i].file, globalIndex);
-    }
-    
-    setUploadingImages(false);
-    const successCount = uploadedImages.filter(img => img.status === 'uploaded').length + newImages.length;
-    toast.success(`${successCount} image(s) uploaded successfully!`);
-  };
-
-  // Remove image from list
-  const removeImage = (index) => {
-    const imageToRemove = uploadedImages[index];
-    if (imageToRemove.preview) {
-      URL.revokeObjectURL(imageToRemove.preview);
-    }
-    setUploadedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   // Load properties
@@ -230,21 +128,11 @@ const AdminDashboard = () => {
         ...doc.data()
       }));
       setProperties(propertiesList);
-      
-      const typeCounts = {};
-      propertiesList.forEach(prop => {
-        const type = prop.propertyType || 'apartment';
-        typeCounts[type] = (typeCounts[type] || 0) + 1;
-      });
-      
-      setHomepageSettings(prev => ({
-        ...prev,
-        propertyTypes: prev.propertyTypes.map(type => ({
-          ...type,
-          count: typeCounts[type.type] || 0
-        }))
+      setStats(prev => ({ 
+        ...prev, 
+        totalProperties: propertiesList.length,
+        activeListings: propertiesList.filter(p => p.status === 'active').length
       }));
-      
     } catch (error) {
       console.error('Error loading properties:', error);
     } finally {
@@ -252,265 +140,375 @@ const AdminDashboard = () => {
     }
   };
 
-  // Load homepage settings
-  const loadHomepageSettings = async () => {
-    try {
-      const settingsRef = doc(db, 'settings', 'homepage');
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        setHomepageSettings(prev => ({ ...prev, ...settingsSnap.data() }));
-      }
-    } catch (error) {
-      console.error('Error loading homepage settings:', error);
-    }
-  };
-
   useEffect(() => {
+    loadUsers();
     loadProperties();
-    loadHomepageSettings();
   }, []);
 
-  // Save homepage settings
-  const saveHomepageSettings = async () => {
-    setLoading(true);
-    try {
-      const settingsRef = doc(db, 'settings', 'homepage');
-      await setDoc(settingsRef, homepageSettings, { merge: true });
-      toast.success('Homepage settings saved successfully!');
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      toast.error('Failed to save settings');
-    } finally {
-      setLoading(false);
+  // Filter users based on search and role
+  useEffect(() => {
+    let filtered = users;
+    if (searchTerm) {
+      filtered = filtered.filter(user => 
+        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
-  };
+    if (selectedRole !== 'all') {
+      filtered = filtered.filter(user => user.role === selectedRole);
+    }
+    setFilteredUsers(filtered);
+  }, [searchTerm, selectedRole, users]);
 
-  // Hero image upload to Cloudflare
-  const handleHeroImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    setUploadingHeroImage(true);
+  // Update user role
+  const handleUpdateUserRole = async (userId, newRole, newUserType) => {
+    setUpdatingRole(userId);
     try {
-      const resizedFile = await resizeImageFile(file, 1920, 1080);
-      const result = await uploadToCloudflare(resizedFile);
-      
-      setHomepageSettings(prev => ({
-        ...prev,
-        hero: { ...prev.hero, backgroundImage: result.url }
-      }));
-      
-      toast.success('Hero image updated!');
-      setShowHeroImageModal(false);
-    } catch (error) {
-      console.error('Hero upload error:', error);
-      toast.error('Failed to upload hero image');
-    } finally {
-      setUploadingHeroImage(false);
-    }
-  };
-
-  // Add new property
-  const handleAddProperty = async (e) => {
-    e.preventDefault();
-    
-    const uploadedUrls = uploadedImages.filter(img => img.status === 'uploaded');
-    if (uploadedUrls.length === 0) {
-      toast.error('Please upload at least one image');
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const propertyData = {
-        ...formData,
-        price: parseInt(formData.price),
-        bedrooms: parseInt(formData.bedrooms) || 0,
-        bathrooms: parseInt(formData.bathrooms) || 0,
-        area: parseInt(formData.area) || 0,
-        images: uploadedUrls.map(img => img.url),
-        imageKeys: uploadedUrls.map(img => img.key),
-        createdAt: serverTimestamp(),
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        role: newRole,
+        userType: newUserType,
         updatedAt: serverTimestamp(),
-        featured: false,
-        views: 0
-      };
-      
-      await addDoc(collection(db, 'properties'), propertyData);
-      toast.success('Property added successfully!');
-      setShowPropertyModal(false);
-      
-      // Reset form
-      setFormData({
-        title: '', location: '', price: '', status: 'sale',
-        bedrooms: '', bathrooms: '', area: '', description: ''
+        updatedBy: 'admin'
       });
-      setUploadedImages([]);
-      loadProperties();
-      
+      setUsers(prev => prev.map(user => 
+        user.id === userId ? { ...user, role: newRole, userType: newUserType } : user
+      ));
+      toast.success(`User role updated to ${roles.find(r => r.value === newRole)?.label}`);
     } catch (error) {
-      console.error('Error adding property:', error);
-      toast.error('Failed to add property');
+      console.error('Error updating role:', error);
+      toast.error('Failed to update user role');
     } finally {
-      setLoading(false);
+      setUpdatingRole(null);
     }
   };
 
-  // Delete property
-  const handleDeleteProperty = async (propertyId) => {
-    if (window.confirm('Are you sure you want to delete this property?')) {
+  // Delete user
+  const handleDeleteUser = async (userId, userName) => {
+    if (window.confirm(`Are you sure you want to delete user "${userName}"?`)) {
       try {
-        await deleteDoc(doc(db, 'properties', propertyId));
-        toast.success('Property deleted');
-        loadProperties();
+        await deleteDoc(doc(db, 'users', userId));
+        setUsers(prev => prev.filter(user => user.id !== userId));
+        toast.success('User deleted successfully');
       } catch (error) {
-        console.error('Error deleting property:', error);
-        toast.error('Failed to delete property');
+        console.error('Error deleting user:', error);
+        toast.error('Failed to delete user');
       }
     }
   };
 
-  const togglePropertyType = (index) => {
-    setHomepageSettings(prev => ({
-      ...prev,
-      propertyTypes: prev.propertyTypes.map((type, i) => 
-        i === index ? { ...type, enabled: !type.enabled } : type
-      )
-    }));
+  // Add/Edit user
+  const handleSaveUser = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (editingUser) {
+        const userRef = doc(db, 'users', editingUser.id);
+        await updateDoc(userRef, { ...userForm, updatedAt: serverTimestamp() });
+        setUsers(prev => prev.map(user => user.id === editingUser.id ? { ...user, ...userForm } : user));
+        toast.success('User updated successfully');
+      } else {
+        const newUserRef = doc(db, 'users', userForm.email);
+        await setDoc(newUserRef, {
+          ...userForm,
+          uid: userForm.email,
+          createdAt: serverTimestamp(),
+          status: 'active'
+        });
+        setUsers(prev => [...prev, { id: userForm.email, ...userForm }]);
+        toast.success('User added successfully');
+      }
+      setShowUserModal(false);
+      setEditingUser(null);
+      setUserForm({ name: '', email: '', phone: '', role: 'user', userType: 'buyer', status: 'active' });
+    } catch (error) {
+      console.error('Error saving user:', error);
+      toast.error('Failed to save user');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateStat = (index, field, value) => {
-    setHomepageSettings(prev => ({
-      ...prev,
-      stats: prev.stats.map((stat, i) => 
-        i === index ? { ...stat, [field]: value } : stat
-      )
-    }));
+  const getRoleBadgeColor = (role) => {
+    const colors = {
+      admin: 'bg-red-100 text-red-800',
+      moderator: 'bg-purple-100 text-purple-800',
+      agent: 'bg-blue-100 text-blue-800',
+      seller: 'bg-orange-100 text-orange-800',
+      investor: 'bg-green-100 text-green-800',
+      user: 'bg-gray-100 text-gray-800'
+    };
+    return colors[role] || 'bg-gray-100 text-gray-800';
   };
 
-  const updateHero = (field, value) => {
-    setHomepageSettings(prev => ({
-      ...prev,
-      hero: { ...prev.hero, [field]: value }
-    }));
+  const getUserTypeBadgeColor = (userType) => {
+    const colors = {
+      buyer: 'bg-emerald-100 text-emerald-800',
+      seller: 'bg-orange-100 text-orange-800',
+      investor: 'bg-green-100 text-green-800',
+      agent: 'bg-blue-100 text-blue-800',
+      admin: 'bg-red-100 text-red-800'
+    };
+    return colors[userType] || 'bg-gray-100 text-gray-800';
   };
 
-  const updateCTA = (field, value) => {
-    setHomepageSettings(prev => ({
-      ...prev,
-      cta: { ...prev.cta, [field]: value }
-    }));
-  };
+  const statsCards = [
+    { label: 'Total Users', value: stats.totalUsers.toString(), delta: '+12%', icon: <Users size={20} /> },
+    { label: 'Properties', value: stats.totalProperties.toString(), delta: '+8%', icon: <Building size={20} /> },
+    { label: 'Active Listings', value: stats.activeListings.toString(), delta: '+5%', icon: <Eye size={20} /> },
+    { label: 'Revenue', value: `KES ${stats.totalRevenue}M`, delta: '+23%', icon: <DollarSign size={20} /> },
+  ];
 
   const sections = [
+    { id: 'users', label: 'Users', icon: <Users size={18} /> },
     { id: 'properties', label: 'Properties', icon: <Building size={18} /> },
-    { id: 'hero', label: 'Hero Section', icon: <Layout size={18} /> },
-    { id: 'stats', label: 'Statistics', icon: <TrendingUp size={18} /> },
-    { id: 'propertyTypes', label: 'Property Types', icon: <Tag size={18} /> },
-    { id: 'cta', label: 'Call to Action', icon: <MessageCircle size={18} /> },
-    { id: 'settings', label: 'Site Settings', icon: <Settings size={18} /> }
+    { id: 'analytics', label: 'Analytics', icon: <BarChart size={18} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-1">Manage your real estate platform</p>
+    <div style={{
+      background: 'linear-gradient(145deg, #fef2f2 0%, #fee2e2 30%, #fef2f2 60%, #fecaca 100%)',
+      minHeight: '100vh',
+      padding: '32px 40px 56px',
+      fontFamily: sans,
+      fontWeight: 300,
+      color: ink,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Background orbs */}
+      <div style={{ position: 'absolute', top: '8%', left: '18%', width: 340, height: 340, borderRadius: '50%', background: 'rgba(220,38,38,0.1)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '12%', right: '14%', width: 280, height: 280, borderRadius: '50%', background: 'rgba(239,68,68,0.08)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', position: 'relative', zIndex: 1 }}>
+        {/* Navigation */}
+        <nav style={{ ...glass, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', marginBottom: 24 }}>
+          <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: ink, letterSpacing: -0.2 }}>
+            Admin <em style={{ fontStyle: 'italic', color: red }}>Control Center</em>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: red, opacity: 1 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ fontFamily: sans, fontSize: 11, color: ink2, background: 'rgba(255,255,255,0.18)', border: `1px solid ${rule}`, borderRadius: 20, padding: '7px 16px' }}>
+              {new Date().toLocaleDateString()}
+            </div>
+          </div>
+        </nav>
+
+        {/* Welcome Section */}
+        <div style={{ ...glass, padding: '24px 28px', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontFamily: serif, fontSize: 24, fontWeight: 400 }}>Admin Dashboard</div>
+            <div style={{ fontSize: 13, color: ink2, marginTop: 4 }}>Manage users, properties, and platform settings</div>
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+          {statsCards.map((stat, idx) => (
+            <div key={idx} style={{ ...glass, padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ background: redLight, borderRadius: 12, padding: '8px' }}>
+                  {stat.icon}
+                </div>
+                <span style={{ fontSize: 11, color: '#1e6e42' }}>{stat.delta}</span>
+              </div>
+              <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 300 }}>{stat.value}</div>
+              <div style={{ fontSize: 11, color: ink2 }}>{stat.label}</div>
+            </div>
+          ))}
         </div>
 
         {/* Section Tabs */}
-        <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-200 pb-4">
+        <div style={{ ...glass, display: 'flex', gap: 8, padding: '8px', marginBottom: 24 }}>
           {sections.map(section => (
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                activeSection === section.id
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 20px',
+                borderRadius: 12,
+                background: activeSection === section.id ? red : 'transparent',
+                color: activeSection === section.id ? 'white' : ink2,
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: sans,
+                fontSize: 13,
+                transition: 'all 0.2s'
+              }}
             >
               {section.icon}
               {section.label}
             </button>
           ))}
-          <button
-            onClick={saveHomepageSettings}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ml-auto"
-          >
-            <Save size={18} /> Save All Changes
-          </button>
         </div>
 
-        {/* Properties Section */}
-        {activeSection === 'properties' && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
+        {/* Users Management Section */}
+        {activeSection === 'users' && (
+          <div style={{ ...glass, padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Properties</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Images are automatically resized and uploaded to Cloudflare R2
-                </p>
+                <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500 }}>User Management</div>
+                <div style={{ fontSize: 12, color: ink2 }}>Manage user roles, permissions, and accounts</div>
               </div>
               <button
-                onClick={() => setShowPropertyModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                onClick={() => {
+                  setEditingUser(null);
+                  setUserForm({ name: '', email: '', phone: '', role: 'user', userType: 'buyer', status: 'active' });
+                  setShowUserModal(true);
+                }}
+                style={{ background: red, color: 'white', border: 'none', borderRadius: 12, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
               >
-                <Plus size={18} /> Add Property
+                <Plus size={18} /> Add User
               </button>
             </div>
 
-            {loading ? (
-              <div className="text-center py-12">
-                <Loader className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+                <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: ink3 }} />
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 12, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.5)', outline: 'none' }}
+                />
               </div>
-            ) : properties.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-xl">
-                <Building className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No properties yet. Click "Add Property" to get started.</p>
+              <select
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+                style={{ padding: '10px 16px', borderRadius: 12, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.5)', outline: 'none' }}
+              >
+                <option value="all">All Roles</option>
+                {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+              </select>
+            </div>
+
+            {/* Users Table */}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <Loader size={32} className="animate-spin" style={{ color: red, margin: '0 auto' }} />
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: ink2 }}>No users found</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${rule}` }}>
+                      <th style={{ textAlign: 'left', padding: '12px', fontSize: 11, fontWeight: 500, color: ink3 }}>User</th>
+                      <th style={{ textAlign: 'left', padding: '12px', fontSize: 11, fontWeight: 500, color: ink3 }}>Contact</th>
+                      <th style={{ textAlign: 'left', padding: '12px', fontSize: 11, fontWeight: 500, color: ink3 }}>Role</th>
+                      <th style={{ textAlign: 'left', padding: '12px', fontSize: 11, fontWeight: 500, color: ink3 }}>User Type</th>
+                      <th style={{ textAlign: 'right', padding: '12px', fontSize: 11, fontWeight: 500, color: ink3 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user) => (
+                      <tr key={user.id} style={{ borderBottom: `1px solid ${rule}` }}>
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: '50%', background: `linear-gradient(135deg, ${red}, #ef4444)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
+                              {user.name?.charAt(0) || user.email?.charAt(0) || 'U'}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 500 }}>{user.name || 'No Name'}</div>
+                              <div style={{ fontSize: 11, color: ink3 }}>ID: {user.id?.slice(-8)}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ fontSize: 13 }}>{user.email}</div>
+                          <div style={{ fontSize: 11, color: ink3 }}>{user.phone || 'No phone'}</div>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <select
+                            value={user.role || 'user'}
+                            onChange={(e) => handleUpdateUserRole(user.id, e.target.value, user.userType || 'buyer')}
+                            disabled={updatingRole === user.id}
+                            style={{ padding: '6px 12px', borderRadius: 20, fontSize: 11, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
+                          >
+                            {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <select
+                            value={user.userType || 'buyer'}
+                            onChange={(e) => handleUpdateUserRole(user.id, user.role || 'user', e.target.value)}
+                            disabled={updatingRole === user.id}
+                            style={{ padding: '6px 12px', borderRadius: 20, fontSize: 11, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
+                          >
+                            {userTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => {
+                                setEditingUser(user);
+                                setUserForm({
+                                  name: user.name || '',
+                                  email: user.email || '',
+                                  phone: user.phone || '',
+                                  role: user.role || 'user',
+                                  userType: user.userType || 'buyer',
+                                  status: user.status || 'active'
+                                });
+                                setShowUserModal(true);
+                              }}
+                              style={{ padding: 6, background: 'rgba(59,130,246,0.1)', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#3b82f6' }}
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user.id, user.name || user.email)}
+                              style={{ padding: 6, background: 'rgba(220,38,38,0.1)', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#dc2626' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Properties Section */}
+        {activeSection === 'properties' && (
+          <div style={{ ...glass, padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500 }}>Properties</div>
+                <div style={{ fontSize: 12, color: ink2 }}>Manage all property listings</div>
+              </div>
+              <button style={{ background: red, color: 'white', border: 'none', borderRadius: 12, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <Plus size={18} /> Add Property
+              </button>
+            </div>
+            {properties.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 60, color: ink2 }}>
+                <Building size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+                <p>No properties yet</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {properties.map((property) => (
-                  <div key={property.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <img 
-                      src={property.images?.[0] || 'https://placehold.co/400x300'} 
-                      alt={property.title}
-                      className="w-full h-48 object-cover"
-                    />
-                    <div className="p-4">
-                      <h3 className="font-semibold text-gray-900 mb-1">{property.title}</h3>
-                      <p className="text-sm text-gray-500 flex items-center gap-1 mb-2">
-                        <MapPin size={14} /> {property.location}
-                      </p>
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-lg font-bold text-emerald-600">
-                          KES {property.price?.toLocaleString()}
-                          {property.status === 'rent' && <span className="text-sm">/mo</span>}
-                        </span>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          property.status === 'sale' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm text-gray-500 mb-3">
-                        <span className="flex items-center gap-1"><Bed size={14} /> {property.bedrooms || 0} Beds</span>
-                        <span className="flex items-center gap-1"><Bath size={14} /> {property.bathrooms || 0} Baths</span>
-                        <span className="flex items-center gap-1"><Square size={14} /> {property.area || 0} sqft</span>
-                      </div>
-                      {property.images && property.images.length > 1 && (
-                        <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
-                          <ImageIcon size={12} /> {property.images.length} photos
-                        </div>
-                      )}
-                      <button
-                        onClick={() => handleDeleteProperty(property.id)}
-                        className="w-full py-2 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={16} className="inline mr-1" /> Delete
-                      </button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+                {properties.slice(0, 6).map((property) => (
+                  <div key={property.id} style={{ background: 'rgba(255,255,255,0.38)', border: `1px solid ${rule}`, borderRadius: 16, overflow: 'hidden' }}>
+                    <img src={property.images?.[0] || 'https://placehold.co/400x250'} alt={property.title} style={{ width: '100%', height: 180, objectFit: 'cover' }} />
+                    <div style={{ padding: 16 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>{property.title}</div>
+                      <div style={{ fontSize: 12, color: ink2, marginBottom: 8 }}>{property.location}</div>
+                      <div style={{ fontSize: 18, fontWeight: 500, color: red }}>KES {property.price?.toLocaleString()}</div>
                     </div>
                   </div>
                 ))}
@@ -519,463 +517,66 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Hero Section */}
-        {activeSection === 'hero' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Hero Section Settings</h2>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Current Hero Image</label>
-              <div className="relative rounded-lg overflow-hidden border border-gray-200">
-                <img 
-                  src={homepageSettings.hero.backgroundImage} 
-                  alt="Hero Background"
-                  className="w-full h-48 object-cover"
-                />
-                <button
-                  onClick={() => setShowHeroImageModal(true)}
-                  className="absolute bottom-2 right-2 px-3 py-1 bg-black/70 text-white text-sm rounded-lg hover:bg-black transition-colors"
-                >
-                  Change Image
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Images are uploaded to Cloudflare R2 and automatically resized</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hero Title</label>
-                <input
-                  type="text"
-                  value={homepageSettings.hero.title}
-                  onChange={(e) => updateHero('title', e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hero Subtitle</label>
-                <input
-                  type="text"
-                  value={homepageSettings.hero.subtitle}
-                  onChange={(e) => updateHero('subtitle', e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Search Placeholder</label>
-                <input
-                  type="text"
-                  value={homepageSettings.hero.searchPlaceholder}
-                  onChange={(e) => updateHero('searchPlaceholder', e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Statistics Section */}
-        {activeSection === 'stats' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Statistics Settings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {homepageSettings.stats.map((stat, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <h3 className="font-medium text-gray-900 mb-3">Stat {index + 1}</h3>
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={stat.number}
-                      onChange={(e) => updateStat(index, 'number', e.target.value)}
-                      className="w-full p-2 border rounded-lg"
-                      placeholder="Number"
-                    />
-                    <input
-                      type="text"
-                      value={stat.label}
-                      onChange={(e) => updateStat(index, 'label', e.target.value)}
-                      className="w-full p-2 border rounded-lg"
-                      placeholder="Label"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Property Types Section */}
-        {activeSection === 'propertyTypes' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Property Types Settings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {homepageSettings.propertyTypes.map((type, index) => (
-                <div key={index} className={`border rounded-lg p-4 ${!type.enabled ? 'opacity-50 bg-gray-50' : ''}`}>
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-medium text-gray-900">{type.name}</span>
-                    <button
-                      onClick={() => togglePropertyType(index)}
-                      className={`px-2 py-1 rounded text-xs ${
-                        type.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-                      }`}
-                    >
-                      {type.enabled ? 'Enabled' : 'Disabled'}
-                    </button>
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    <p>Type: {type.type}</p>
-                    <p>Count: {type.count} listings</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* CTA Section */}
-        {activeSection === 'cta' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Call to Action Settings</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CTA Title</label>
-                <input
-                  type="text"
-                  value={homepageSettings.cta.title}
-                  onChange={(e) => updateCTA('title', e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CTA Subtitle</label>
-                <input
-                  type="text"
-                  value={homepageSettings.cta.subtitle}
-                  onChange={(e) => updateCTA('subtitle', e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Button 1 Text</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.cta.button1Text}
-                    onChange={(e) => updateCTA('button1Text', e.target.value)}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Button 1 Link</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.cta.button1Link}
-                    onChange={(e) => updateCTA('button1Link', e.target.value)}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Button 2 Text</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.cta.button2Text}
-                    onChange={(e) => updateCTA('button2Text', e.target.value)}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Button 2 Link</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.cta.button2Link}
-                    onChange={(e) => updateCTA('button2Link', e.target.value)}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-              </div>
-            </div>
+        {/* Analytics Section */}
+        {activeSection === 'analytics' && (
+          <div style={{ ...glass, padding: '24px', textAlign: 'center' }}>
+            <BarChart size={48} style={{ margin: '40px auto 16px', opacity: 0.5 }} />
+            <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Analytics Dashboard</div>
+            <div style={{ fontSize: 13, color: ink2 }}>Coming soon - Detailed analytics and reports</div>
           </div>
         )}
 
         {/* Settings Section */}
         {activeSection === 'settings' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Contact Information</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={homepageSettings.contactInfo.email}
-                    onChange={(e) => setHomepageSettings(prev => ({
-                      ...prev,
-                      contactInfo: { ...prev.contactInfo, email: e.target.value }
-                    }))}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.contactInfo.phone}
-                    onChange={(e) => setHomepageSettings(prev => ({
-                      ...prev,
-                      contactInfo: { ...prev.contactInfo, phone: e.target.value }
-                    }))}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                  <input
-                    type="text"
-                    value={homepageSettings.contactInfo.address}
-                    onChange={(e) => setHomepageSettings(prev => ({
-                      ...prev,
-                      contactInfo: { ...prev.contactInfo, address: e.target.value }
-                    }))}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Social Media Links</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(homepageSettings.socialLinks).map(([platform, url]) => (
-                  <div key={platform}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{platform}</label>
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => setHomepageSettings(prev => ({
-                        ...prev,
-                        socialLinks: { ...prev.socialLinks, [platform]: e.target.value }
-                      }))}
-                      className="w-full p-2 border rounded-lg"
-                      placeholder={`https://${platform}.com/...`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div style={{ ...glass, padding: '24px', textAlign: 'center' }}>
+            <Settings size={48} style={{ margin: '40px auto 16px', opacity: 0.5 }} />
+            <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Platform Settings</div>
+            <div style={{ fontSize: 13, color: ink2 }}>Coming soon - System configuration and preferences</div>
           </div>
         )}
       </div>
 
-      {/* Add Property Modal */}
-      {showPropertyModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Add New Property</h2>
-              <button onClick={() => setShowPropertyModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+      {/* Add/Edit User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div style={{ background: 'white', borderRadius: 20, maxWidth: 500, width: '100%', padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontFamily: serif, fontSize: 20, fontWeight: 500 }}>{editingUser ? 'Edit User' : 'Add New User'}</h2>
+              <button onClick={() => setShowUserModal(false)} style={{ padding: 4, background: 'none', border: 'none', cursor: 'pointer' }}>
                 <XCircle size={20} />
               </button>
             </div>
-
-            <form onSubmit={handleAddProperty} className="p-6 space-y-4">
-              {/* Multiple Images Upload to Cloudflare */}
+            <form onSubmit={handleSaveUser} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Property Images * (Upload multiple)
-                </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                  <Upload className="mx-auto h-10 w-10 text-gray-400" />
-                  <label htmlFor="property-images" className="mt-2 cursor-pointer text-sm text-emerald-600 block">
-                    Click to upload multiple images
-                  </label>
-                  <input 
-                    id="property-images" 
-                    type="file" 
-                    accept="image/jpeg,image/png,image/webp" 
-                    multiple
-                    className="hidden" 
-                    onChange={handleMultipleImagesChange}
-                  />
-                  <div className="mt-2 text-xs text-gray-500">
-                    <p>✓ Uploads to Cloudflare R2 (fast CDN)</p>
-                    <p>✓ Images are automatically resized to 1200x800px</p>
-                    <p>✓ First image will be the cover photo</p>
-                  </div>
-                </div>
-                
-                {/* Uploaded Images Preview */}
-                {uploadedImages.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
-                      Uploaded Images ({uploadedImages.filter(i => i.status === 'uploaded').length}/{uploadedImages.length})
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {uploadedImages.map((img, idx) => (
-                        <div key={idx} className="relative group">
-                          <img 
-                            src={img.preview} 
-                            alt={`Preview ${idx + 1}`}
-                            className="w-full h-24 object-cover rounded-lg"
-                          />
-                          {img.status === 'uploading' && (
-                            <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                              <Loader className="w-5 h-5 text-white animate-spin" />
-                            </div>
-                          )}
-                          {img.status === 'uploaded' && (
-                            <div className="absolute top-1 right-1">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                            </div>
-                          )}
-                          {idx === 0 && img.status === 'uploaded' && (
-                            <div className="absolute bottom-1 left-1 bg-emerald-600 text-white text-xs px-1 rounded">
-                              Cover
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => removeImage(idx)}
-                            className="absolute top-1 left-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <XCircle size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {uploadingImages && (
-                  <div className="mt-2 text-center text-sm text-gray-500">
-                    <Loader className="w-4 h-4 inline animate-spin mr-1" />
-                    Uploading to Cloudflare...
-                  </div>
-                )}
+                <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Full Name *</label>
+                <input type="text" required value={userForm.name} onChange={(e) => setUserForm({...userForm, name: e.target.value})} style={{ width: '100%', padding: 10, borderRadius: 12, border: '1px solid #e5e7eb' }} />
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Email *</label>
+                <input type="email" required value={userForm.email} onChange={(e) => setUserForm({...userForm, email: e.target.value})} disabled={!!editingUser} style={{ width: '100%', padding: 10, borderRadius: 12, border: '1px solid #e5e7eb' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Phone</label>
+                <input type="tel" value={userForm.phone} onChange={(e) => setUserForm({...userForm, phone: e.target.value})} style={{ width: '100%', padding: 10, borderRadius: 12, border: '1px solid #e5e7eb' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Price (KES) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.price}
-                    onChange={(e) => setFormData({...formData, price: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  >
-                    <option value="sale">For Sale</option>
-                    <option value="rent">For Rent</option>
+                  <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Role</label>
+                  <select value={userForm.role} onChange={(e) => setUserForm({...userForm, role: e.target.value})} style={{ width: '100%', padding: 10, borderRadius: 12, border: '1px solid #e5e7eb' }}>
+                    {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
-                  <input
-                    type="number"
-                    value={formData.bedrooms}
-                    onChange={(e) => setFormData({...formData, bedrooms: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label>
-                  <input
-                    type="number"
-                    value={formData.bathrooms}
-                    onChange={(e) => setFormData({...formData, bathrooms: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Area (sqft)</label>
-                  <input
-                    type="number"
-                    value={formData.area}
-                    onChange={(e) => setFormData({...formData, area: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <textarea
-                    rows="3"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    className="w-full p-2 border rounded-lg"
-                  />
+                  <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>User Type</label>
+                  <select value={userForm.userType} onChange={(e) => setUserForm({...userForm, userType: e.target.value})} style={{ width: '100%', padding: 10, borderRadius: 12, border: '1px solid #e5e7eb' }}>
+                    {userTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                  </select>
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={loading || uploadedImages.filter(i => i.status === 'uploaded').length === 0}
-                className="w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {loading ? 'Adding...' : 'Add Property'}
+              <button type="submit" disabled={loading} style={{ background: red, color: 'white', border: 'none', borderRadius: 12, padding: 12, cursor: 'pointer', fontWeight: 500 }}>
+                {loading ? 'Saving...' : (editingUser ? 'Update User' : 'Add User')}
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Hero Image Modal */}
-      {showHeroImageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Upload Hero Image</h2>
-              <button onClick={() => setShowHeroImageModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <XCircle size={20} />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <Upload className="mx-auto h-10 w-10 text-gray-400" />
-                <label htmlFor="hero-image" className="mt-2 cursor-pointer text-sm text-emerald-600 block">
-                  Click to upload hero image
-                </label>
-                <input id="hero-image" type="file" accept="image/jpeg,image/png,image.webp" className="hidden" onChange={handleHeroImageUpload} />
-                <div className="mt-3 text-xs text-gray-500">
-                  <p>✓ Uploads to Cloudflare R2 (fast CDN)</p>
-                  <p>✓ Auto-resizes to 1920x1080px</p>
-                </div>
-              </div>
-              
-              {uploadingHeroImage && (
-                <div className="text-center py-2">
-                  <Loader className="w-5 h-5 animate-spin text-emerald-600 mx-auto" />
-                  <p className="text-sm text-gray-500 mt-2">Uploading to Cloudflare...</p>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}

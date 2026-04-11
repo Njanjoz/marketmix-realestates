@@ -1,150 +1,117 @@
 // src/components/dashboards/ModeratorDashboard.jsx
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
-import { 
-  Shield, AlertTriangle, CheckCircle, XCircle,
-  Users, Building, Flag, Eye, MessageSquare,
-  Clock, Filter, RefreshCw, Search, UserCheck
-} from 'lucide-react';
+import { Flag, CheckCircle, XCircle, Clock, Eye, Shield } from 'lucide-react';
 
-const ModeratorDashboard = () => {
-  const { currentUser, userProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState('reported');
+const glass = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(20px) saturate(1.3)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  borderRadius: 20,
+};
 
-  const reportedItems = [
+const serif = "'Cormorant Garamond', 'Georgia', serif";
+const sans = "'Inter', system-ui, sans-serif";
+const ink = '#1c1c1e';
+const ink2 = '#4a4a52';
+const ink3 = '#8e8e99';
+const rule = 'rgba(255,255,255,0.2)';
+const purple = '#7c3aed';
+const purpleLight = 'rgba(124,58,237,0.12)';
+
+export default function ModeratorDashboard() {
+  const [reportedItems] = useState([
     { id: 1, type: 'property', title: 'Suspicious Listing', reportedBy: 'John Doe', reason: 'Fake listing', date: '2 hours ago', status: 'pending' },
     { id: 2, type: 'user', title: 'Spam Account', reportedBy: 'Sarah Smith', reason: 'Spam messages', date: '5 hours ago', status: 'pending' },
     { id: 3, type: 'review', title: 'Inappropriate Review', reportedBy: 'Mike Johnson', reason: 'Harassment', date: '1 day ago', status: 'reviewing' },
+  ]);
+
+  const stats = [
+    { label: 'Pending Reports', value: '12', icon: Flag, change: '+3' },
+    { label: 'Resolved Today', value: '8', icon: CheckCircle, change: '+5' },
+    { label: 'Active Reviews', value: '24', icon: Eye, change: '+2' },
+    { label: 'Actions Taken', value: '156', icon: Shield, change: '+12%' },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Moderator Dashboard</h1>
-              <p className="text-gray-600 text-sm mt-1">Content moderation and user management</p>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
-                <Shield className="w-5 h-5 text-purple-600" />
-                <span className="text-sm font-medium text-gray-700">Moderator</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 flex items-center justify-center text-white font-bold">
-                {userProfile?.name?.charAt(0) || currentUser?.email?.charAt(0) || 'M'}
-              </div>
+    <div style={{
+      background: 'linear-gradient(145deg, #f3e8ff 0%, #e9d5ff 30%, #fae8ff 60%, #e9d5ff 100%)',
+      minHeight: '100vh',
+      padding: '32px 40px 56px',
+      fontFamily: sans,
+      fontWeight: 300,
+      color: ink,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: '8%', left: '18%', width: 340, height: 340, borderRadius: '50%', background: 'rgba(124,58,237,0.12)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '12%', right: '14%', width: 280, height: 280, borderRadius: '50%', background: 'rgba(139,92,246,0.08)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', position: 'relative', zIndex: 1 }}>
+        {/* Navigation */}
+        <nav style={{ ...glass, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', marginBottom: 24 }}>
+          <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: ink, letterSpacing: -0.2 }}>
+            Moderator <em style={{ fontStyle: 'italic', color: purple }}>Control</em>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: purple, opacity: 1 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ fontFamily: sans, fontSize: 11, color: ink2, background: 'rgba(255,255,255,0.18)', border: `1px solid ${rule}`, borderRadius: 20, padding: '7px 16px' }}>
+              {new Date().toLocaleDateString()}
             </div>
           </div>
-        </div>
-      </div>
+        </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Pending Reports', value: '12', icon: Flag, color: 'red', change: '+3' },
-            { label: 'Resolved Today', value: '8', icon: CheckCircle, color: 'green', change: '+5' },
-            { label: 'Active Reviews', value: '24', icon: Eye, color: 'blue', change: '+2' },
-            { label: 'Actions Taken', value: '156', icon: Shield, color: 'purple', change: '+12%' },
-          ].map((stat, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-xl p-4 shadow-sm border border-gray-100"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className={`p-2 rounded-lg bg-${stat.color}-50`}>
-                  <stat.icon className={`w-5 h-5 text-${stat.color}-600`} />
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+          {stats.map((stat, idx) => (
+            <div key={idx} style={{ ...glass, padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ background: purpleLight, borderRadius: 12, padding: '8px' }}>
+                  <stat.icon size={20} color={purple} />
                 </div>
-                <span className="text-xs font-medium text-green-600">{stat.change}</span>
+                <span style={{ fontSize: 11, color: up }}>{stat.change}</span>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-              <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
-            </motion.div>
+              <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 300 }}>{stat.value}</div>
+              <div style={{ fontSize: 11, color: ink2 }}>{stat.label}</div>
+            </div>
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 bg-gray-50 px-6">
-            <div className="flex space-x-6">
-              {[
-                { id: 'reported', label: 'Reported Content', icon: Flag },
-                { id: 'pending', label: 'Pending Reviews', icon: Clock },
-                { id: 'resolved', label: 'Resolved', icon: CheckCircle },
-                { id: 'users', label: 'User Reports', icon: Users },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center py-3 px-1 font-medium transition-all ${
-                    activeTab === tab.id
-                      ? 'text-purple-600 border-b-2 border-purple-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4 mr-2" />
-                  {tab.label}
-                </button>
-              ))}
+        {/* Reported Items */}
+        <div style={{ ...glass, padding: '0 24px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 0 14px', borderBottom: `1px solid ${rule}` }}>
+            <span style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: ink3 }}>Reported Content</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ fontSize: 10, color: ink3, background: 'none', border: `1px solid ${rule}`, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' }}>Filter</button>
+              <button style={{ fontSize: 10, color: ink3, background: 'none', border: `1px solid ${rule}`, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' }}>Export</button>
             </div>
           </div>
 
-          <div className="p-6">
-            {/* Search Bar */}
-            <div className="relative mb-6">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search reported content..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-
-            {/* Reported Items List */}
-            <div className="space-y-4">
-              {reportedItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                  <div className="flex items-center space-x-4">
-                    <div className={`p-2 rounded-lg ${
-                      item.type === 'property' ? 'bg-blue-50' :
-                      item.type === 'user' ? 'bg-orange-50' :
-                      'bg-purple-50'
-                    }`}>
-                      {item.type === 'property' ? <Building className="w-5 h-5 text-blue-600" /> :
-                       item.type === 'user' ? <Users className="w-5 h-5 text-orange-600" /> :
-                       <MessageSquare className="w-5 h-5 text-purple-600" />}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{item.title}</h3>
-                      <p className="text-sm text-gray-500">Reported by {item.reportedBy} • {item.date}</p>
-                      <p className="text-xs text-red-600 mt-1">Reason: {item.reason}</p>
-                    </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
-                      Approve
-                    </button>
-                    <button className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">
-                      Remove
-                    </button>
-                    <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
-                      Review
-                    </button>
-                  </div>
+          {reportedItems.map((item, i) => (
+            <motion.div key={item.id} whileHover={{ backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 8 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: i < reportedItems.length - 1 ? `1px solid ${rule}` : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: item.type === 'property' ? 'rgba(59,130,246,0.1)' : item.type === 'user' ? 'rgba(245,158,11,0.1)' : purpleLight, borderRadius: 12, padding: '10px' }}>
+                  {item.type === 'property' ? <Eye size={18} color="#3b82f6" /> : item.type === 'user' ? <Flag size={18} color="#f59e0b" /> : <Shield size={18} color={purple} />}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div>
+                  <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 500, color: ink }}>{item.title}</div>
+                  <div style={{ fontSize: 11, color: ink2 }}>Reported by {item.reportedBy} • {item.date}</div>
+                  <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>Reason: {item.reason}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button style={{ fontSize: 11, color: up, background: 'rgba(30,110,66,0.1)', border: `1px solid ${up}40`, borderRadius: 20, padding: '6px 14px', cursor: 'pointer' }}>Approve</button>
+                <button style={{ fontSize: 11, color: '#dc2626', background: 'rgba(220,38,38,0.1)', border: '1px solid #dc262640', borderRadius: 20, padding: '6px 14px', cursor: 'pointer' }}>Remove</button>
+                <button style={{ fontSize: 11, color: purple, background: purpleLight, border: `1px solid ${purple}40`, borderRadius: 20, padding: '6px 14px', cursor: 'pointer' }}>Review</button>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </div>
     </div>
   );
-};
-
-export default ModeratorDashboard;
+}

@@ -1,126 +1,160 @@
-// src/components/dashboards/UserDashboard.jsx - SIMPLE VERSION
-import React from 'react';
-import DashboardLayout from '../dashboard/DashboardLayout';
+// src/components/dashboards/UserDashboard.jsx
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Eye, Heart, MessageSquare, Calendar, Search,
-  MapPin, Home, Star, Building, Filter,
-  Clock, Bell, Settings, DollarSign
-} from 'lucide-react';
+import { db } from '../../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useAuth } from '../../context/AuthContext';
+import { Eye, Heart, MessageSquare, Calendar, Search, Home, Star } from 'lucide-react';
 
-const UserDashboard = () => {
-  const userStats = [
-    { label: 'Properties Viewed', value: '42', icon: <Eye />, color: 'blue' },
-    { label: 'Saved Properties', value: '12', icon: <Heart />, color: 'red' },
-    { label: 'Inquiries Sent', value: '8', icon: <MessageSquare />, color: 'emerald' },
-    { label: 'Upcoming Viewings', value: '2', icon: <Calendar />, color: 'amber' },
+const glass = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(20px) saturate(1.3)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  borderRadius: 20,
+};
+
+const serif = "'Cormorant Garamond', 'Georgia', serif";
+const sans = "'Inter', system-ui, sans-serif";
+const ink = '#1c1c1e';
+const ink2 = '#4a4a52';
+const ink3 = '#8e8e99';
+const rule = 'rgba(255,255,255,0.2)';
+const emerald = '#059669';
+const emeraldLight = 'rgba(5,150,105,0.12)';
+
+export default function UserDashboard() {
+  const { currentUser, userProfile } = useAuth();
+  const [stats, setStats] = useState({ viewed: 0, saved: 0, inquiries: 0, viewings: 0 });
+  const [recentActivity, setRecentActivity] = useState([]);
+
+  useEffect(() => {
+    const fetchUserStats = async () => {
+      try {
+        // Fetch user's saved properties
+        const favoritesRef = collection(db, 'favorites');
+        const q = query(favoritesRef, where('userId', '==', currentUser?.uid));
+        const snapshot = await getDocs(q);
+        setStats(prev => ({ ...prev, saved: snapshot.size }));
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+    if (currentUser) fetchUserStats();
+  }, [currentUser]);
+
+  const statCards = [
+    { label: 'Properties Viewed', value: stats.viewed.toString(), icon: Eye, color: emerald },
+    { label: 'Saved Properties', value: stats.saved.toString(), icon: Heart, color: '#dc2626' },
+    { label: 'Inquiries Sent', value: stats.inquiries.toString(), icon: MessageSquare, color: emerald },
+    { label: 'Upcoming Viewings', value: stats.viewings.toString(), icon: Calendar, color: '#f59e0b' },
+  ];
+
+  const quickActions = [
+    { label: 'Search Properties', icon: Search, color: emerald, link: '/properties' },
+    { label: 'View Favorites', icon: Heart, color: '#dc2626', link: '/favorites' },
+    { label: 'My Messages', icon: MessageSquare, color: '#3b82f6', link: '/messages' },
+    { label: 'Edit Profile', icon: Home, color: '#7c3aed', link: '/profile' },
+  ];
+
+  const activities = [
+    { action: 'Viewed property in Karen', time: '2 hours ago', icon: Eye },
+    { action: 'Saved luxury apartment', time: '1 day ago', icon: Heart },
+    { action: 'Contacted agent about villa', time: '2 days ago', icon: MessageSquare },
   ];
 
   return (
-    <DashboardLayout 
-      title="My Dashboard" 
-      subtitle="Welcome to your personal dashboard"
-    >
-      {/* Welcome Section */}
-      <div className="mb-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
-        <div className="flex flex-col md:flex-row items-center justify-between">
-          <div className="mb-4 md:mb-0">
-            <h1 className="text-2xl font-bold text-gray-900">Welcome to Your Dashboard!</h1>
-            <p className="text-gray-600 mt-1">Continue your property search or check your saved properties.</p>
+    <div style={{
+      background: 'linear-gradient(145deg, #d1fae5 0%, #a7f3d0 30%, #ecfdf5 60%, #d1fae5 100%)',
+      minHeight: '100vh',
+      padding: '32px 40px 56px',
+      fontFamily: sans,
+      fontWeight: 300,
+      color: ink,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: '8%', left: '18%', width: 340, height: 340, borderRadius: '50%', background: 'rgba(5,150,105,0.1)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '12%', right: '14%', width: 280, height: 280, borderRadius: '50%', background: 'rgba(16,185,129,0.08)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+
+      <div style={{ width: '100%', position: 'relative', zIndex: 1 }}>
+        {/* Navigation */}
+        <nav style={{ ...glass, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', marginBottom: 24 }}>
+          <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: ink, letterSpacing: -0.2 }}>
+            My <em style={{ fontStyle: 'italic', color: emerald }}>Dashboard</em>
           </div>
-          <button 
-            onClick={() => window.location.href = '/properties'}
-            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center"
-          >
-            <Search className="w-4 h-4 mr-2" /> Search Properties
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: emerald, opacity: 1 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ink3, opacity: 0.35 }} />
+            <div style={{ fontFamily: sans, fontSize: 11, color: ink2, background: 'rgba(255,255,255,0.18)', border: `1px solid ${rule}`, borderRadius: 20, padding: '7px 16px' }}>
+              {userProfile?.name || currentUser?.email?.split('@')[0]}
+            </div>
+          </div>
+        </nav>
+
+        {/* Welcome Section */}
+        <div style={{ ...glass, padding: '24px 28px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <div style={{ fontFamily: serif, fontSize: 24, fontWeight: 400 }}>Welcome back, {userProfile?.name?.split(' ')[0] || 'User'}!</div>
+            <div style={{ fontSize: 13, color: ink2, marginTop: 4 }}>Continue your property search or check your saved properties.</div>
+          </div>
+          <button style={{ background: emerald, color: 'white', border: 'none', borderRadius: 12, padding: '10px 20px', fontSize: 13, fontFamily: sans, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Search size={16} /> Search Properties
           </button>
         </div>
-      </div>
 
-      {/* User Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {userStats.map((stat, index) => (
-          <motion.div
-            key={index}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className={`p-2 rounded-lg ${
-                stat.color === 'blue' ? 'bg-blue-100 text-blue-600' :
-                stat.color === 'red' ? 'bg-red-100 text-red-600' :
-                stat.color === 'emerald' ? 'bg-emerald-100 text-emerald-600' :
-                'bg-amber-100 text-amber-600'
-              }`}>
-                {stat.icon}
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+          {statCards.map((stat, idx) => (
+            <div key={idx} style={{ ...glass, padding: '20px' }}>
+              <div style={{ background: emeraldLight, borderRadius: 12, padding: '8px', display: 'inline-block', marginBottom: 12 }}>
+                <stat.icon size={20} color={stat.color} />
               </div>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-            <p className="text-sm text-gray-600">{stat.label}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: 'Search Properties', icon: <Search />, color: 'emerald', onClick: () => window.location.href = '/properties' },
-            { label: 'View Favorites', icon: <Heart />, color: 'red', onClick: () => window.location.href = '/favorites' },
-            { label: 'My Messages', icon: <MessageSquare />, color: 'blue', onClick: () => window.location.href = '/messages' },
-            { label: 'Edit Profile', icon: <Settings />, color: 'purple', onClick: () => window.location.href = '/profile' },
-          ].map((action, index) => (
-            <button
-              key={index}
-              onClick={action.onClick}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border ${
-                action.color === 'emerald' ? 'border-emerald-200 bg-emerald-50' :
-                action.color === 'red' ? 'border-red-200 bg-red-50' :
-                action.color === 'blue' ? 'border-blue-200 bg-blue-50' :
-                'border-purple-200 bg-purple-50'
-              } hover:shadow-md transition-shadow`}
-            >
-              <div className={`p-2 rounded-lg mb-2 ${
-                action.color === 'emerald' ? 'bg-emerald-100 text-emerald-600' :
-                action.color === 'red' ? 'bg-red-100 text-red-600' :
-                action.color === 'blue' ? 'bg-blue-100 text-blue-600' :
-                'bg-purple-100 text-purple-600'
-              }`}>
-                {action.icon}
-              </div>
-              <span className="text-sm font-medium text-gray-900">{action.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
-        <div className="space-y-3">
-          {[
-            { action: 'Viewed property in Karen', time: '2 hours ago', icon: <Eye /> },
-            { action: 'Saved luxury apartment', time: '1 day ago', icon: <Heart /> },
-            { action: 'Contacted agent about villa', time: '2 days ago', icon: <MessageSquare /> },
-            { action: 'Scheduled property viewing', time: '3 days ago', icon: <Calendar /> },
-          ].map((activity, index) => (
-            <div key={index} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-              <div className="p-2 bg-white rounded-lg border border-gray-300 mr-3">
-                <div className="text-blue-600">{activity.icon}</div>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">{activity.action}</p>
-                <p className="text-xs text-gray-500">{activity.time}</p>
-              </div>
+              <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 300 }}>{stat.value}</div>
+              <div style={{ fontSize: 11, color: ink2 }}>{stat.label}</div>
             </div>
           ))}
         </div>
+
+        {/* Quick Actions & Recent Activity */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {/* Quick Actions */}
+          <div style={{ ...glass, padding: '24px' }}>
+            <div style={{ marginBottom: 18, paddingBottom: 12, borderBottom: `1px solid ${rule}` }}>
+              <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: ink3 }}>Quick Actions</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+              {quickActions.map((action, idx) => (
+                <button key={idx} style={{ background: 'rgba(255,255,255,0.38)', border: `1px solid ${rule}`, borderRadius: 16, padding: '16px', textAlign: 'center', cursor: 'pointer' }}>
+                  <div style={{ background: `${action.color}15`, borderRadius: 12, padding: '8px', display: 'inline-block', marginBottom: 8 }}>
+                    <action.icon size={18} color={action.color} />
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: ink }}>{action.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div style={{ ...glass, padding: '24px' }}>
+            <div style={{ marginBottom: 18, paddingBottom: 12, borderBottom: `1px solid ${rule}` }}>
+              <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: ink3 }}>Recent Activity</span>
+            </div>
+            {activities.map((activity, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: idx < activities.length - 1 ? `1px solid ${rule}` : 'none' }}>
+                <div style={{ background: emeraldLight, borderRadius: 12, padding: '8px' }}>
+                  <activity.icon size={16} color={emerald} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: ink }}>{activity.action}</div>
+                  <div style={{ fontSize: 11, color: ink2 }}>{activity.time}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
-};
-
-export default UserDashboard;
+}
