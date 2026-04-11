@@ -1,21 +1,32 @@
-// src/pages/PropertiesPage.jsx - FIXED INFINITE LOOP
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+// src/pages/PropertiesPage.jsx - WITH SIMPLE NEAR ME BUTTON
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
-import { useProperties } from '../context/PropertyContext';
-import { useSearch } from '../context/SearchContext';
+import { FaFilter, FaTh, FaThList, FaSort, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { Search, Loader, Star, MapPin, Bed, Bath, Square, DollarSign, Crosshair, AlertCircle } from 'lucide-react';
+import { db } from '../firebase/config';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import PropertyCard from '../components/PropertyCard.jsx';
 import PropertyFilter from '../components/PropertyFilter.jsx';
-import { FaFilter, FaTh, FaThList, FaSort, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import toast from 'react-hot-toast';
 
-// --- COLOR AND STYLE CONSTANTS ---
-const PRIMARY_BLUE = '#0284c7'; 
-const PRIMARY_DARK = '#0c4a6e';
-const WHITE = '#ffffff';
-const BG_LIGHT = '#f9fafb';
-const GRAY_300 = '#d1d5db';
-const GRAY_700 = '#374151';
+// Glassmorphism styles
+const glass = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(20px) saturate(1.3)',
+  WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  borderRadius: 20,
+};
+
+const serif = "'Cormorant Garamond', 'Georgia', serif";
+const sans = "'Inter', system-ui, sans-serif";
+const ink = '#1c1c1e';
+const ink2 = '#4a4a52';
+const ink3 = '#8e8e99';
+const rule = 'rgba(255,255,255,0.2)';
+const emerald = '#059669';
 
 // --- UTILITY STYLED COMPONENTS ---
 const Container = styled.div`
@@ -31,9 +42,11 @@ const Container = styled.div`
 
 const PageWrapper = styled.div`
     min-height: 90vh;
-    padding-top: 5rem;
+    padding-top: 2rem;
     padding-bottom: 4rem;
-    background-color: ${BG_LIGHT};
+    background: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 30%, #ecfdf5 60%, #a7f3d0 100%);
+    position: relative;
+    overflow: hidden;
 `;
 
 const MainContentGrid = styled.div`
@@ -52,24 +65,29 @@ const HeaderWrapper = styled.div`
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
     gap: 1rem;
+    background: rgba(255,255,255,0.62);
+    backdropFilter: blur(20px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,0.45);
+    border-radius: 20px;
+    padding: 1rem 1.5rem;
 `;
 
 const ViewButton = styled.button`
     padding: 0.5rem;
     border-radius: 0.5rem;
-    color: ${props => props.$active ? WHITE : GRAY_700};
-    background-color: ${props => props.$active ? PRIMARY_BLUE : 'transparent'};
+    color: ${props => props.$active ? '#fff' : '#4a4a52'};
+    background-color: ${props => props.$active ? emerald : 'transparent'};
     transition: all 150ms;
     cursor: pointer;
     
     &:hover {
-        background-color: ${props => props.$active ? PRIMARY_DARK : '#e5e7eb'};
+        background-color: ${props => props.$active ? emerald : 'rgba(0,0,0,0.05)'};
     }
 `;
 
 const SortSelect = styled.select`
     padding: 0.5rem 2rem 0.5rem 1rem;
-    border: 1px solid ${GRAY_300};
+    border: 1px solid rgba(255,255,255,0.2);
     border-radius: 0.5rem;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
@@ -77,11 +95,12 @@ const SortSelect = styled.select`
     background-position: right 0.75rem center;
     background-size: 1.5em 1.5em;
     cursor: pointer;
-    background-color: white;
+    background-color: rgba(255,255,255,0.5);
+    font-family: 'Inter', system-ui, sans-serif;
     
     &:focus {
         outline: none;
-        border-color: ${PRIMARY_BLUE};
+        border-color: ${emerald};
     }
 `;
 
@@ -89,8 +108,8 @@ const FilterToggle = styled.button`
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background-color: ${PRIMARY_BLUE};
-    color: ${WHITE};
+    background-color: ${emerald};
+    color: white;
     padding: 0.75rem 1.25rem;
     border-radius: 0.75rem;
     font-weight: 600;
@@ -99,7 +118,7 @@ const FilterToggle = styled.button`
     border: none;
     
     &:hover {
-        background-color: ${PRIMARY_DARK};
+        background-color: #047857;
     }
 `;
 
@@ -122,7 +141,7 @@ const Sidebar = styled(motion.div)`
     left: 0;
     height: 100%;
     width: 20rem;
-    background-color: ${WHITE};
+    background-color: white;
     padding: 1.5rem;
     overflow-y: auto;
     z-index: 50;
@@ -147,15 +166,15 @@ const PaginationButton = styled.button`
     justify-content: center;
     
     ${props => props.$active ? `
-        background-color: ${PRIMARY_BLUE};
-        color: ${WHITE};
+        background-color: ${emerald};
+        color: white;
         border: none;
     ` : `
-        border: 1px solid ${GRAY_300};
-        background-color: ${WHITE};
-        color: ${GRAY_700};
+        border: 1px solid rgba(255,255,255,0.2);
+        background-color: rgba(255,255,255,0.5);
+        color: #4a4a52;
         &:hover {
-            background-color: #f3f4f6;
+            background-color: rgba(255,255,255,0.8);
         }
     `}
     
@@ -166,27 +185,53 @@ const PaginationButton = styled.button`
 `;
 
 const ResultsCount = styled.div`
-    color: #4b5563;
+    color: #4a4a52;
     font-weight: 500;
+    font-size: 0.875rem;
     display: none;
     @media (min-width: 640px) {
         display: block;
     }
 `;
 
-// --- REACT COMPONENT ---
+const NearMeButton = styled.button`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, ${emerald}, #047857);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 200ms;
+    margin-bottom: 1rem;
+    
+    &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(5,150,105,0.3);
+    }
+    
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+`;
 
+// --- REACT COMPONENT ---
 const PropertiesPage = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isFirstRender = useRef(true);
   
-  // Safe context access
-  const propertiesContext = useProperties();
-  const searchContext = useSearch();
-  
-  const { filteredProperties = [], loading = false, applyFilters = () => {} } = propertiesContext;
-  const { updateSearchFilters = () => {}, searchFilters = {} } = searchContext;
+  const [allProperties, setAllProperties] = useState([]);
+  const [displayProperties, setDisplayProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [findingNearby, setFindingNearby] = useState(false);
   
   const [viewMode, setViewMode] = useState(() => searchParams.get('view') || 'grid');
   const [showFilters, setShowFilters] = useState(false);
@@ -195,72 +240,153 @@ const PropertiesPage = () => {
     const page = parseInt(searchParams.get('page'));
     return isNaN(page) ? 1 : page;
   });
+  const [nearMeActive, setNearMeActive] = useState(false);
+  const [filters, setFilters] = useState({
+    location: '',
+    minPrice: '',
+    maxPrice: '',
+    bedrooms: 'any',
+    propertyType: 'all',
+    status: 'all'
+  });
   const itemsPerPage = 12;
 
-  // ✅ FIX: Use useCallback to memoize functions and prevent infinite loops
-  const handleApplyFilters = useCallback((filters) => {
-    if (typeof applyFilters === 'function') {
-      applyFilters(filters);
-    }
-  }, [applyFilters]);
+  // Calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
 
-  const handleUpdateSearchFilters = useCallback((filters) => {
-    if (typeof updateSearchFilters === 'function') {
-      updateSearchFilters(filters);
+  // Load properties from Firestore
+  const loadProperties = async () => {
+    setLoading(true);
+    try {
+      const propertiesRef = collection(db, 'properties');
+      const q = query(propertiesRef, where('approvalStatus', '==', 'approved'));
+      const snapshot = await getDocs(q);
+      const propertiesList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAllProperties(propertiesList);
+      setDisplayProperties(propertiesList);
+    } catch (error) {
+      console.error('Error loading properties:', error);
+      toast.error('Failed to load properties');
+    } finally {
+      setLoading(false);
     }
-  }, [updateSearchFilters]);
+  };
 
-  // ✅ FIX: Use useRef to track if URL update is from internal state change
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('view', viewMode);
-    newParams.set('sort', sortBy);
-    newParams.set('page', currentPage.toString());
-    setSearchParams(newParams, { replace: true });
-  }, [viewMode, sortBy, currentPage, setSearchParams, searchParams]);
-
-  // ✅ FIX: Separate effect for URL params with proper dependencies
-  useEffect(() => {
-    const status = searchParams.get('status') || 'all';
-    const type = searchParams.get('type') || 'all';
-    const locationQuery = searchParams.get('location') || '';
-    const minPrice = searchParams.get('minPrice');
-    const maxPrice = searchParams.get('maxPrice');
-    const bedrooms = searchParams.get('bedrooms');
-    
-    const filters = {
-      status,
-      type,
-      location: locationQuery,
-      ...(minPrice && { minPrice: parseInt(minPrice) }),
-      ...(maxPrice && { maxPrice: parseInt(maxPrice) }),
-      ...(bedrooms && bedrooms !== 'any' && { bedrooms: parseInt(bedrooms) })
-    };
-    
-    // Only run on initial mount or when URL changes
-    if (isFirstRender.current) {
-      handleApplyFilters(filters);
-      handleUpdateSearchFilters(filters);
-    }
-  }, [location.search]); // ✅ Only depend on location.search, not the functions
-
-  // ✅ FIX: Reset first render flag after initial load
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-    }
+    loadProperties();
   }, []);
 
-  // Handle sorting with useMemo to prevent recalculations
-  const sortedProperties = useMemo(() => {
-    if (!filteredProperties || filteredProperties.length === 0) return [];
+  // Apply filters
+  const applyFilters = useCallback(() => {
+    let filtered = [...allProperties];
     
-    const sorted = [...filteredProperties];
+    if (filters.location) {
+      filtered = filtered.filter(prop => 
+        prop.location?.toLowerCase().includes(filters.location.toLowerCase())
+      );
+    }
+    if (filters.minPrice) {
+      filtered = filtered.filter(prop => prop.price >= parseInt(filters.minPrice));
+    }
+    if (filters.maxPrice) {
+      filtered = filtered.filter(prop => prop.price <= parseInt(filters.maxPrice));
+    }
+    if (filters.bedrooms !== 'any') {
+      filtered = filtered.filter(prop => prop.bedrooms >= parseInt(filters.bedrooms));
+    }
+    if (filters.propertyType !== 'all') {
+      filtered = filtered.filter(prop => prop.propertyType === filters.propertyType);
+    }
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(prop => prop.status === filters.status);
+    }
+    
+    setDisplayProperties(filtered);
+    setCurrentPage(1);
+  }, [allProperties, filters]);
+
+  useEffect(() => {
+    if (!nearMeActive) {
+      applyFilters();
+    }
+  }, [applyFilters, nearMeActive]);
+
+  // FIND PROPERTIES NEAR ME - GPS feature
+  const findNearMe = () => {
+    setFindingNearby(true);
+    
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      setFindingNearby(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        
+        // Calculate distance for each property and filter within 10km
+        const nearby = allProperties
+          .map(property => {
+            let distance = null;
+            if (property.coordinates && property.coordinates.lat) {
+              distance = calculateDistance(
+                latitude, longitude,
+                property.coordinates.lat, property.coordinates.lng
+              );
+            }
+            return { ...property, distance };
+          })
+          .filter(property => property.distance !== null && property.distance <= 10)
+          .sort((a, b) => a.distance - b.distance);
+        
+        setDisplayProperties(nearby);
+        setNearMeActive(true);
+        setCurrentPage(1);
+        
+        if (nearby.length === 0) {
+          toast.info("No properties found within 10km of your location");
+        } else {
+          toast.success(`Found ${nearby.length} properties near you!`);
+        }
+        setFindingNearby(false);
+      },
+      (err) => {
+        let errorMessage = "Unable to get your location";
+        if (err.code === err.PERMISSION_DENIED) {
+          errorMessage = "Please allow location access to find nearby properties";
+        }
+        toast.error(errorMessage);
+        setFindingNearby(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  // Show all properties (clear near me filter)
+  const showAllProperties = () => {
+    setDisplayProperties([...allProperties]);
+    setNearMeActive(false);
+    setCurrentPage(1);
+    applyFilters();
+    toast.info("Showing all properties");
+  };
+
+  // Sort properties
+  const sortedProperties = useMemo(() => {
+    const sorted = [...displayProperties];
     
     switch (sortBy) {
       case 'price-low':
@@ -271,102 +397,118 @@ const PropertiesPage = () => {
         return sorted.sort((a, b) => (b.area || 0) - (a.area || 0));
       case 'recent':
       default:
-        return sorted.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        return sorted.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return dateB - dateA;
+        });
     }
-  }, [filteredProperties, sortBy]);
+  }, [displayProperties, sortBy]);
 
-  const totalPages = useMemo(() => Math.ceil(sortedProperties.length / itemsPerPage), [sortedProperties]);
-  
-  const paginatedProperties = useMemo(() => {
-    return sortedProperties.slice(
-      (currentPage - 1) * itemsPerPage,
-      currentPage * itemsPerPage
-    );
-  }, [sortedProperties, currentPage, itemsPerPage]);
+  const totalPages = Math.ceil(sortedProperties.length / itemsPerPage);
+  const paginatedProperties = sortedProperties.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
-  const handlePageChange = useCallback((page) => {
+  const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [totalPages]);
+  };
 
-  const pageNumbersToShow = useCallback((current, total) => {
+  const pageNumbersToShow = (current, total) => {
     if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
     
     const pages = [];
     pages.push(1);
-    
     if (current > 3) pages.push('...');
-    
     for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
       pages.push(i);
     }
-    
     if (current < total - 2) pages.push('...');
-    
     if (total > 1) pages.push(total);
-    
-    return pages.filter((item, index, self) => 
-      !(item === '...' && self[index - 1] === '...') && 
-      !(item === '...' && self[index + 1] === '...') &&
-      self.indexOf(item) === index
-    );
-  }, []);
+    return pages;
+  };
 
-  const handleResetFilters = useCallback(() => {
-    const resetFilters = { status: 'all', type: 'all', location: '' };
-    handleApplyFilters(resetFilters);
-    handleUpdateSearchFilters(resetFilters);
-    
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+    setNearMeActive(false);
+    setCurrentPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      location: '',
+      minPrice: '',
+      maxPrice: '',
+      bedrooms: 'any',
+      propertyType: 'all',
+      status: 'all'
+    });
+    setDisplayProperties([...allProperties]);
+    setNearMeActive(false);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+  };
+
+  // Update URL params
+  useEffect(() => {
     const newParams = new URLSearchParams();
     newParams.set('view', viewMode);
     newParams.set('sort', sortBy);
-    setSearchParams(newParams);
-    setCurrentPage(1);
-  }, [handleApplyFilters, handleUpdateSearchFilters, viewMode, sortBy, setSearchParams]);
-
-  const handleSortChange = useCallback((e) => {
-    setSortBy(e.target.value);
-    setCurrentPage(1);
-  }, []);
-
-  const handleViewModeChange = useCallback((mode) => {
-    setViewMode(mode);
-  }, []);
-
-  // Memoize the filter change handler
-  const handleFilterChange = useCallback((filters) => {
-    handleApplyFilters(filters);
-    setCurrentPage(1);
-  }, [handleApplyFilters]);
-
-  // Prevent render if no context
-  if (!propertiesContext || !searchContext) {
-    return (
-      <PageWrapper>
-        <Container>
-          <div className="text-center py-20">
-            <h2 className="text-2xl font-bold text-red-600">Configuration Error</h2>
-            <p className="text-gray-600 mt-2">Please check your app configuration.</p>
-          </div>
-        </Container>
-      </PageWrapper>
-    );
-  }
+    newParams.set('page', currentPage.toString());
+    setSearchParams(newParams, { replace: true });
+  }, [viewMode, sortBy, currentPage, setSearchParams]);
 
   return (
     <PageWrapper>
+      {/* Background orbs */}
+      <div style={{ position: 'absolute', top: '8%', left: '18%', width: 340, height: 340, borderRadius: '50%', background: 'rgba(5,150,105,0.1)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '12%', right: '14%', width: 280, height: 280, borderRadius: '50%', background: 'rgba(16,185,129,0.08)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+
       <Container>
-        <h1 className="text-3xl font-extrabold text-gray-900 mb-6">Property Listings</h1>
+        <h1 className="text-3xl font-extrabold text-gray-900 mb-6" style={{ fontFamily: serif }}>Property Listings</h1>
         
         <MainContentGrid>
           {/* Desktop Filter Sidebar */}
           <div className="hidden lg:block">
-            <PropertyFilter 
-              filters={searchFilters} 
-              onFilterChange={handleFilterChange}
-            />
+            <div style={glass}>
+              {/* Near Me Button */}
+              <NearMeButton 
+                onClick={nearMeActive ? showAllProperties : findNearMe}
+                disabled={findingNearby}
+              >
+                {findingNearby ? (
+                  <Loader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Crosshair className="w-4 h-4" />
+                )}
+                {nearMeActive ? "Show All Properties" : "📍 Find Properties Near Me"}
+              </NearMeButton>
+              
+              {nearMeActive && (
+                <div className="mb-4 p-2 bg-emerald-50 rounded-lg text-center">
+                  <p className="text-xs text-emerald-700">
+                    Showing properties within 10km of your location
+                  </p>
+                </div>
+              )}
+              
+              <PropertyFilter 
+                filters={filters} 
+                onFilterChange={handleFilterChange}
+              />
+            </div>
           </div>
           
           {/* Right Column - Results */}
@@ -374,7 +516,8 @@ const PropertiesPage = () => {
             {/* Header / Controls */}
             <HeaderWrapper>
               <ResultsCount>
-                Showing {paginatedProperties.length} of {filteredProperties.length} properties
+                Showing {paginatedProperties.length} of {sortedProperties.length} properties
+                {nearMeActive && <span className="ml-1 text-emerald-600">(Near You)</span>}
               </ResultsCount>
               
               <div className="flex items-center gap-4 flex-wrap">
@@ -386,6 +529,22 @@ const PropertiesPage = () => {
                   Filters
                 </FilterToggle>
 
+                {/* Mobile Near Me button */}
+                <div className="lg:hidden">
+                  <button
+                    onClick={nearMeActive ? showAllProperties : findNearMe}
+                    disabled={findingNearby}
+                    className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs"
+                  >
+                    {findingNearby ? (
+                      <Loader className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Crosshair className="w-3 h-3" />
+                    )}
+                    {nearMeActive ? "All" : "Near Me"}
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-2">
                   <FaSort className="text-gray-500 hidden sm:block" />
                   <SortSelect value={sortBy} onChange={handleSortChange}>
@@ -396,19 +555,17 @@ const PropertiesPage = () => {
                   </SortSelect>
                 </div>
 
-                <div className="hidden sm:flex rounded-lg border border-gray-300 overflow-hidden">
+                <div className="hidden sm:flex rounded-lg border overflow-hidden" style={{ borderColor: rule }}>
                   <ViewButton 
                     $active={viewMode === 'grid'} 
                     onClick={() => handleViewModeChange('grid')}
-                    aria-label="Grid view"
                   >
                     <FaTh size={18} />
                   </ViewButton>
                   <ViewButton 
                     $active={viewMode === 'list'} 
                     onClick={() => handleViewModeChange('list')} 
-                    style={{borderLeft: '1px solid #d1d5db'}}
-                    aria-label="List view"
+                    style={{ borderLeft: `1px solid ${rule}` }}
                   >
                     <FaThList size={18} />
                   </ViewButton>
@@ -437,13 +594,12 @@ const PropertiesPage = () => {
                       <button 
                         onClick={() => setShowFilters(false)} 
                         className="text-gray-500 hover:text-gray-700 text-2xl"
-                        aria-label="Close filters"
                       >
                         &times;
                       </button>
                     </div>
                     <PropertyFilter 
-                      filters={searchFilters} 
+                      filters={filters} 
                       onFilterChange={handleFilterChange}
                     />
                     <button 
@@ -451,7 +607,8 @@ const PropertiesPage = () => {
                         setShowFilters(false);
                         handleResetFilters();
                       }} 
-                      className="w-full mt-6 bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors"
+                      className="w-full mt-6 py-3 rounded-lg font-semibold transition-colors"
+                      style={{ background: emerald, color: 'white', border: 'none', cursor: 'pointer' }}
                     >
                       Show Results
                     </button>
@@ -463,7 +620,7 @@ const PropertiesPage = () => {
             {/* Property Results */}
             {loading ? (
               <div className="text-center py-20">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+                <Loader className="w-12 h-12 animate-spin mx-auto" style={{ color: emerald }} />
                 <p className="text-xl text-gray-600 mt-4">Loading properties...</p>
               </div>
             ) : (
@@ -484,33 +641,36 @@ const PropertiesPage = () => {
                           exit={{ opacity: 0, y: -20 }} 
                           transition={{ duration: 0.3, delay: index * 0.05 }}
                         >
-                          <PropertyCard property={property} viewMode={viewMode} />
+                          <PropertyCard 
+                            property={property} 
+                            viewMode={viewMode}
+                            distance={property.distance}
+                          />
                         </motion.div>
                       ))
                     ) : (
                       <div className="col-span-full text-center py-20">
                         <div className="text-6xl mb-4">🏠</div>
-                        <h3 className="text-2xl font-bold mb-2">No Properties Found</h3>
-                        <p className="text-gray-600">Try adjusting your filters or search criteria.</p>
+                        <h3 className="text-2xl font-bold mb-2">
+                          {nearMeActive ? "No Properties Found Near You" : "No Properties Found"}
+                        </h3>
+                        <p className="text-gray-600">
+                          {nearMeActive 
+                            ? "Try adjusting your location or check back later for new listings near you."
+                            : "No properties have been approved yet. Check back soon!"}
+                        </p>
+                        {nearMeActive && (
+                          <button
+                            onClick={showAllProperties}
+                            className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                          >
+                            Show All Properties
+                          </button>
+                        )}
                       </div>
                     )}
                   </AnimatePresence>
                 </div>
-
-                {/* Empty State - No filters match */}
-                {filteredProperties.length === 0 && !loading && (
-                  <div className="text-center py-20 bg-white rounded-xl shadow-lg mt-8">
-                    <div className="text-6xl mb-4">🔍</div>
-                    <h3 className="text-2xl font-bold mb-2">No Properties Match Your Filters</h3>
-                    <p className="text-gray-600 mb-6">Try broadening your search criteria.</p>
-                    <button 
-                      onClick={handleResetFilters}
-                      className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
-                    >
-                      Reset Filters
-                    </button>
-                  </div>
-                )}
 
                 {/* Pagination */}
                 {totalPages > 1 && paginatedProperties.length > 0 && (
@@ -519,7 +679,6 @@ const PropertiesPage = () => {
                       <PaginationButton
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage === 1}
-                        aria-label="Previous page"
                       >
                         <FaChevronLeft size={16} />
                       </PaginationButton>
@@ -532,8 +691,6 @@ const PropertiesPage = () => {
                             key={pageNum}
                             $active={currentPage === pageNum}
                             onClick={() => handlePageChange(pageNum)}
-                            aria-label={`Page ${pageNum}`}
-                            aria-current={currentPage === pageNum ? 'page' : undefined}
                           >
                             {pageNum}
                           </PaginationButton>
@@ -543,7 +700,6 @@ const PropertiesPage = () => {
                       <PaginationButton
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
-                        aria-label="Next page"
                       >
                         <FaChevronRight size={16} />
                       </PaginationButton>

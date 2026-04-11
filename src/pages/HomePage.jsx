@@ -1,4 +1,4 @@
-// src/pages/HomePage.jsx - UPDATED TO WORK WITH ADMIN DASHBOARD
+// src/pages/HomePage.jsx - FIXED VERSION (No index needed)
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -9,7 +9,7 @@ import {
   Facebook, Twitter, Instagram, Linkedin, Youtube
 } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, getDocs, query, orderBy, limit, getDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 
 const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,32 +73,40 @@ const HomePage = () => {
     }
   };
 
-  // Load properties from Firestore
+  // Load ONLY approved properties from Firestore - NO orderBy to avoid index
   const loadProperties = async () => {
     setLoading(true);
     try {
       const propertiesRef = collection(db, 'properties');
-      const q = query(propertiesRef, orderBy('createdAt', 'desc'), limit(6));
+      // Only fetch approved properties
+      const q = query(propertiesRef, where('approvalStatus', '==', 'approved'));
       const querySnapshot = await getDocs(q);
-      const propertiesList = querySnapshot.docs.map(doc => ({
+      const allApproved = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         image: doc.data().images?.[0] || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800'
       }));
-      setProperties(propertiesList);
+      
+      // Sort manually by createdAt (newest first)
+      const sortedProperties = allApproved.sort((a, b) => {
+        const dateA = a.createdAt?.toDate() || new Date(0);
+        const dateB = b.createdAt?.toDate() || new Date(0);
+        return dateB - dateA;
+      });
+      
+      // Take only first 6 for homepage
+      setProperties(sortedProperties.slice(0, 6));
       
       // Count properties by type
-      const allProperties = await getDocs(collection(db, 'properties'));
       const counts = {};
-      allProperties.forEach(doc => {
-        const type = doc.data().propertyType || 'apartment';
+      allApproved.forEach(property => {
+        const type = property.propertyType || 'apartment';
         counts[type] = (counts[type] || 0) + 1;
       });
       setTypeCounts(counts);
       
     } catch (error) {
       console.error('Error loading properties:', error);
-      // Fallback to empty array
       setProperties([]);
     } finally {
       setLoading(false);
@@ -114,23 +122,6 @@ const HomePage = () => {
     if (searchQuery.trim()) {
       window.location.href = `/properties?search=${encodeURIComponent(searchQuery)}`;
     }
-  };
-
-  // Icon mapping
-  const getIcon = (iconName, className = "w-8 h-8") => {
-    const icons = {
-      Building2: <Building2 className={className} />,
-      Home: <Home className={className} />,
-      Building: <Building className={className} />,
-      TreePine: <TreePine className={className} />,
-      Hotel: <Hotel className={className} />,
-      Store: <Store className={className} />,
-      Award: <Award className={className} />,
-      Users: <Users className={className} />,
-      Star: <Star className={className} />,
-      TrendingUp: <TrendingUp className={className} />
-    };
-    return icons[iconName] || <Building2 className={className} />;
   };
 
   const getStatIcon = (iconName) => {
@@ -168,7 +159,6 @@ const HomePage = () => {
     { name: 'Luxury Villas', link: '/properties?type=villa' }
   ];
 
-  // Get enabled property types
   const enabledPropertyTypes = homepageSettings.propertyTypes.filter(type => type.enabled);
 
   return (
@@ -202,7 +192,6 @@ const HomePage = () => {
               {homepageSettings.hero.subtitle}
             </p>
 
-            {/* Search Bar */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -231,7 +220,6 @@ const HomePage = () => {
               </div>
             </motion.div>
 
-            {/* Quick Search Tags */}
             <div className="flex flex-wrap gap-3 mt-6">
               {popularTags.map((tag, idx) => (
                 <Link
@@ -339,7 +327,7 @@ const HomePage = () => {
           ) : properties.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-lg">
               <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No properties yet. Check back soon!</p>
+              <p className="text-gray-500">No approved properties yet. Check back soon!</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -362,6 +350,12 @@ const HomePage = () => {
                     <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-medium ${property.status === 'rent' ? 'bg-gray-900' : 'bg-black'} text-white tracking-wide`}>
                       {property.status === 'rent' ? 'FOR RENT' : 'FOR SALE'}
                     </div>
+                    {property.featured && (
+                      <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-600 fill-current" />
+                        <span className="font-medium text-gray-900 text-sm">FEATURED</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-6">
@@ -432,7 +426,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* Footer Contact Bar */}
+      {/* Footer */}
       <footer className="bg-black text-white py-12">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
@@ -453,7 +447,6 @@ const HomePage = () => {
             </div>
           </div>
           
-          {/* Social Links */}
           <div className="border-t border-gray-800 mt-8 pt-8 flex justify-center space-x-6">
             {homepageSettings.socialLinks.facebook && (
               <a href={homepageSettings.socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">

@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { X, Upload, MapPin, DollarSign, Bed, Bath, Square, Loader, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Upload, MapPin, DollarSign, Bed, Bath, Square, Loader, CheckCircle, AlertCircle, Crosshair } from 'lucide-react';
 import toast from 'react-hot-toast';
+import LocationPicker from '../LocationPicker';
 
 // Cloudflare R2 upload URL
 const CLOUDFLARE_WORKER_URL = 'https://marketmix-uploader.johnnjanjo4.workers.dev';
@@ -14,6 +15,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
+  const [selectedLocation, setSelectedLocation] = useState(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -25,7 +27,8 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     bathrooms: '',
     area: '',
     description: '',
-    features: []
+    features: [],
+    coordinates: null
   });
 
   // Upload image to Cloudflare R2
@@ -98,7 +101,6 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
     
-    // Add previews
     const newImages = files.map(file => ({
       file,
       preview: URL.createObjectURL(file),
@@ -109,7 +111,6 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     setUploadedImages(prev => [...prev, ...newImages]);
     setUploadingImages(true);
     
-    // Upload each image
     for (let i = 0; i < newImages.length; i++) {
       const globalIndex = uploadedImages.length + i;
       try {
@@ -165,13 +166,15 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         status: 'active',
+        approvalStatus: 'pending',
         featured: false,
         views: 0,
-        inquiries: 0
+        inquiries: 0,
+        coordinates: selectedLocation?.lat ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : null
       };
       
       await addDoc(collection(db, 'properties'), propertyData);
-      toast.success('Property listed successfully!');
+      toast.success('Property listed successfully! Waiting for admin approval.');
       onSuccess?.();
       onClose();
     } catch (error) {
@@ -214,7 +217,6 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
               <p className="text-xs text-gray-500 mt-2">Upload multiple images (max 10). First image is cover photo.</p>
             </div>
             
-            {/* Uploaded Images Preview */}
             {uploadedImages.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-gray-700 mb-2">
@@ -264,17 +266,22 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                 placeholder="e.g., Modern 3-Bedroom Villa with Pool"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
-              <input
-                type="text"
-                required
-                value={formData.location}
-                onChange={(e) => setFormData({...formData, location: e.target.value})}
-                className="w-full p-2 border rounded-lg"
-                placeholder="e.g., Karen, Nairobi"
+            
+            {/* Location with GPS */}
+            <div className="md:col-span-2">
+              <LocationPicker 
+                onLocationSelect={(loc) => {
+                  setSelectedLocation(loc);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    location: loc?.address || '',
+                    coordinates: loc?.lat ? { lat: loc.lat, lng: loc.lng } : null
+                  }));
+                }}
+                label="Property Location *"
               />
             </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Price (KES) *</label>
               <input
@@ -360,6 +367,10 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
           >
             {loading ? 'Listing Property...' : 'List Property'}
           </button>
+          
+          <p className="text-xs text-gray-500 text-center">
+            Your property will be reviewed by admin before appearing on the homepage
+          </p>
         </form>
       </div>
     </div>

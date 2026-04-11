@@ -1,4 +1,3 @@
-// src/pages/PropertyDetailspage.jsx - FIXED IMAGE DISPLAY
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,7 +6,8 @@ import {
   Phone, Mail, MessageCircle, CheckCircle, X, ChevronLeft, 
   ChevronRight, Building, Calendar, DollarSign, Eye, 
   Facebook, Twitter, Copy, AlertCircle, Maximize2,
-  Printer, Download, Shield, Award, Clock, Users, TrendingUp
+  Printer, Download, Shield, Award, Clock, Users, TrendingUp,
+  Navigation, ExternalLink
 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
@@ -36,7 +36,6 @@ const PropertyDetailspage = () => {
           const propertyData = { id: propertySnap.id, ...propertySnap.data() };
           setProperty(propertyData);
           
-          // Increment view count
           await updateDoc(propertyRef, {
             views: increment(1)
           });
@@ -93,6 +92,24 @@ const PropertyDetailspage = () => {
     setShowContactForm(false);
   };
 
+  const openGoogleMaps = () => {
+    let query = property?.location;
+    if (property?.coordinates && property.coordinates.lat) {
+      query = `${property.coordinates.lat},${property.coordinates.lng}`;
+    }
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    window.open(url, '_blank');
+  };
+
+  const getDirections = () => {
+    let query = property?.location;
+    if (property?.coordinates && property.coordinates.lat) {
+      query = `${property.coordinates.lat},${property.coordinates.lng}`;
+    }
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
+    window.open(url, '_blank');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -133,19 +150,17 @@ const PropertyDetailspage = () => {
       </div>
 
       <div className="container mx-auto px-4 pb-12">
-        {/* Image Gallery Section - FIXED: No stretching */}
+        {/* Image Gallery Section */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-          {/* Main Image - Using object-contain to prevent stretching */}
           <div className="relative bg-gray-100 flex items-center justify-center min-h-[400px] md:min-h-[500px]">
             <img
               src={currentImage}
               alt={property.title}
-              className="w-full h-auto max-h-[500px] object-contain"
+              className="w-full h-auto max-h-[500px] object-contain cursor-pointer"
               onClick={() => setShowLightbox(true)}
               style={{ cursor: 'pointer' }}
             />
             
-            {/* Image Navigation Arrows */}
             {images.length > 1 && (
               <>
                 <button
@@ -163,14 +178,12 @@ const PropertyDetailspage = () => {
               </>
             )}
             
-            {/* Image Counter */}
             {images.length > 1 && (
               <div className="absolute bottom-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm">
                 {currentImageIndex + 1} / {images.length}
               </div>
             )}
             
-            {/* Favorite Button */}
             <button
               onClick={handleFavorite}
               className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow"
@@ -178,7 +191,6 @@ const PropertyDetailspage = () => {
               <Heart className={`w-6 h-6 ${isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
             </button>
 
-            {/* Expand Button */}
             <button
               onClick={() => setShowLightbox(true)}
               className="absolute bottom-4 left-4 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
@@ -188,7 +200,6 @@ const PropertyDetailspage = () => {
             </button>
           </div>
           
-          {/* Thumbnail Gallery */}
           {images.length > 1 && (
             <div className="flex gap-2 p-4 overflow-x-auto bg-gray-50">
               {images.map((img, idx) => (
@@ -218,6 +229,13 @@ const PropertyDetailspage = () => {
                   <div className="flex items-center text-gray-500 mb-3">
                     <MapPin size={18} className="mr-1" />
                     <span>{property.location}</span>
+                    <button
+                      onClick={openGoogleMaps}
+                      className="ml-2 flex items-center gap-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      <Navigation size={12} />
+                      View on Maps
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -275,6 +293,32 @@ const PropertyDetailspage = () => {
               <p className="text-gray-600 leading-relaxed">
                 {property.description || 'No description available for this property.'}
               </p>
+            </div>
+
+            {/* Location Map Button */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Location</h2>
+              <div className="flex gap-3">
+                <button
+                  onClick={openGoogleMaps}
+                  className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <MapPin size={18} />
+                  View on Google Maps
+                </button>
+                <button
+                  onClick={getDirections}
+                  className="flex-1 py-3 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Navigation size={18} />
+                  Get Directions
+                </button>
+              </div>
+              {property.coordinates && property.coordinates.lat && (
+                <p className="text-xs text-gray-400 mt-3 text-center">
+                  Coordinates: {property.coordinates.lat.toFixed(6)}, {property.coordinates.lng.toFixed(6)}
+                </p>
+              )}
             </div>
 
             {/* Additional Details */}
@@ -398,7 +442,7 @@ const PropertyDetailspage = () => {
         </div>
       </div>
 
-      {/* Lightbox Modal for Fullscreen View */}
+      {/* Lightbox Modal for Image Gallery */}
       <AnimatePresence>
         {showLightbox && (
           <motion.div
@@ -415,7 +459,6 @@ const PropertyDetailspage = () => {
                 className="max-w-[95vw] max-h-[95vh] object-contain"
               />
               
-              {/* Close Button */}
               <button
                 onClick={() => setShowLightbox(false)}
                 className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
@@ -423,7 +466,6 @@ const PropertyDetailspage = () => {
                 <X size={28} />
               </button>
               
-              {/* Navigation Arrows */}
               {images.length > 1 && (
                 <>
                   <button
@@ -441,7 +483,6 @@ const PropertyDetailspage = () => {
                 </>
               )}
               
-              {/* Image Counter */}
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full text-sm">
                 {currentImageIndex + 1} / {images.length}
               </div>
