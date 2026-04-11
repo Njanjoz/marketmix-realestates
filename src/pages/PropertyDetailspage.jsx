@@ -1,4 +1,4 @@
-// src/pages/PropertyDetailspage.jsx - FIXED VERSION
+// src/pages/PropertyDetailspage.jsx - FIXED IMAGE DISPLAY
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -133,15 +133,16 @@ const PropertyDetailspage = () => {
       </div>
 
       <div className="container mx-auto px-4 pb-12">
-        {/* Image Gallery Section */}
+        {/* Image Gallery Section - FIXED: No stretching */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-          {/* Main Image */}
-          <div className="relative bg-gray-900">
+          {/* Main Image - Using object-contain to prevent stretching */}
+          <div className="relative bg-gray-100 flex items-center justify-center min-h-[400px] md:min-h-[500px]">
             <img
               src={currentImage}
               alt={property.title}
-              className="w-full h-[500px] object-cover cursor-pointer"
+              className="w-full h-auto max-h-[500px] object-contain"
               onClick={() => setShowLightbox(true)}
+              style={{ cursor: 'pointer' }}
             />
             
             {/* Image Navigation Arrows */}
@@ -176,17 +177,26 @@ const PropertyDetailspage = () => {
             >
               <Heart className={`w-6 h-6 ${isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
             </button>
+
+            {/* Expand Button */}
+            <button
+              onClick={() => setShowLightbox(true)}
+              className="absolute bottom-4 left-4 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+              title="View fullscreen"
+            >
+              <Maximize2 size={18} />
+            </button>
           </div>
           
           {/* Thumbnail Gallery */}
           {images.length > 1 && (
-            <div className="flex gap-2 p-4 overflow-x-auto">
+            <div className="flex gap-2 p-4 overflow-x-auto bg-gray-50">
               {images.map((img, idx) => (
                 <button
                   key={idx}
                   onClick={() => setCurrentImageIndex(idx)}
                   className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
-                    idx === currentImageIndex ? 'border-emerald-500' : 'border-gray-200 hover:border-gray-400'
+                    idx === currentImageIndex ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-gray-200 hover:border-gray-400'
                   }`}
                 >
                   <img src={img} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
@@ -388,29 +398,29 @@ const PropertyDetailspage = () => {
         </div>
       </div>
 
-      {/* Lightbox Modal for Image Gallery */}
+      {/* Lightbox Modal for Fullscreen View */}
       <AnimatePresence>
         {showLightbox && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center"
+            className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center"
             onClick={() => setShowLightbox(false)}
           >
-            <div className="relative max-w-5xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
               <img
                 src={currentImage}
                 alt={property.title}
-                className="w-full h-auto max-h-[90vh] object-contain"
+                className="max-w-[95vw] max-h-[95vh] object-contain"
               />
               
               {/* Close Button */}
               <button
                 onClick={() => setShowLightbox(false)}
-                className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+                className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
               >
-                <X size={32} />
+                <X size={28} />
               </button>
               
               {/* Navigation Arrows */}
@@ -418,13 +428,13 @@ const PropertyDetailspage = () => {
                 <>
                   <button
                     onClick={prevImage}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-colors"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-3 transition-colors"
                   >
                     <ChevronLeft size={32} />
                   </button>
                   <button
                     onClick={nextImage}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-3 transition-colors"
                   >
                     <ChevronRight size={32} />
                   </button>
@@ -432,7 +442,7 @@ const PropertyDetailspage = () => {
               )}
               
               {/* Image Counter */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-sm">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full text-sm">
                 {currentImageIndex + 1} / {images.length}
               </div>
             </div>
