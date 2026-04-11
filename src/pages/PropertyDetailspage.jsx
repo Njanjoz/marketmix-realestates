@@ -1,572 +1,446 @@
-// src/pages/PropertyDetail.jsx - STYLED COMPONENTS VERSION
+// src/pages/PropertyDetailspage.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import styled from 'styled-components';
-import { useProperties } from '../context/PropertyContext';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ArrowLeft, MapPin, Bed, Bath, Square, Heart, Share2, 
+  Phone, Mail, MessageCircle, CheckCircle, X, ChevronLeft, 
+  ChevronRight, Building, Calendar, DollarSign, Eye, 
+  Facebook, Twitter, Copy, AlertCircle, Maximize2,
+  Printer, Download, Shield, Award, Clock, Users, TrendingUp
+} from 'lucide-react';
+import { db } from '../firebase/config';
+import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { FaBed, FaBath, FaRulerCombined, FaCar, FaSwimmingPool, FaWifi, FaHeart, FaShareAlt, FaPhone, FaEnvelope, FaMapMarkerAlt, FaCalendarAlt, FaStar } from 'react-icons/fa';
-import { Splide, SplideSlide } from '@splidejs/react-splide';
-import '@splidejs/react-splide/css';
 import toast from 'react-hot-toast';
-import MortgageCalculator from '../components/MortgageCalculator'; // Assuming this exists
 
-// --- COLOR AND STYLE CONSTANTS ---
-const PRIMARY_BLUE = '#0284c7'; 
-const PRIMARY_DARK = '#0c4a6e';
-const ACCENT_ORANGE = '#f59e0b';
-const WHITE = '#ffffff';
-const GRAY_600 = '#4b5563';
-const GRAY_700 = '#374151';
-const BG_LIGHT = '#f9fafb';
-
-// --- UTILITY STYLED COMPONENTS ---
-const Container = styled.div`
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    @media (min-width: 640px) { padding-left: 1.5rem; padding-right: 1.5rem; }
-    @media (min-width: 1024px) { padding-left: 4rem; padding-right: 4rem; }
-    @media (min-width: 1280px) { max-width: 1280px; }
-`;
-
-const PageWrapper = styled.div`
-    min-height: 90vh;
-    padding-top: 5rem;
-    padding-bottom: 4rem;
-    background-color: ${BG_LIGHT};
-`;
-
-const Card = styled.div`
-    background-color: ${WHITE};
-    border-radius: 1rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    padding: 1.5rem;
-`;
-
-// --- PROPERTY DETAIL SPECIFIC STYLES ---
-
-const GalleryWrapper = styled.div`
-    margin-bottom: 2rem;
-    border-radius: 1rem;
-    overflow: hidden;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-
-    img {
-        width: 100%;
-        height: 400px;
-        object-fit: cover;
-    }
-`;
-
-const PropertyHeader = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 2rem;
-`;
-
-const PriceText = styled.div`
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: ${PRIMARY_DARK};
-    line-height: 1;
-`;
-
-const StatusBadge = styled.span`
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: ${WHITE};
-    background-color: ${props => props.color};
-`;
-
-const InfoGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    gap: 1rem;
-    background-color: #f3f4f6; /* gray-100 */
-    padding: 1rem;
-    border-radius: 0.75rem;
-    margin-bottom: 1.5rem;
-`;
-
-const InfoItem = styled.div`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0.5rem;
-    
-    .icon {
-        color: ${PRIMARY_BLUE};
-        margin-bottom: 0.25rem;
-    }
-    
-    .label {
-        font-size: 0.875rem;
-        color: ${GRAY_600};
-    }
-    
-    .value {
-        font-weight: 600;
-        color: ${GRAY_700};
-    }
-`;
-
-const ActionChip = styled.button`
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.75rem;
-    font-weight: 500;
-    transition: all 200ms;
-    border: 1px solid #d1d5db; /* gray-300 */
-    background-color: ${WHITE};
-    color: ${GRAY_700};
-    
-    &:hover {
-        border-color: ${PRIMARY_BLUE};
-        color: ${PRIMARY_BLUE};
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-    
-    &.saved {
-        background-color: ${ACCENT_ORANGE};
-        color: ${WHITE};
-        border-color: ${ACCENT_ORANGE};
-        &:hover {
-            background-color: #d97706; /* amber-700 */
-            border-color: #d97706;
-        }
-    }
-`;
-
-const TabsContainer = styled.div`
-    border-bottom: 2px solid #e5e7eb; /* gray-200 */
-    margin-bottom: 1.5rem;
-    display: flex;
-`;
-
-const TabButton = styled.button`
-    padding: 1rem 1.5rem;
-    font-weight: 500;
-    text-transform: capitalize;
-    transition: color 200ms, border-color 200ms;
-    
-    ${props => props.active ? `
-        border-bottom: 2px solid ${PRIMARY_BLUE};
-        color: ${PRIMARY_BLUE};
-        font-weight: 600;
-    ` : `
-        border-bottom: 2px solid transparent;
-        color: ${GRAY_600};
-        &:hover {
-            color: ${GRAY_700};
-        }
-    `}
-`;
-
-const FeatureItem = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-weight: 500;
-    color: ${GRAY_700};
-    
-    .icon {
-        color: ${PRIMARY_BLUE};
-    }
-`;
-
-const FormInput = styled.input`
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #d1d5db; /* gray-300 */
-    border-radius: 0.5rem;
-    &:focus {
-        outline: none;
-        border-color: ${PRIMARY_BLUE};
-        box-shadow: 0 0 0 1px ${PRIMARY_BLUE};
-    }
-`;
-
-const FormTextarea = styled.textarea`
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.5rem;
-    &:focus {
-        outline: none;
-        border-color: ${PRIMARY_BLUE};
-        box-shadow: 0 0 0 1px ${PRIMARY_BLUE};
-    }
-`;
-
-const FormButton = styled.button`
-    width: 100%;
-    background-color: ${PRIMARY_BLUE};
-    color: ${WHITE};
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    transition: background-color 200ms;
-    
-    &:hover {
-        background-color: ${PRIMARY_DARK};
-    }
-`;
-
-const AgentCard = styled(Card)`
-    text-align: center;
-    padding: 2rem;
-    
-    img {
-        width: 5rem;
-        height: 5rem;
-        border-radius: 50%;
-        object-fit: cover;
-        margin: 0 auto 1rem;
-        border: 3px solid ${PRIMARY_BLUE};
-    }
-`;
-
-
-// --- REACT COMPONENT ---
-
-const PropertyDetail = () => {
+const PropertyDetailspage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getPropertyById } = useProperties();
-  const { currentUser, saveProperty } = useAuth();
-  
+  const { currentUser } = useAuth();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [isSaved, setIsSaved] = useState(false);
-  const [inquiryForm, setInquiryForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    message: '',
-    preferredDate: '',
-    preferredTime: ''
-  });
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showLightbox, setShowLightbox] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
 
   useEffect(() => {
-    const fetchProperty = async () => {
+    const loadProperty = async () => {
       setLoading(true);
-      setTimeout(() => {
-        const foundProperty = getPropertyById(id);
-        if (foundProperty) {
-          setProperty({
-            ...foundProperty,
-            // Sample details not in the mock data, but needed for the detail page
-            description: "Spacious apartment with panoramic city views, modern finishes, and premium amenities. Perfect for families or professionals seeking luxury living in the heart of Nairobi.",
-            address: "Kilimani Road, Nairobi",
-            yearBuilt: 2020,
-            features: ["Gated Community", "24/7 Security", "Gym Access", "Backup Generator", "Ample Parking"],
-            amenities: ["Swimming Pool", "Kids Play Area", "Borehole"],
-            agent: { name: "Amina Hassan", phone: "+254 734 567 890", email: "amina@marketmix.co.ke", photo: "https://images.unsplash.com/photo-1580489944761-15a191d9d519" }
+      try {
+        const propertyRef = doc(db, 'properties', id);
+        const propertySnap = await getDoc(propertyRef);
+        
+        if (propertySnap.exists()) {
+          const propertyData = { id: propertySnap.id, ...propertySnap.data() };
+          setProperty(propertyData);
+          
+          // Increment view count
+          await updateDoc(propertyRef, {
+            views: increment(1)
           });
-          // Mock check if saved
-          setIsSaved(Math.random() > 0.5); 
         } else {
-          // Redirect if not found (or show 404)
+          toast.error('Property not found');
           navigate('/properties');
         }
+      } catch (error) {
+        console.error('Error loading property:', error);
+        toast.error('Failed to load property details');
+      } finally {
         setLoading(false);
-      }, 500);
+      }
     };
+    
+    loadProperty();
+  }, [id, navigate]);
 
-    fetchProperty();
-  }, [id, getPropertyById, navigate]);
+  const nextImage = () => {
+    if (property?.images) {
+      setCurrentImageIndex((prev) => (prev + 1) % property.images.length);
+    }
+  };
 
-  const handleInquirySubmit = (e) => {
-    e.preventDefault();
+  const prevImage = () => {
+    if (property?.images) {
+      setCurrentImageIndex((prev) => (prev - 1 + property.images.length) % property.images.length);
+    }
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard!');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleFavorite = () => {
     if (!currentUser) {
-      toast.error('Please log in to send an inquiry or book a viewing.');
+      toast.error('Please login to save favorites');
+      navigate('/login');
       return;
     }
-    // Mock submission logic
-    toast.success('Inquiry sent! The agent will contact you shortly.');
-    setInquiryForm({ name: '', email: '', phone: '', message: '', preferredDate: '', preferredTime: '' });
-  };
-  
-  const handleSaveToggle = () => {
-      if (!currentUser) {
-          toast.error('Please log in to save properties.');
-          return;
-      }
-      setIsSaved(!isSaved);
-      saveProperty(property.id, !isSaved); // Assuming saveProperty handles the logic
-      toast.success(isSaved ? 'Property unsaved!' : 'Property saved to favorites!');
+    setIsFavorite(!isFavorite);
+    toast.success(isFavorite ? 'Removed from favorites' : 'Added to favorites');
   };
 
-  const formatPrice = (price) => {
-    if (property.status === 'rent') {
-      return `KES ${price.toLocaleString()}/month`;
-    }
-    return `KES ${price.toLocaleString()}`;
+  const handleContact = (e) => {
+    e.preventDefault();
+    toast.success('Message sent! Agent will contact you shortly.');
+    setShowContactForm(false);
   };
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      'rent': { text: 'FOR RENT', color: '#3b82f6' }, // blue-500
-      'sale': { text: 'FOR SALE', color: '#10b981' }, // green-500
-      'sold': { text: 'SOLD', color: '#ef4444' }, // red-500
-      'rented': { text: 'RENTED', color: '#8b5cf6' } // purple-500
-    };
-    const badge = badges[status] || { text: status, color: '#6b7280' }; // gray-500
-    return <StatusBadge color={badge.color}>{badge.text}</StatusBadge>;
-  };
-
-  if (loading || !property) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center pt-20">
-        <FaStar className="animate-spin text-primary-600 text-3xl" />
-        <p className="ml-3 text-lg text-gray-600">Loading property details...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
       </div>
     );
   }
 
-  const agent = property.agent;
+  if (!property) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900">Property Not Found</h2>
+          <p className="text-gray-600 mt-2">The property you're looking for doesn't exist.</p>
+          <Link to="/properties" className="mt-4 inline-block px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+            Browse Properties
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const images = property.images || ['https://placehold.co/1200x800'];
+  const currentImage = images[currentImageIndex];
 
   return (
-    <PageWrapper>
-      <Container>
-        <GalleryWrapper>
-            <Splide
-                options={{
-                    rewind: true,
-                    gap: '1rem',
-                    perPage: 1,
-                    pagination: true,
-                    breakpoints: { 768: { perPage: 1 } },
-                }}
-            >
-                {property.images.slice(0, 4).map((image, index) => (
-                    <SplideSlide key={index}>
-                        <img src={image} alt={`${property.title} slide ${index + 1}`} />
-                    </SplideSlide>
-                ))}
-            </Splide>
-        </GalleryWrapper>
+    <div className="min-h-screen bg-gray-50">
+      {/* Back Button */}
+      <div className="container mx-auto px-4 py-4">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft size={20} />
+          Back to Properties
+        </button>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column - Property Details */}
-          <div className="lg:col-span-2">
+      <div className="container mx-auto px-4 pb-12">
+        {/* Image Gallery Section */}
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+          {/* Main Image */}
+          <div className="relative bg-gray-900">
+            <img
+              src={currentImage}
+              alt={property.title}
+              className="w-full h-[500px] object-cover cursor-pointer"
+              onClick={() => setShowLightbox(true)}
+            />
             
-            <PropertyHeader>
+            {/* Image Navigation Arrows */}
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={prevImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <button
+                  onClick={nextImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </>
+            )}
+            
+            {/* Image Counter */}
+            {images.length > 1 && (
+              <div className="absolute bottom-4 right-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm">
+                {currentImageIndex + 1} / {images.length}
+              </div>
+            )}
+            
+            {/* Favorite Button */}
+            <button
+              onClick={handleFavorite}
+              className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow"
+            >
+              <Heart className={`w-6 h-6 ${isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
+            </button>
+          </div>
+          
+          {/* Thumbnail Gallery */}
+          {images.length > 1 && (
+            <div className="flex gap-2 p-4 overflow-x-auto">
+              {images.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentImageIndex(idx)}
+                  className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
+                    idx === currentImageIndex ? 'border-emerald-500' : 'border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  <img src={img} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Property Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Title & Price */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <div className="flex justify-between items-start flex-wrap gap-4">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 mb-2">{property.title}</h1>
-                    <div className="flex items-center text-gray-600 mb-2">
-                        <FaMapMarkerAlt className="mr-2" />
-                        <span className="text-lg">{property.location}</span>
-                    </div>
-                    {getStatusBadge(property.status)}
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{property.title}</h1>
+                  <div className="flex items-center text-gray-500 mb-3">
+                    <MapPin size={18} className="mr-1" />
+                    <span>{property.location}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      property.status === 'sale' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
+                    </span>
+                    {property.featured && (
+                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700">
+                        Featured
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right">
-                    <PriceText>{formatPrice(property.price)}</PriceText>
-                    <div className="flex gap-3 mt-2">
-                        <ActionChip 
-                            onClick={handleSaveToggle}
-                            className={isSaved ? 'saved' : ''}
-                        >
-                            <FaHeart />
-                            {isSaved ? 'Saved' : 'Save'}
-                        </ActionChip>
-                        <ActionChip onClick={() => toast.success('Link copied!')}>
-                            <FaShareAlt />
-                            Share
-                        </ActionChip>
+                  <div className="text-3xl font-bold text-emerald-600">
+                    KES {property.price?.toLocaleString()}
+                    {property.status === 'rent' && <span className="text-lg">/mo</span>}
+                  </div>
+                  {property.originalPrice && (
+                    <div className="text-sm text-gray-400 line-through">
+                      KES {property.originalPrice?.toLocaleString()}
                     </div>
+                  )}
                 </div>
-            </PropertyHeader>
-            
-            {/* Main Info Badges */}
-            <InfoGrid>
-                <InfoItem>
-                    <FaBed className="icon" size={24} />
-                    <span className="value">{property.bedrooms}</span>
-                    <span className="label">Beds</span>
-                </InfoItem>
-                <InfoItem>
-                    <FaBath className="icon" size={24} />
-                    <span className="value">{property.bathrooms}</span>
-                    <span className="label">Baths</span>
-                </InfoItem>
-                <InfoItem>
-                    <FaRulerCombined className="icon" size={24} />
-                    <span className="value">{property.area} sqft</span>
-                    <span className="label">Area</span>
-                </InfoItem>
-                <InfoItem>
-                    <FaCalendarAlt className="icon" size={24} />
-                    <span className="value">{property.yearBuilt}</span>
-                    <span className="label">Built</span>
-                </InfoItem>
-            </InfoGrid>
+              </div>
+            </div>
 
-            {/* Tabs */}
-            <Card>
-                <TabsContainer>
-                    {['overview', 'features', 'location', 'virtual-tour'].map((tab) => (
-                        <TabButton
-                            key={tab}
-                            active={activeTab === tab}
-                            onClick={() => setActiveTab(tab)}
-                        >
-                            {tab.replace('-', ' ')}
-                        </TabButton>
-                    ))}
-                </TabsContainer>
+            {/* Key Features */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Key Features</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <Bed className="w-6 h-6 text-gray-500 mx-auto mb-2" />
+                  <div className="font-semibold">{property.bedrooms || 0} Bedrooms</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <Bath className="w-6 h-6 text-gray-500 mx-auto mb-2" />
+                  <div className="font-semibold">{property.bathrooms || 0} Bathrooms</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <Square className="w-6 h-6 text-gray-500 mx-auto mb-2" />
+                  <div className="font-semibold">{property.area || 0} sqft</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <Eye className="w-6 h-6 text-gray-500 mx-auto mb-2" />
+                  <div className="font-semibold">{property.views || 0} Views</div>
+                </div>
+              </div>
+            </div>
 
-                {/* Tab Content - Overview */}
-                {activeTab === 'overview' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">Property Description</h3>
-                        <p className="text-gray-700 leading-relaxed mb-6">{property.description}</p>
+            {/* Description */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Description</h2>
+              <p className="text-gray-600 leading-relaxed">
+                {property.description || 'No description available for this property.'}
+              </p>
+            </div>
 
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">Property Details</h3>
-                        <div className="grid grid-cols-2 gap-4 text-gray-700">
-                            <div><span className="font-semibold">Type:</span> {property.type.charAt(0).toUpperCase() + property.type.slice(1)}</div>
-                            <div><span className="font-semibold">Status:</span> {property.status.toUpperCase()}</div>
-                            <div><span className="font-semibold">Address:</span> {property.address}</div>
-                            <div><span className="font-semibold">Price:</span> {formatPrice(property.price)}</div>
-                        </div>
-                    </motion.div>
-                )}
-
-                {/* Tab Content - Features */}
-                {activeTab === 'features' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-4">Key Features & Amenities</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-8">
-                            {property.features.map((feature, index) => (
-                                <FeatureItem key={index}>
-                                    <FaCheckCircle className="icon" size={20} />
-                                    <span>{feature}</span>
-                                </FeatureItem>
-                            ))}
-                            {property.amenities.map((amenity, index) => (
-                                <FeatureItem key={index}>
-                                    <FaStar className="icon" size={20} />
-                                    <span>{amenity}</span>
-                                </FeatureItem>
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
-                
-                {/* Tab Content - Location */}
-                {activeTab === 'location' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-4">Location Map</h3>
-                        <div className="h-64 bg-gray-200 flex items-center justify-center rounded-lg">
-                            <p className="text-gray-600">Map Integration Here ({property.location})</p>
-                        </div>
-                        <p className="mt-4 text-gray-700">Located in the prime area of {property.location}, offering easy access to major roads and amenities.</p>
-                    </motion.div>
-                )}
-                
-                {/* Tab Content - Virtual Tour */}
-                {activeTab === 'virtual-tour' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-4">360° Virtual Tour</h3>
-                        <div className="h-96 bg-gray-200 flex items-center justify-center rounded-lg">
-                            <p className="text-gray-600">Video / 360 Embed Integration Here</p>
-                        </div>
-                    </motion.div>
-                )}
-            </Card>
+            {/* Additional Details */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Additional Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-500">Property ID</span>
+                  <span className="font-medium">{property.id?.slice(-8)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-500">Property Type</span>
+                  <span className="font-medium capitalize">{property.propertyType || 'Not specified'}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-500">Listed On</span>
+                  <span className="font-medium">
+                    {property.createdAt ? new Date(property.createdAt.toDate()).toLocaleDateString() : 'Recent'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-500">Last Updated</span>
+                  <span className="font-medium">
+                    {property.updatedAt ? new Date(property.updatedAt.toDate()).toLocaleDateString() : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-          
-          {/* Right Column - Agent & Tools */}
-          <div>
-            
-            {/* Agent Card */}
-            <AgentCard style={{ marginBottom: '2rem' }}>
-                <img src={agent.photo} alt={agent.name} />
-                <h3 className="text-xl font-bold text-gray-900">{agent.name}</h3>
-                <p className="text-sm text-gray-500 mb-4">Property Specialist</p>
-                
-                <a href={`tel:${agent.phone}`} className="flex items-center justify-center gap-2 font-semibold text-lg text-primary-600 hover:text-primary-700 mb-3">
-                    <FaPhone /> {agent.phone}
-                </a>
-                <a href={`mailto:${agent.email}`} className="flex items-center justify-center gap-2 font-semibold text-lg text-primary-600 hover:text-primary-700">
-                    <FaEnvelope /> {agent.email}
-                </a>
-            </AgentCard>
 
-            {/* Mortgage Calculator (Assuming component exists) */}
-            <MortgageCalculator initialPrice={property.price} style={{ marginBottom: '2rem' }} />
+          {/* Right Column - Contact & Actions */}
+          <div className="space-y-6">
+            {/* Contact Agent Card */}
+            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Agent</h3>
+              
+              {!showContactForm ? (
+                <button
+                  onClick={() => setShowContactForm(true)}
+                  className="w-full py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 mb-3"
+                >
+                  <MessageCircle size={18} />
+                  Send Message
+                </button>
+              ) : (
+                <form onSubmit={handleContact} className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Your Name"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                  <input
+                    type="email"
+                    placeholder="Your Email"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Your Phone"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <textarea
+                    placeholder="I'm interested in this property..."
+                    rows="3"
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                  >
+                    Send Message
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowContactForm(false)}
+                    className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
+              
+              <div className="border-t pt-4 mt-4">
+                <button
+                  onClick={handleShare}
+                  className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 mb-2"
+                >
+                  <Share2 size={18} />
+                  Share Property
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Printer size={18} />
+                  Print Details
+                </button>
+              </div>
+            </div>
 
-            {/* Inquiry Form */}
-            <Card>
-              <h3 className="text-xl font-bold mb-4">Book a Viewing / Send Inquiry</h3>
-              <form onSubmit={handleInquirySubmit} className="space-y-4">
-                <FormInput
-                  type="text"
-                  placeholder="Your Name"
-                  value={inquiryForm.name}
-                  onChange={(e) => setInquiryForm({...inquiryForm, name: e.target.value})}
-                  required
-                />
-                <FormInput
-                  type="email"
-                  placeholder="Your Email"
-                  value={inquiryForm.email}
-                  onChange={(e) => setInquiryForm({...inquiryForm, email: e.target.value})}
-                  required
-                />
-                <FormInput
-                  type="tel"
-                  placeholder="Phone Number"
-                  value={inquiryForm.phone}
-                  onChange={(e) => setInquiryForm({...inquiryForm, phone: e.target.value})}
-                  required
-                />
-                
-                <div className="flex gap-4">
-                    <FormInput 
-                        type="date"
-                        value={inquiryForm.preferredDate}
-                        onChange={(e) => setInquiryForm({...inquiryForm, preferredDate: e.target.value})}
-                        placeholder="Preferred Date"
-                    />
-                    <FormInput 
-                        type="time"
-                        value={inquiryForm.preferredTime}
-                        onChange={(e) => setInquiryForm({...inquiryForm, preferredTime: e.target.value})}
-                        placeholder="Preferred Time"
-                    />
+            {/* Quick Stats */}
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Quick Stats</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Price per sqft</span>
+                  <span className="font-medium">
+                    KES {Math.round(property.price / (property.area || 1)).toLocaleString()}
+                  </span>
                 </div>
-                
-                <FormTextarea
-                  placeholder="Your Message"
-                  value={inquiryForm.message}
-                  onChange={(e) => setInquiryForm({...inquiryForm, message: e.target.value})}
-                  rows="3"
-                  required
-                ></FormTextarea>
-                
-                <FormButton type="submit">
-                  Send Inquiry
-                </FormButton>
-              </form>
-            </Card>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Property Status</span>
+                  <span className="font-medium capitalize">{property.status || 'Available'}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </Container>
-    </PageWrapper>
+      </div>
+
+      {/* Lightbox Modal for Image Gallery */}
+      <AnimatePresence>
+        {showLightbox && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center"
+            onClick={() => setShowLightbox(false)}
+          >
+            <div className="relative max-w-5xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={currentImage}
+                alt={property.title}
+                className="w-full h-auto max-h-[90vh] object-contain"
+              />
+              
+              {/* Close Button */}
+              <button
+                onClick={() => setShowLightbox(false)}
+                className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+              >
+                <X size={32} />
+              </button>
+              
+              {/* Navigation Arrows */}
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-colors"
+                  >
+                    <ChevronLeft size={32} />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-colors"
+                  >
+                    <ChevronRight size={32} />
+                  </button>
+                </>
+              )}
+              
+              {/* Image Counter */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-sm">
+                {currentImageIndex + 1} / {images.length}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
 
-export default PropertyDetail;
+export default PropertyDetailspage;
