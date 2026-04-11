@@ -1,4 +1,4 @@
-// src/pages/ExplorePage.jsx - FULLY FUNCTIONAL WITH GPS & GOOGLE MAPS
+// src/pages/ExplorePage.jsx - WITH IMPROVED DISTANCE DISPLAY
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -8,7 +8,7 @@ import {
   FaBuilding, FaHotel, FaStore, FaWarehouse, FaTree,
   FaHeart, FaChartLine, FaUsers, FaStar, FaBed, FaBath, FaRulerCombined
 } from 'react-icons/fa';
-import { Search, Loader, Crosshair, Navigation, MapPin, Bed, Bath, Square, DollarSign, Eye } from 'lucide-react';
+import { Search, Loader, Crosshair, Navigation, MapPin, Bed, Bath, Square, DollarSign, Eye, Compass, Target } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -25,6 +25,7 @@ const glass = {
 const serif = "'Cormorant Garamond', 'Georgia', serif";
 const sans = "'Inter', system-ui, sans-serif";
 const emerald = '#059669';
+const orange = '#f59e0b';
 
 // Styled Components
 const PageContainer = styled.div`
@@ -173,6 +174,51 @@ const NearMeButton = styled.button`
   }
 `;
 
+const NearMeActiveBadge = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(5,150,105,0.15);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  
+  .info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: ${emerald};
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: ${emerald};
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+  }
+  
+  .clear-btn {
+    background: none;
+    border: none;
+    color: ${emerald};
+    cursor: pointer;
+    font-size: 0.75rem;
+    text-decoration: underline;
+    
+    &:hover {
+      color: #047857;
+    }
+  }
+  
+  @keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+`;
+
 const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -248,6 +294,53 @@ const PropertyImage = styled.div`
   }
 `;
 
+const DistanceBadge = styled.div`
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  z-index: 2;
+  
+  .distance-icon {
+    font-size: 0.75rem;
+  }
+  
+  .distance-value {
+    font-weight: 700;
+    color: #fbbf24;
+  }
+  
+  .distance-unit {
+    font-size: 0.65rem;
+    opacity: 0.8;
+  }
+`;
+
+const NearBadge = styled.div`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: linear-gradient(135deg, ${orange}, #ea580c);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+`;
+
 const PropertyContent = styled.div`
   padding: 1.25rem;
 `;
@@ -316,20 +409,6 @@ const PropertyPrice = styled.div`
   }
 `;
 
-const DistanceBadge = styled.span`
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: rgba(0,0,0,0.7);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-`;
-
 const ExplorePage = () => {
   const [allProperties, setAllProperties] = useState([]);
   const [displayProperties, setDisplayProperties] = useState([]);
@@ -345,6 +424,24 @@ const ExplorePage = () => {
     bedrooms: '',
     status: ''
   });
+
+  // Format distance nicely
+  const formatDistance = (km) => {
+    if (km < 1) {
+      return `${Math.round(km * 1000)} m`;
+    }
+    return `${km.toFixed(1)} km`;
+  };
+
+  // Get distance description
+  const getDistanceDescription = (km) => {
+    if (km < 0.5) return "Very Close";
+    if (km < 1) return "Close by";
+    if (km < 3) return "Nearby";
+    if (km < 5) return "Short drive";
+    if (km < 10) return "Within area";
+    return "Further away";
+  };
 
   // Calculate distance
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -479,7 +576,8 @@ const ExplorePage = () => {
     toast.info("Showing all properties");
   };
 
-  const openGoogleMaps = (property) => {
+  const openGoogleMaps = (property, e) => {
+    if (e) e.preventDefault();
     let query = property.location;
     if (property.coordinates && property.coordinates.lat) {
       query = `${property.coordinates.lat},${property.coordinates.lng}`;
@@ -499,8 +597,11 @@ const ExplorePage = () => {
   const stats = [
     { label: 'Total Properties', value: allProperties.length, change: '+12%' },
     { label: 'Avg Price', value: 'KES 8.5M', change: '+5%' },
-    { label: 'Near You', value: nearMeActive ? displayProperties.length : 'Click Near Me', change: '' }
+    { label: 'Near You', value: nearMeActive ? `${displayProperties.length} found` : 'Click "Near Me"', change: '' }
   ];
+
+  // Get nearby count summary
+  const nearbyCount = displayProperties.filter(p => p.distance && p.distance <= 10).length;
 
   return (
     <PageContainer>
@@ -613,17 +714,22 @@ const ExplorePage = () => {
             {findingNearby ? (
               <Loader className="w-5 h-5 animate-spin" />
             ) : (
-              <Crosshair className="w-5 h-5" />
+              <Target className="w-5 h-5" />
             )}
-            {nearMeActive ? "📍 Show All Properties" : "📍 Find Properties Near Me"}
+            {nearMeActive ? "📍 Show All Properties" : "🎯 Find Properties Near Me"}
           </NearMeButton>
           
           {nearMeActive && userLocation && (
-            <div style={{ textAlign: 'center', marginTop: '0.5rem' }}>
-              <p style={{ fontSize: '0.75rem', color: emerald }}>
-                Showing properties within 10km of your location
-              </p>
-            </div>
+            <NearMeActiveBadge>
+              <div className="info">
+                <span className="dot"></span>
+                <Compass size={14} />
+                <span>Showing <strong>{nearbyCount}</strong> properties within 10km of your location</span>
+              </div>
+              <button onClick={showAllProperties} className="clear-btn">
+                Clear
+              </button>
+            </NearMeActiveBadge>
           )}
         </SearchSection>
 
@@ -663,60 +769,76 @@ const ExplorePage = () => {
             )}
           </div>
         ) : (
-          <PropertiesGrid>
-            {displayProperties.map((property) => (
-              <PropertyCard key={property.id}>
-                <Link to={`/property/${property.id}`} style={{ textDecoration: 'none' }}>
-                  <PropertyImage>
-                    <img 
-                      src={property.images?.[0] || 'https://placehold.co/400x300'} 
-                      alt={property.title}
-                    />
-                    {property.distance && (
-                      <DistanceBadge>
-                        <Navigation size={10} /> {property.distance} km away
-                      </DistanceBadge>
-                    )}
-                    <div style={{ position: 'absolute', top: '10px', left: '10px' }}>
-                      <span style={{
-                        background: property.status === 'sale' ? '#3b82f6' : emerald,
-                        color: 'white',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontSize: '0.7rem',
-                        fontWeight: 'bold'
-                      }}>
-                        {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
-                      </span>
-                    </div>
-                  </PropertyImage>
-                  <PropertyContent>
-                    <PropertyTitle>{property.title}</PropertyTitle>
-                    <PropertyLocation>
-                      <MapPin size={12} />
-                      {property.location}
-                    </PropertyLocation>
-                    <PropertyFeatures>
-                      <span><Bed size={12} /> {property.bedrooms || 0}</span>
-                      <span><Bath size={12} /> {property.bathrooms || 0}</span>
-                      <span><Square size={12} /> {property.area || 0} sqft</span>
-                    </PropertyFeatures>
-                    <PropertyPrice>
-                      <span className="price">{formatPrice(property.price)}</span>
-                      <div className="actions">
-                        <button onClick={(e) => {
-                          e.preventDefault();
-                          openGoogleMaps(property);
-                        }} title="View on Google Maps">
-                          <Navigation size={14} />
-                        </button>
+          <>
+            {/* Results count */}
+            <div style={{ marginBottom: '1rem', textAlign: 'right' }}>
+              <p style={{ fontSize: '0.875rem', color: '#4a4a52' }}>
+                Found <strong>{displayProperties.length}</strong> properties
+                {nearMeActive && <span> within 10km of your location</span>}
+              </p>
+            </div>
+            
+            <PropertiesGrid>
+              {displayProperties.map((property) => (
+                <PropertyCard key={property.id}>
+                  <Link to={`/property/${property.id}`} style={{ textDecoration: 'none' }}>
+                    <PropertyImage>
+                      <img 
+                        src={property.images?.[0] || 'https://placehold.co/400x300'} 
+                        alt={property.title}
+                      />
+                      {property.distance && (
+                        <DistanceBadge>
+                          <Navigation className="distance-icon" size={12} />
+                          <span className="distance-value">{formatDistance(property.distance)}</span>
+                          <span className="distance-unit">away</span>
+                          <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>• {getDistanceDescription(property.distance)}</span>
+                        </DistanceBadge>
+                      )}
+                      {property.distance && property.distance < 1 && (
+                        <NearBadge>
+                          <Target size={10} />
+                          Very Near
+                        </NearBadge>
+                      )}
+                      <div style={{ position: 'absolute', top: '10px', left: '10px' }}>
+                        <span style={{
+                          background: property.status === 'sale' ? '#3b82f6' : emerald,
+                          color: 'white',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold'
+                        }}>
+                          {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
+                        </span>
                       </div>
-                    </PropertyPrice>
-                  </PropertyContent>
-                </Link>
-              </PropertyCard>
-            ))}
-          </PropertiesGrid>
+                    </PropertyImage>
+                    <PropertyContent>
+                      <PropertyTitle>{property.title}</PropertyTitle>
+                      <PropertyLocation>
+                        <MapPin size={12} />
+                        {property.location}
+                      </PropertyLocation>
+                      <PropertyFeatures>
+                        <span><Bed size={12} /> {property.bedrooms || 0}</span>
+                        <span><Bath size={12} /> {property.bathrooms || 0}</span>
+                        <span><Square size={12} /> {property.area || 0} sqft</span>
+                      </PropertyFeatures>
+                      <PropertyPrice>
+                        <span className="price">{formatPrice(property.price)}</span>
+                        <div className="actions">
+                          <button onClick={(e) => openGoogleMaps(property, e)} title="View on Google Maps">
+                            <Navigation size={14} />
+                          </button>
+                        </div>
+                      </PropertyPrice>
+                    </PropertyContent>
+                  </Link>
+                </PropertyCard>
+              ))}
+            </PropertiesGrid>
+          </>
         )}
       </Container>
     </PageContainer>
