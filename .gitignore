@@ -34,3 +34,4 @@ youtube-server/config.json
 server/uploads/
 server/.env
 youtube-server/.env
+server/test.mp4
