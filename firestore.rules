@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+    
+    function isOwner(data) {
+      return isAuthenticated() && request.auth.uid == data.ownerId;
+    }
+
+    function hasValidUnlock(propertyId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/property_unlocks/$(request.auth.uid + "_" + propertyId));
+    }
+
+    function hasActiveSubscription() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/subscriptions/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data.status == 'ACTIVE';
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Properties (Public Information)
+    match /properties/{propertyId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && (isAdmin() || (getUserData().role in ['seller', 'agent']));
+    }
+
+    // Properties Protected (Sensitive Information)
+    match /properties_protected/{propertyId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(get(/databases/$(database)/documents/properties/$(propertyId)).data) || 
+        hasValidUnlock(propertyId) ||
+        hasActiveSubscription()
+      );
+      allow write: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(get(/databases/$(database)/documents/properties/$(propertyId)).data)
+      );
+    }
+
+    // Entitlements & Subscriptions
+    match /property_unlocks/{unlockId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin(); // Users cannot create their own unlocks
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Audit Logs
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}
