@@ -37,6 +37,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
   
   const watchIdRef = useRef(null);
   const isManualOrSearchRef = useRef(false);
+  const activeLocationRequestRef = useRef(false);
 
   // Clean up geolocation watch on unmount
   useEffect(() => {
@@ -106,9 +107,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
   };
 
   const processAcceptedPosition = async (latitude, longitude, accuracy) => {
-    // If seller manually selected or searched, do not let low-quality GPS overwrite it
     if (isManualOrSearchRef.current) {
-      console.log("Ignoring GPS update because location was manually or search selected.");
+      console.log('Ignoring GPS update because location was manually or search selected.');
       return;
     }
 
@@ -118,15 +118,15 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     console.log(`GPS accuracy: ${roundedAccuracy} m (${accuracyStatus})`);
 
     if (accuracyStatus === 'Too inaccurate' || roundedAccuracy > 500) {
-      setWarning("GPS accuracy is currently too low. Move outdoors or enable Precise Location and try again.");
+      setWarning('GPS accuracy is currently too low. Move outdoors or enable Precise Location and try again.');
       toast.error(`GPS accuracy is too low (±${roundedAccuracy}m)`);
-      // Do not accept as confirmed property location if accuracy is > 500m
-    } else {
-      setWarning(null);
+      activeLocationRequestRef.current = false;
+      return;
     }
 
+    setWarning(null);
+
     try {
-      // 15. Only reverse-geocode coordinates AFTER a usable coordinate has been obtained.
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
         { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
@@ -134,7 +134,6 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       const data = await response.json();
       const address = data.display_name || `${latitude}, ${longitude}`;
       const details = parseAddressDetails(data.address || {});
-      
       const landmarks = await fetchNearbyLandmarks(latitude, longitude);
 
       const newLocation = {
@@ -145,16 +144,15 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         gpsAccuracy: roundedAccuracy,
         locationSource: 'device-gps',
         locationAccuracyStatus: accuracyStatus,
-        landmarks
+        landmarks,
       };
-      
+
       setLocation(newLocation);
       onLocationSelect?.(newLocation);
       setLoading(false);
       setTimeoutOccurred(false);
-      if (accuracyStatus !== 'Too inaccurate') {
-        toast.success(`Location found — GPS accuracy ±${roundedAccuracy} m`);
-      }
+      activeLocationRequestRef.current = false;
+      toast.success(`Location found — GPS accuracy ±${roundedAccuracy} m`);
     } catch (err) {
       const landmarks = await fetchNearbyLandmarks(latitude, longitude);
       const newLocation = {
@@ -170,17 +168,21 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         gpsAccuracy: roundedAccuracy,
         locationSource: 'device-gps',
         locationAccuracyStatus: accuracyStatus,
-        landmarks
+        landmarks,
       };
       setLocation(newLocation);
       onLocationSelect?.(newLocation);
       setLoading(false);
       setTimeoutOccurred(false);
+      activeLocationRequestRef.current = false;
       toast.success(`Location found — GPS accuracy ±${roundedAccuracy} m`);
     }
   };
 
   const getPreciseLocation = async () => {
+    if (activeLocationRequestRef.current) return;
+    activeLocationRequestRef.current = true;
+
     console.log("GPS request started");
     setLoading(true);
     setError(null);
@@ -194,11 +196,13 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         const coords = await getCurrentLocation({ enableHighAccuracy: true, timeout: 60000, maximumAge: 0 });
         const { latitude, longitude, accuracy } = coords;
         await processAcceptedPosition(latitude, longitude, accuracy);
+        activeLocationRequestRef.current = false;
         return;
       } catch (err) {
         console.warn('Capacitor geolocation failed:', err);
         setError('Location permission is not available on this device. Please enable location access and try again.');
         setLoading(false);
+        activeLocationRequestRef.current = false;
         toast.error('Location permission denied');
         return;
       }
@@ -207,6 +211,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser");
       setLoading(false);
+      activeLocationRequestRef.current = false;
       toast.error("Geolocation not supported");
       return;
     }
@@ -272,6 +277,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
             processAcceptedPosition(latitude, longitude, accuracy);
           } else {
             setLoading(false);
+            activeLocationRequestRef.current = false;
             setTimeoutOccurred(true);
             setError("GPS is taking longer than expected. Make sure Location is enabled and try moving outdoors.");
           }
@@ -311,6 +317,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       watchIdRef.current = null;
     }
     setLoading(false);
+    activeLocationRequestRef.current = false;
     setStatusMessage('');
     toast("Location detection cancelled", { icon: 'ℹ️' });
   };
@@ -578,8 +585,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
             {location.landmarks && location.landmarks.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {location.landmarks.map((lm, idx) => (
-                  <span key={idx} className="bg-white text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded text-[11px] shadow-sm">
-                    📍 {lm.name} <span className="text-gray-400 capitalize">({lm.type.replace('_', ' ')})</span>
+                  <span key={`${lm.name}-${lm.type}-${idx}`} className="bg-white text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded text-[11px] shadow-sm">
+                    📍 {lm.name} <span className="text-gray-400 capitalize">({String(lm.type).replace('_', ' ')})</span>
                   </span>
                 ))}
               </div>
@@ -694,7 +701,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
             <div className="bg-white border rounded-lg divide-y max-h-56 overflow-y-auto">
               {searchResults.map((item, idx) => (
                 <button
-                  key={idx}
+                  key={`${item.display_name || 'result'}-${item.source || 'source'}-${idx}`}
                   type="button"
                   onClick={() => selectSearchResult(item)}
                   className="w-full text-left p-2.5 text-xs hover:bg-emerald-50 transition flex items-start gap-2"

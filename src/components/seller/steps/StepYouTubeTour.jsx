@@ -4,7 +4,11 @@ import { Field, TextInput } from '../shared/Field';
 import { Upload, Video, CheckCircle, AlertCircle, Loader, Youtube } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const YOUTUBE_API_BASE = import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
+const YOUTUBE_API_BASE = import.meta.env.VITE_YOUTUBE_API_URL || '';
+const getYoutubeApiUrl = (path) => {
+  const base = YOUTUBE_API_BASE || '';
+  return `${base}${path}`;
+};
 
 const extractYouTubeId = (url) => {
   if (!url) return null;
@@ -33,10 +37,13 @@ const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
   const [mode, setMode] = useState('upload'); // 'upload' or 'paste'
 
   useEffect(() => {
-    // Check YouTube backend connection status
-    fetch(`${YOUTUBE_API_BASE}/api/youtube/status`)
-      .then(res => res.json())
-      .then(data => setChannelConnected(data.connected))
+    const statusUrl = getYoutubeApiUrl('/api/youtube/status');
+    fetch(statusUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Status request failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setChannelConnected(Boolean(data?.connected)))
       .catch(() => setChannelConnected(false));
   }, []);
 
@@ -75,7 +82,8 @@ const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
     formData.append('description', data.description || 'Property tour video uploaded via MarketMix Seller Portal.');
 
     try {
-      const res = await fetch(`${YOUTUBE_API_BASE}/api/youtube/upload`, {
+      const uploadUrl = getYoutubeApiUrl('/api/youtube/upload');
+      const res = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
       });

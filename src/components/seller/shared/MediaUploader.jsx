@@ -391,7 +391,7 @@ const MediaUploader = ({ categories, images, setImages }) => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {categoryImages.map((img) => (
                   <ImageCard
-                    key={img.id}
+                    key={`category-${img.id}`}
                     img={img}
                     draggable={false}
                     isCover={img.id === coverId}
@@ -425,7 +425,7 @@ const MediaUploader = ({ categories, images, setImages }) => {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {images.map((img) => (
                 <ImageCard
-                  key={img.id}
+                  key={`all-${img.id}`}
                   img={img}
                   draggable={true}
                   onDragStart={() => setDraggedId(img.id)}
