@@ -8,6 +8,7 @@ import SellerPropertyUpload from '../seller/SellerPropertyUpload';
 import SellerPropertyEdit from '../seller/SellerPropertyEdit';
 import { Building, Eye, MessageSquare, TrendingUp, Plus, Edit, Trash2, MapPin, Bed, Bath, Square, DollarSign, Loader, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { resolvePropertyImage } from '../../utils/propertyMapping';
 
 const glass = {
   background: 'rgba(255,255,255,0.62)',
@@ -302,7 +303,7 @@ export default function SellerDashboard() {
                   
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <img 
-                      src={listing.images?.[0] || 'https://placehold.co/120x80'} 
+                      src={resolvePropertyImage(listing) || 'https://placehold.co/120x80'} 
                       alt={listing.title}
                       style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 12 }}
                     />

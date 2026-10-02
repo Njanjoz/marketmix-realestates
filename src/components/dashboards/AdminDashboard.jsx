@@ -19,6 +19,7 @@ import {
   limit
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { resolvePropertyImage } from '../../utils/propertyMapping';
 
 // Glassmorphism styles
 const glass = {
@@ -612,11 +613,12 @@ const AdminDashboard = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {getCurrentListings().map((listing) => {
                   const statusBadge = getStatusBadge(listing.verificationStatus || listing.approvalStatus || 'pending');
+                  const primaryImage = resolvePropertyImage(listing);
                   return (
                     <div key={listing.id} style={{ background: 'rgba(255,255,255,0.38)', border: `1px solid ${rule}`, borderRadius: 16, padding: '16px' }}>
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                         <img 
-                          src={listing.images?.[0] || listing.coverImage || 'https://placehold.co/120x80'} 
+                          src={primaryImage || 'https://placehold.co/120x80'} 
                           alt={listing.title}
                           style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 12 }}
                         />
@@ -727,7 +729,7 @@ const AdminDashboard = () => {
                     <div key={listing.id} style={{ background: 'rgba(255,255,255,0.4)', padding: 16, borderRadius: 16, border: `1px solid ${rule}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <img src={listing.images?.[0] || 'https://placehold.co/60x60'} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8 }} />
+                          <img src={resolvePropertyImage(listing) || 'https://placehold.co/60x60'} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8 }} />
                           <div>
                             <div style={{ fontWeight: 500, fontSize: 16 }}>{listing.title}</div>
                             <div style={{ fontSize: 12, color: ink2 }}>{listing.location} · KES {listing.price?.toLocaleString()}</div>
@@ -1095,7 +1097,7 @@ const AdminDashboard = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
               {properties.map((property) => (
                 <div key={property.id} style={{ background: 'rgba(255,255,255,0.38)', border: `1px solid ${rule}`, borderRadius: 12, overflow: 'hidden' }}>
-                  <img src={property.images?.[0] || 'https://placehold.co/400x200'} alt={property.title} style={{ width: '100%', height: 150, objectFit: 'cover' }} />
+                  <img src={resolvePropertyImage(property) || 'https://placehold.co/400x200'} alt={property.title} style={{ width: '100%', height: 150, objectFit: 'cover' }} />
                   <div style={{ padding: 12 }}>
                     <div style={{ fontWeight: 500, fontSize: 14 }}>{property.title}</div>
                     <div style={{ fontSize: 11, color: ink2 }}>{property.location}</div>

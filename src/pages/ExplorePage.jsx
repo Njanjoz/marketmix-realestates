@@ -10,6 +10,7 @@ import {
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { resolvePropertyImage } from '../utils/propertyMapping';
 
 const ExplorePage = () => {
   const [allProperties, setAllProperties] = useState([]);
@@ -460,7 +461,7 @@ const ExplorePage = () => {
                 <Link to={`/property/${property.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div style={{ position: 'relative' }}>
                     <img 
-                        src={property.images?.[0] || property.coverImage || 'https://placehold.co/400x300'} 
+                        src={resolvePropertyImage(property) || 'https://placehold.co/400x300'} 
                         alt={property.title}
                         style={{ 
                           width: '100%', 
@@ -626,7 +627,7 @@ const ExplorePage = () => {
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.1)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)'; }}>
-                  <img src={property.images?.[0] || property.coverImage || 'https://placehold.co/120x80'} alt={property.title} style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '12px' }} />
+                  <img src={resolvePropertyImage(property) || 'https://placehold.co/120x80'} alt={property.title} style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '12px' }} />
                   <div style={{ flex: 1 }}>
                     <h3 style={{ fontWeight: '600', color: '#2d3e2b', marginBottom: '0.25rem' }}>{property.title}</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.5rem' }}>
