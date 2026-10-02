@@ -11,6 +11,14 @@
     "init-firebase": "node scripts/initFirebase.js"
   },
   "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/geolocation": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
     "@splidejs/react-splide": "^0.7.12",
     "@splidejs/splide": "^4.1.4",
     "axios": "^1.13.2",

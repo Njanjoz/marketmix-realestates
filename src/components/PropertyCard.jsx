@@ -1,9 +1,35 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Bed, Bath, Square, Heart, Eye } from 'lucide-react';
-import { getPropertyImage } from '../utils/formatPrice';
+import { getPropertyImage } from '../services/propertyService';
 
 const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('marketmix-saved-properties') || '[]');
+      setSaved(stored.includes(String(property.id)));
+    } catch (error) {
+      setSaved(false);
+    }
+  }, [property.id]);
+
+  const toggleSaved = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const key = 'marketmix-saved-properties';
+    const existing = JSON.parse(localStorage.getItem(key) || '[]');
+    const id = String(property.id);
+    const next = existing.includes(id)
+      ? existing.filter((item) => item !== id)
+      : [...existing, id];
+
+    localStorage.setItem(key, JSON.stringify(next));
+    setSaved(next.includes(id));
+  };
+
   const formatPrice = (price) => {
     if (price >= 1000000) {
       return `KES ${(price / 1000000).toFixed(1)}M`;
@@ -21,12 +47,22 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               alt={property.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
-            <div className="absolute top-3 left-3">
+            <div className="absolute top-3 left-3 flex flex-col gap-1">
               <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${
                 property.status === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
               }`}>
                 {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
               </span>
+              {property.availabilityStatus && (
+                <span className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white/90 text-gray-800">
+                  {String(property.availabilityStatus).toUpperCase()}
+                </span>
+              )}
+              {property.verificationStatus && (
+                <span className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-100 text-amber-800">
+                  {String(property.verificationStatus).toUpperCase()}
+                </span>
+              )}
             </div>
             {distance && (
               <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
@@ -83,11 +119,28 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               📍 {distance} km away
             </div>
           )}
-          <button className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors">
-            <Heart className="w-4 h-4 text-gray-600 hover:text-red-500" />
+          <button
+            type="button"
+            aria-label="Save property"
+            onClick={toggleSaved}
+            className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+          >
+            <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`} />
           </button>
         </div>
         <div className="p-4">
+          <div className="flex flex-wrap gap-2 mb-2">
+            {property.availabilityStatus && (
+              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700">
+                {String(property.availabilityStatus).toUpperCase()}
+              </span>
+            )}
+            {property.verificationStatus && (
+              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700">
+                {String(property.verificationStatus).toUpperCase()}
+              </span>
+            )}
+          </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors line-clamp-1">
             {property.title}
           </h3>

@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MapPin, Crosshair, Loader, CheckCircle, AlertCircle, X, RefreshCw, Search, Landmark, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { search as searchKenyaBoundaries } from 'osm-kenya-boundaries';
+import { getCurrentLocation } from '../services/locationService';
+import { isCapacitor } from '../utils/platform';
 
 const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Property Location" }) => {
   const [location, setLocation] = useState(initialLocation || { 
@@ -178,7 +180,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     }
   };
 
-  const getPreciseLocation = () => {
+  const getPreciseLocation = async () => {
     console.log("GPS request started");
     setLoading(true);
     setError(null);
@@ -186,6 +188,21 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     setTimeoutOccurred(false);
     setStatusMessage("Getting your precise location…");
     isManualOrSearchRef.current = false;
+
+    if (isCapacitor()) {
+      try {
+        const coords = await getCurrentLocation({ enableHighAccuracy: true, timeout: 60000, maximumAge: 0 });
+        const { latitude, longitude, accuracy } = coords;
+        await processAcceptedPosition(latitude, longitude, accuracy);
+        return;
+      } catch (err) {
+        console.warn('Capacitor geolocation failed:', err);
+        setError('Location permission is not available on this device. Please enable location access and try again.');
+        setLoading(false);
+        toast.error('Location permission denied');
+        return;
+      }
+    }
 
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser");

@@ -12,7 +12,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useEntitlement } from '../hooks/useEntitlement';
-import { getPublicProperty, getProtectedProperty } from '../services/propertyService';
+import {
+  getPublicProperty,
+  getProtectedProperty,
+  savePropertyForUser,
+  removeSavedProperty,
+  createInquiry,
+  createSiteVisit,
+} from '../services/propertyService';
 import toast from 'react-hot-toast';
 
 // ─── tiny helpers ────────────────────────────────────────
@@ -79,8 +86,123 @@ const PropertyDetailspage = () => {
   const [loadingPublic, setLoadingPublic] = useState(true);
   const [loadingProtected, setLoadingProtected] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index or null
+  const [saved, setSaved] = useState(false);
+  const [inquiryOpen, setInquiryOpen] = useState(false);
+  const [inquiryText, setInquiryText] = useState('');
+  const [siteVisitOpen, setSiteVisitOpen] = useState(false);
+  const [siteVisitForm, setSiteVisitForm] = useState({
+    date: '',
+    time: '10:00',
+    visitFee: '0',
+    transportFee: '0',
+    meetingPoint: '',
+    notes: '',
+  });
 
   const { canView, loading: entitlementLoading } = useEntitlement(id);
+
+  const handleSaveToggle = async () => {
+    if (!publicProperty) return;
+
+    if (!currentUser) {
+      toast.error('Please log in to save properties');
+      return;
+    }
+
+    try {
+      const idValue = String(publicProperty.id);
+      const current = JSON.parse(localStorage.getItem('marketmix-saved-properties') || '[]');
+      const exists = current.includes(idValue);
+
+      if (exists) {
+        localStorage.setItem('marketmix-saved-properties', JSON.stringify(current.filter((item) => item !== idValue)));
+        await removeSavedProperty({ userId: currentUser.uid, propertyId: publicProperty.id });
+        setSaved(false);
+        toast.success('Property removed from saved list');
+      } else {
+        const next = [...current, idValue];
+        localStorage.setItem('marketmix-saved-properties', JSON.stringify(next));
+        await savePropertyForUser({
+          userId: currentUser.uid,
+          propertyId: publicProperty.id,
+          title: publicProperty.title,
+          location: publicProperty.location,
+        });
+        setSaved(true);
+        toast.success('Property saved');
+      }
+    } catch (error) {
+      console.error('Save property error:', error);
+      toast.error('Could not update saved properties');
+    }
+  };
+
+  const handleInquirySubmit = async (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      toast.error('Please log in to send an inquiry');
+      return;
+    }
+    if (!inquiryText.trim()) {
+      toast.error('Please write your inquiry before sending');
+      return;
+    }
+
+    try {
+      await createInquiry({
+        propertyId: publicProperty.id,
+        buyerId: currentUser.uid,
+        agentId: publicProperty.userId || null,
+        message: inquiryText,
+        propertyTitle: publicProperty.title,
+      });
+      setInquiryText('');
+      setInquiryOpen(false);
+      toast.success('Inquiry sent to the agent');
+    } catch (error) {
+      console.error('Inquiry error:', error);
+      toast.error('Failed to send inquiry');
+    }
+  };
+
+  const handleSiteVisitSubmit = async (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      toast.error('Please log in to request a viewing');
+      return;
+    }
+    if (!siteVisitForm.date) {
+      toast.error('Please choose a viewing date');
+      return;
+    }
+
+    try {
+      await createSiteVisit({
+        propertyId: publicProperty.id,
+        buyerId: currentUser.uid,
+        agentId: publicProperty.userId || null,
+        requestedDate: siteVisitForm.date,
+        requestedTime: siteVisitForm.time,
+        visitFee: siteVisitForm.visitFee,
+        transportFee: siteVisitForm.transportFee,
+        meetingPoint: siteVisitForm.meetingPoint,
+        notes: siteVisitForm.notes,
+      });
+      setSiteVisitForm({
+        date: '',
+        time: '10:00',
+        visitFee: '0',
+        transportFee: '0',
+        meetingPoint: '',
+        notes: '',
+      });
+      setSiteVisitOpen(false);
+      toast.success('Site visit request sent to the agent');
+    } catch (error) {
+      console.error('Site visit error:', error);
+      toast.error('Failed to request site visit');
+    }
+  };
 
   // Load public data
   useEffect(() => {
@@ -102,6 +224,16 @@ const PropertyDetailspage = () => {
       cancelled = true;
     };
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!publicProperty) return;
+    try {
+      const savedList = JSON.parse(localStorage.getItem('marketmix-saved-properties') || '[]');
+      setSaved(savedList.includes(String(publicProperty.id)));
+    } catch (error) {
+      setSaved(false);
+    }
+  }, [publicProperty]);
 
   // Load protected when entitled
   useEffect(() => {
@@ -252,6 +384,18 @@ const PropertyDetailspage = () => {
         <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex-1 min-w-[240px]">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {p.availabilityStatus && (
+                  <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase">
+                    {p.availabilityStatus}
+                  </span>
+                )}
+                {p.verificationStatus && (
+                  <span className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase">
+                    {p.verificationStatus}
+                  </span>
+                )}
+              </div>
               <h1 className="text-2xl font-bold text-gray-900">{val(p.title)}</h1>
               {p.propertyName && (
                 <p className="text-sm text-gray-500 mt-0.5">{p.propertyName}</p>
@@ -614,6 +758,117 @@ const PropertyDetailspage = () => {
               <Row label="Deposit" value={KSh(costs.deposit)} />
               <Row label="Move-in cost" value={KSh(moveInCost)} />
             </div>
+
+            <div className="mt-5 space-y-2">
+              <button
+                type="button"
+                onClick={handleSaveToggle}
+                className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+              >
+                <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : ''}`} />
+                {saved ? 'Saved property' : 'Save property'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSiteVisitOpen((prev) => !prev)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
+              >
+                <Calendar className="w-4 h-4" /> Request site visit
+              </button>
+              <button
+                type="button"
+                onClick={() => setInquiryOpen((prev) => !prev)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800"
+              >
+                <MessageCircle className="w-4 h-4" /> Send inquiry
+              </button>
+            </div>
+
+            {siteVisitOpen && (
+              <form onSubmit={handleSiteVisitSubmit} className="mt-4 space-y-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Preferred date</label>
+                  <input
+                    type="date"
+                    value={siteVisitForm.date}
+                    onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, date: e.target.value }))}
+                    className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Preferred time</label>
+                  <input
+                    type="time"
+                    value={siteVisitForm.time}
+                    onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, time: e.target.value }))}
+                    className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Visit fee</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={siteVisitForm.visitFee}
+                      onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, visitFee: e.target.value }))}
+                      className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Transport fee</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={siteVisitForm.transportFee}
+                      onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, transportFee: e.target.value }))}
+                      className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Meeting point</label>
+                  <input
+                    type="text"
+                    value={siteVisitForm.meetingPoint}
+                    onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, meetingPoint: e.target.value }))}
+                    placeholder="Approximate meeting point"
+                    className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Notes</label>
+                  <textarea
+                    rows="3"
+                    value={siteVisitForm.notes}
+                    onChange={(e) => setSiteVisitForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Anything the agent should know"
+                    className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                  />
+                </div>
+                <button type="submit" className="w-full py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700">
+                  Send viewing request
+                </button>
+              </form>
+            )}
+
+            {inquiryOpen && (
+              <form onSubmit={handleInquirySubmit} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Your message</label>
+                  <textarea
+                    rows="4"
+                    value={inquiryText}
+                    onChange={(e) => setInquiryText(e.target.value)}
+                    placeholder="Ask about rent, availability, move-in date, or property details"
+                    className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                  />
+                </div>
+                <button type="submit" className="w-full py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800">
+                  Send inquiry
+                </button>
+              </form>
+            )}
 
             <div className="mt-5">
               {canView ? (

@@ -62,6 +62,29 @@ const HomePage = () => {
 
   const [typeCounts, setTypeCounts] = useState({});
 
+  const getPropertyImage = (property) => {
+    const candidates = [
+      property?.images,
+      property?.publicMedia,
+      property?.media,
+      property?.coverImage ? [property.coverImage] : [],
+    ];
+
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) continue;
+
+      for (const item of candidate) {
+        if (typeof item === 'string' && item.trim()) return item;
+        if (item && typeof item === 'object') {
+          const url = item.remoteUrl || item.url || item.src || item.localPreviewUrl;
+          if (typeof url === 'string' && url.trim()) return url;
+        }
+      }
+    }
+
+    return null;
+  };
+
   // Load homepage settings from Firestore
   const loadHomepageSettings = async () => {
     try {
@@ -82,21 +105,28 @@ const HomePage = () => {
       const propertiesRef = collection(db, 'properties');
       const q = query(propertiesRef, where('approvalStatus', '==', 'approved'));
       const querySnapshot = await getDocs(q);
-      const allApproved = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
+      const allApproved = querySnapshot.docs
+        .map((docEntry) => ({
+          id: docEntry.id,
+          ...docEntry.data(),
+        }))
+        .filter((property) => {
+          const status = property.approvalStatus || property.verificationStatus;
+          return status === 'approved';
+        });
+
       const sortedProperties = allApproved.sort((a, b) => {
         const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
         const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
         return dateB - dateA;
       });
-      
+
       // Filter by admin assigned homepage placements
-      const featured = sortedProperties.filter(p => p.featured || p.homepagePlacements?.includes('featured') || (!p.homepagePlacements && sortedProperties.indexOf(p) < 6));
-      const hero = sortedProperties.filter(p => p.homepagePlacements?.includes('hero'));
-      const trending = sortedProperties.filter(p => p.homepagePlacements?.includes('trending'));
+      const featured = sortedProperties.filter(
+        (p) => p.featured || p.homepagePlacements?.includes('featured') || (!p.homepagePlacements && sortedProperties.indexOf(p) < 6)
+      );
+      const hero = sortedProperties.filter((p) => p.homepagePlacements?.includes('hero'));
+      const trending = sortedProperties.filter((p) => p.homepagePlacements?.includes('trending'));
 
       setProperties(featured.slice(0, 6));
       setHeroProperties(hero);
@@ -172,7 +202,7 @@ const HomePage = () => {
       <section className="relative min-h-[90vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={heroProperties[0]?.images?.[0] || heroProperties[0]?.coverImage || homepageSettings.hero.backgroundImage}
+            src={getPropertyImage(heroProperties[0]) || homepageSettings.hero.backgroundImage}
             alt="Luxury Property"
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -348,7 +378,7 @@ const HomePage = () => {
                 >
                   <div className="relative h-64 overflow-hidden">
                     <img
-                      src={property.images?.[0] || property.coverImage || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800'}
+                      src={getPropertyImage(property) || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800'}
                       alt={property.title}
                       className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
                     />
@@ -420,7 +450,7 @@ const HomePage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {trendingProperties.map((property, index) => (
                 <div key={property.id} className="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200 p-6">
-                  <img src={property.images?.[0] || 'https://placehold.co/400x200'} alt="" className="w-full h-48 object-cover rounded-lg mb-4" />
+                  <img src={getPropertyImage(property) || 'https://placehold.co/400x200'} alt="" className="w-full h-48 object-cover rounded-lg mb-4" />
                   <h3 className="text-lg font-serif font-semibold">{property.title}</h3>
                   <p className="text-sm text-gray-600 mt-1">{property.location}</p>
                   <div className="flex justify-between items-center mt-4">

@@ -1,15 +1,17 @@
 // src/App.jsx - COMPLETE WITH ADMIN DASHBOARD
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PropertyProvider } from './context/PropertyContext';
 import { SearchProvider } from './context/SearchContext';
 import { StyledComponentsProvider } from './components/StyledComponentsProvider';
 import { Toaster } from 'react-hot-toast';
+import { WifiOff, RotateCcw } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/LoadingSpinner';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import { getNetworkStatus, subscribeToNetwork } from './services/networkService';
 
 // Lazy load pages
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -40,6 +42,27 @@ const NotificationsPage = lazy(() => import('./pages/user/NotificationsPage'));
 const SettingsPage = lazy(() => import('./pages/user/SettingsPage'));
 
 function App() {
+  const [network, setNetwork] = useState({ online: true, status: 'online' });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncNetwork = async () => {
+      const next = await getNetworkStatus();
+      if (isMounted) setNetwork(next);
+    };
+
+    syncNetwork();
+    const unsubscribe = subscribeToNetwork((nextStatus) => {
+      if (isMounted) setNetwork(nextStatus);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   return (
     <Router>
       <AuthProvider>
@@ -48,6 +71,24 @@ function App() {
             <StyledComponentsProvider>
               <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
                 <Toaster position="top-right" />
+                {network.online === false && (
+                  <div className="fixed inset-x-0 top-0 z-50 bg-red-600 text-white shadow-md">
+                    <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <WifiOff className="h-4 w-4" />
+                        <span>No internet connection.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium transition hover:bg-white/20"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <Navbar />
                 
                 <main className="pt-16">

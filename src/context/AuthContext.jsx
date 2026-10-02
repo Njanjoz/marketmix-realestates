@@ -1,17 +1,18 @@
 // src/context/AuthContext.jsx - SIMPLIFIED WITHOUT TIMEOUT ISSUES
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
   onAuthStateChanged,
-  updateProfile,
-  sendPasswordResetEmail
 } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
 import { doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import {
+  configureAuthPersistence,
+  login,
+  loginWithGoogle,
+  register,
+  logout,
+  resetPassword,
+} from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -22,10 +23,8 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const googleProvider = useMemo(() => {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    return provider;
+  useEffect(() => {
+    configureAuthPersistence().catch((error) => console.warn('Auth persistence init failed:', error));
   }, []);
 
   // SIMPLIFIED: Just fetch the profile directly
@@ -111,28 +110,27 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, [fetchUserProfile, createUserProfile]);
 
-  const login = async (email, password) => {
-    return await signInWithEmailAndPassword(auth, email, password);
+  const handleLogin = async (email, password) => {
+    const result = await login(email, password);
+    return result;
   };
 
-  const loginWithGoogle = async () => {
-    return await signInWithPopup(auth, googleProvider);
+  const handleGoogleLogin = async () => {
+    const result = await loginWithGoogle();
+    return result;
   };
 
-  const register = async (email, password, data) => {
-    const res = await createUserWithEmailAndPassword(auth, email, password);
-    if (data?.name) {
-      await updateProfile(res.user, { displayName: data.name });
-    }
-    await createUserProfile(res.user, data);
-    return res;
+  const handleRegister = async (email, password, data) => {
+    const result = await register(email, password, data);
+    await createUserProfile(result.user, data);
+    return result;
   };
 
-  const logout = async () => {
-    await signOut(auth);
+  const handleLogout = async () => {
+    await logout();
   };
 
-  const resetPassword = (email) => sendPasswordResetEmail(auth, email);
+  const handleResetPassword = (email) => resetPassword(email);
 
   const value = {
     currentUser,
@@ -142,11 +140,11 @@ export const AuthProvider = ({ children }) => {
     isSeller: userProfile?.role === 'seller' || userProfile?.role === 'agent',
     isAgent: userProfile?.role === 'agent',
     isUser: userProfile?.role === 'user',
-    login,
-    loginWithGoogle,
-    register,
-    logout,
-    resetPassword,
+    login: handleLogin,
+    loginWithGoogle: handleGoogleLogin,
+    register: handleRegister,
+    logout: handleLogout,
+    resetPassword: handleResetPassword,
     updateUserProfile,
   };
 

@@ -327,27 +327,37 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
     [data]
   );
 
-  const currentStep = visibleSteps[stepIndex] || visibleSteps[0];
+  const currentStep = visibleSteps[Math.min(stepIndex, Math.max(visibleSteps.length - 1, 0))] || visibleSteps[0];
 
   useEffect(() => {
+    if (visibleSteps.length === 0) return;
+    if (stepIndex >= visibleSteps.length) {
+      setStepIndex(visibleSteps.length - 1);
+      return;
+    }
     bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [stepIndex]);
+  }, [stepIndex, visibleSteps]);
 
   const update = useCallback((patch) => {
     setData((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const goNext = () => {
+    if (!currentStep || visibleSteps.length === 0) return;
+
     const errs = validateStep(currentStep.id, data);
     setErrors(errs);
+
     if (Object.keys(errs).length > 0) {
       toast.error('Please fix the highlighted fields');
       return;
     }
-    if (stepIndex + 1 < visibleSteps.length) {
-      setStepIndex(stepIndex + 1);
-      setErrors({});
-    }
+
+    setStepIndex((prev) => {
+      const nextIndex = Math.min(prev + 1, visibleSteps.length - 1);
+      return nextIndex === prev ? prev : nextIndex;
+    });
+    setErrors({});
   };
 
   const goBack = () => {

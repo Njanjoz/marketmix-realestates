@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Building, TrendingUp, DollarSign, Users, Calendar, 
@@ -44,6 +44,7 @@ const AgentDashboard = () => {
   const [listings, setListings] = useState([]);
   const [leads, setLeads] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     activeListings: 0,
@@ -52,41 +53,104 @@ const AgentDashboard = () => {
     commission: '0'
   });
 
+  const formatRelativeTime = (timestamp) => {
+    if (!timestamp) return 'Recently';
+    if (typeof timestamp?.toDate === 'function') {
+      const date = timestamp.toDate();
+      const diffMin = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000));
+      if (diffMin < 60) return `${diffMin} min ago`;
+      const diffHours = Math.round(diffMin / 60);
+      if (diffHours < 24) return `${diffHours} hr ago`;
+      const diffDays = Math.round(diffHours / 24);
+      return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    }
+    return 'Recently';
+  };
+
+  const updateInquiryStatus = async (id, nextStatus) => {
+    try {
+      await updateDoc(doc(db, 'inquiries', id), {
+        status: nextStatus,
+        updatedAt: new Date(),
+      });
+      setInquiries(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
+    } catch (error) {
+      console.error('Error updating inquiry status:', error);
+    }
+  };
+
+  const updateSiteVisitStatus = async (id, nextStatus) => {
+    try {
+      await updateDoc(doc(db, 'siteVisits', id), {
+        status: nextStatus,
+        updatedAt: new Date(),
+      });
+      setAppointments(prev => prev.map(item => item.id === id ? { ...item, status: nextStatus } : item));
+    } catch (error) {
+      console.error('Error updating site visit status:', error);
+    }
+  };
+
   useEffect(() => {
     const fetchAgentData = async () => {
       setLoading(true);
       try {
-        // Fetch agent's listings
-        const listingsRef = collection(db, 'properties');
-        const q = query(listingsRef, where('agentId', '==', currentUser?.uid), orderBy('createdAt', 'desc'));
-        const listingsSnap = await getDocs(q);
-        const listingsData = listingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setListings(listingsData);
+        if (!currentUser?.uid) {
+          setListings([]);
+          setInquiries([]);
+          setAppointments([]);
+          setLeads([]);
+          setLoading(false);
+          return;
+        }
 
-        // Calculate stats
-        const totalViews = listingsData.reduce((sum, p) => sum + (p.views || 0), 0);
-        const inquiries = listingsData.reduce((sum, p) => sum + (p.inquiries || 0), 0);
-        
+        const listingsRef = collection(db, 'properties');
+        const listingsSnap = await getDocs(listingsRef);
+        const allListings = listingsSnap.docs
+          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+          .filter(item => item.agentId === currentUser.uid || item.ownerId === currentUser.uid || item.sellerId === currentUser.uid);
+
+        setListings(allListings);
+
+        const listingIds = new Set(allListings.map(item => item.id));
+        const inquirySnap = await getDocs(collection(db, 'inquiries'));
+        const inquiryData = inquirySnap.docs
+          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+          .filter(item => item.agentId === currentUser.uid || (item.propertyId && listingIds.has(item.propertyId)))
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        const siteVisitSnap = await getDocs(collection(db, 'siteVisits'));
+        const visitData = siteVisitSnap.docs
+          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+          .filter(item => item.agentId === currentUser.uid || (item.propertyId && listingIds.has(item.propertyId)))
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        const activeListings = allListings.filter(item => {
+          const candidate = (item.status || item.availabilityStatus || item.approvalStatus || 'active').toLowerCase();
+          return ['active', 'available', 'approved', 'verified', 'published'].includes(candidate) || item.verificationStatus === 'verified';
+        }).length;
+
+        const totalViews = allListings.reduce((sum, item) => sum + Number(item.views || 0), 0);
+        const inquiryCount = inquiryData.length;
+
+        setInquiries(inquiryData);
+        setAppointments(visitData);
         setStats({
-          activeListings: listingsData.filter(p => p.status === 'active').length,
-          totalViews: totalViews,
-          inquiries: inquiries,
+          activeListings,
+          totalViews,
+          inquiries: inquiryCount,
           commission: '2.4M'
         });
 
-        // Mock leads data (replace with actual Firestore query)
-        setLeads([
-          { name: 'Emma Davis', property: '3-Bed Apartment', budget: 'KES 8M', status: 'Hot', time: '2 hours ago', phone: '+254 712 345 678' },
-          { name: 'Robert Brown', property: 'Commercial Space', budget: 'KES 45M', status: 'Warm', time: '1 day ago', phone: '+254 723 456 789' },
-          { name: 'Lisa Taylor', property: 'Luxury Villa', budget: 'KES 120M', status: 'New', time: '2 days ago', phone: '+254 734 567 890' },
-        ]);
-
-        setAppointments([
-          { time: '10:00 AM', client: 'John Smith', type: 'Property Viewing', location: 'Karen, Nairobi', phone: '+254 745 678 901' },
-          { time: '2:00 PM', client: 'Sarah Johnson', type: 'Contract Signing', location: 'Westlands, Nairobi', phone: '+254 756 789 012' },
-          { time: '4:30 PM', client: 'Mike Wilson', type: 'Initial Consultation', location: 'Online', phone: '+254 767 890 123' },
-        ]);
-
+        setLeads(inquiryData.slice(0, 3).map((item) => ({
+          id: item.id,
+          name: item.buyerName || item.name || item.buyerEmail?.split('@')[0] || 'Buyer',
+          property: item.propertyTitle || 'Property inquiry',
+          budget: item.budget || 'Flexible',
+          status: item.status === 'pending' ? 'New' : item.status === 'contacted' ? 'Warm' : 'Hot',
+          time: formatRelativeTime(item.createdAt),
+          phone: item.phone || 'Not shared',
+        })));
       } catch (error) {
         console.error('Error fetching agent data:', error);
       } finally {
@@ -182,15 +246,15 @@ const AgentDashboard = () => {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
             {listings.slice(0, 3).map((listing, i) => (
-              <motion.div key={i} whileHover={{ backgroundColor: 'rgba(255,255,255,0.72)' }}
+              <motion.div key={listing.id || i} whileHover={{ backgroundColor: 'rgba(255,255,255,0.72)' }}
                 style={{ background: 'rgba(255,255,255,0.38)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 16, padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div>
                     <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 500, color: ink }}>{listing.title}</div>
-                    <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 300, color: agentBlue }}>KES {listing.price?.toLocaleString()}</div>
+                    <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 300, color: agentBlue }}>KES {Number(listing.price || 0).toLocaleString()}</div>
                   </div>
                   <span style={{ fontFamily: sans, fontSize: 10, padding: '3px 9px', borderRadius: 20, background: agentBlueLight, color: agentBlue, border: `1px solid ${agentBlue}40` }}>
-                    {listing.status === 'active' ? 'Active' : 'Pending'}
+                    {(listing.status || listing.availabilityStatus || 'active').toString().charAt(0).toUpperCase() + (listing.status || listing.availabilityStatus || 'active').toString().slice(1) || 'Active'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 11, color: ink2 }}>
@@ -211,15 +275,25 @@ const AgentDashboard = () => {
               <button style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3, background: 'none', border: `1px solid ${rule}`, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' }}>Calendar →</button>
             </div>
             {appointments.map((apt, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < appointments.length - 1 ? `1px solid ${rule}` : 'none' }}>
+              <div key={apt.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < appointments.length - 1 ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ background: agentBlueLight, borderRadius: 12, padding: '8px' }}>
                   <Calendar size={18} color={agentBlue} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 500, color: ink }}>{apt.time} - {apt.client}</div>
-                  <div style={{ fontFamily: sans, fontSize: 11, color: ink2 }}>{apt.type} • {apt.location}</div>
+                  <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 500, color: ink }}>
+                    {apt.requestedDate || apt.time || 'Pending'} - {apt.buyerName || apt.client || 'Buyer'}
+                  </div>
+                  <div style={{ fontFamily: sans, fontSize: 11, color: ink2 }}>
+                    {apt.meetingPoint || apt.type || 'Property viewing'} • {apt.requestedTime || 'As scheduled'}
+                  </div>
                 </div>
-                <button style={{ fontFamily: sans, fontSize: 11, color: agentBlue, background: 'none', border: 'none', cursor: 'pointer' }}>Contact</button>
+                <button
+                  type="button"
+                  onClick={() => updateSiteVisitStatus(apt.id, apt.status === 'confirmed' ? 'completed' : 'confirmed')}
+                  style={{ fontFamily: sans, fontSize: 11, color: agentBlue, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  {apt.status === 'confirmed' ? 'Complete' : 'Confirm'}
+                </button>
               </div>
             ))}
           </div>
@@ -231,7 +305,7 @@ const AgentDashboard = () => {
               <button style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3, background: 'none', border: `1px solid ${rule}`, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' }}>Export →</button>
             </div>
             {leads.map((lead, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < leads.length - 1 ? `1px solid ${rule}` : 'none' }}>
+              <div key={lead.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: i < leads.length - 1 ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ background: lead.status === 'Hot' ? 'rgba(220,38,38,0.1)' : lead.status === 'Warm' ? 'rgba(245,158,11,0.1)' : agentBlueLight, borderRadius: 12, padding: '8px' }}>
                   <Users size={18} color={lead.status === 'Hot' ? '#dc2626' : lead.status === 'Warm' ? '#f59e0b' : agentBlue} />
                 </div>
@@ -239,9 +313,13 @@ const AgentDashboard = () => {
                   <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 500, color: ink }}>{lead.name}</div>
                   <div style={{ fontFamily: sans, fontSize: 11, color: ink2 }}>{lead.property} • {lead.budget}</div>
                 </div>
-                <span style={{ fontFamily: sans, fontSize: 10, padding: '3px 8px', borderRadius: 20, background: lead.status === 'Hot' ? 'rgba(220,38,38,0.1)' : lead.status === 'Warm' ? 'rgba(245,158,11,0.1)' : agentBlueLight, color: lead.status === 'Hot' ? '#dc2626' : lead.status === 'Warm' ? '#f59e0b' : agentBlue }}>
+                <button
+                  type="button"
+                  onClick={() => updateInquiryStatus(lead.id, 'contacted')}
+                  style={{ fontFamily: sans, fontSize: 10, padding: '3px 8px', borderRadius: 20, background: lead.status === 'Hot' ? 'rgba(220,38,38,0.1)' : lead.status === 'Warm' ? 'rgba(245,158,11,0.1)' : agentBlueLight, color: lead.status === 'Hot' ? '#dc2626' : lead.status === 'Warm' ? '#f59e0b' : agentBlue, border: 'none', cursor: 'pointer' }}
+                >
                   {lead.status}
-                </span>
+                </button>
               </div>
             ))}
           </div>

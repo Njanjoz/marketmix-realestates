@@ -1,0 +1,9 @@
+{
+  "appId": "com.marketmix.realestates",
+  "appName": "MarketMix Real Estates",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

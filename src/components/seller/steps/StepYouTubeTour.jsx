@@ -8,17 +8,21 @@ const YOUTUBE_API_BASE = import.meta.env.VITE_YOUTUBE_API_URL || 'https://market
 
 const extractYouTubeId = (url) => {
   if (!url) return null;
+
   const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/,
+    /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtube\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+    /(?:youtube\.com\/live\/)([A-Za-z0-9_-]{11})/,
   ];
-  for (const p of patterns) {
-    const m = url.match(p);
-    if (m) return m[1];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
   }
+
   return null;
 };
 
-const StepYouTubeTour = ({ data, update }) => {
+const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
   const [url, setUrl] = useState(data.youtubeUrl || '');
   const [videoId, setVideoId] = useState(data.youtubeVideoId || '');
   const [error, setError] = useState('');
