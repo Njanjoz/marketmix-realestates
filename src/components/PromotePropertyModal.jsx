@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucide-react';
 import QRCode from 'qrcode';
 import { resolvePropertyImage } from '../utils/propertyMapping';
+import toast from 'react-hot-toast';
 
 const THEME_OPTIONS = {
   emerald: {
@@ -324,6 +325,21 @@ const createPromoSticker = async ({ photos, headline, caption, highlights, featu
   return new File([blob], 'marketmix-property-poster.png', { type: 'image/png' });
 };
 
+const supportsPromoFileSharing = () => {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' ||
+      typeof navigator.canShare !== 'function' || typeof File === 'undefined') {
+    return false;
+  }
+
+  try {
+    return navigator.canShare({
+      files: [new File([], 'marketmix-property-poster.png', { type: 'image/png' })],
+    });
+  } catch {
+    return false;
+  }
+};
+
 const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, features, nearby, includeContact, userProfile, currentUser }) => {
   const title = sanitizeShareText(property?.title || 'Property Listing', property);
   const location = sanitizeShareText(getPublicLocation(property), property);
@@ -437,6 +453,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
       setPosterPreviewUrl(nextUrl);
     } catch (error) {
       console.error('[Property share] Could not generate poster:', error);
+      toast.error(error.message || 'Could not generate the promo poster');
     }
   };
 
@@ -449,27 +466,59 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
       link.href = objectUrl;
       link.download = file.name;
       link.click();
+      toast.success('Promo poster downloaded');
       return true;
     } catch (error) {
       console.error('[Property share] Could not create promo image:', error);
+      toast.error(error.message || 'Could not create the promo poster');
       return false;
     }
   };
 
   const shareToWhatsApp = async () => {
-    const whatsappWindow = window.open('about:blank', '_blank');
+    const canShareFile = supportsPromoFileSharing();
+    const whatsappWindow = canShareFile ? null : window.open('about:blank', '_blank');
     setSharing(true);
     try {
-      const downloaded = await downloadPromoImage();
-      if (!downloaded) {
-        whatsappWindow?.close();
-        return;
+      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
+      const objectUrl = URL.createObjectURL(file);
+      setPosterPreviewUrl(objectUrl);
+
+      if (canShareFile) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: property?.title || 'MarketMix property poster',
+            text: finalMessage,
+          });
+          toast.success('Promo poster shared');
+          return;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+          console.warn('[Property share] Native file sharing failed; opening WhatsApp instead:', error);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = file.name;
+          link.click();
+          window.location.assign(`https://wa.me/?text=${encodeURIComponent(finalMessage)}`);
+          toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
+          return;
+        }
       }
+
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = file.name;
+      link.click();
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
       if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
-      else window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+      else window.location.assign(whatsappUrl);
+      toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
     } catch (error) {
-      console.error('[Property share] Could not prepare WhatsApp share:', error);
+      if (error.name !== 'AbortError') {
+        console.error('[Property share] Could not prepare property share:', error);
+        toast.error(error.message || 'Could not share the promo poster');
+      }
       whatsappWindow?.close();
     } finally {
       setSharing(false);
@@ -478,7 +527,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-4xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl sm:rounded-[28px] border border-white/50 bg-white shadow-2xl">
+      <div className="w-full max-w-4xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-2xl sm:rounded-[28px] border border-white/50 bg-white shadow-2xl">
         <div className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-200 bg-slate-50">
           <div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Promote listing</div>
@@ -582,16 +631,16 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
           <div className="min-w-0 p-4 sm:p-5 bg-white">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Preview</div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={generatePromoPoster} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                <button type="button" onClick={generatePromoPoster} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   <Sparkles className="w-3.5 h-3.5" /> Generate poster
                 </button>
-                <button type="button" onClick={downloadPromoImage} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                <button type="button" onClick={downloadPromoImage} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
-                <button type="button" onClick={shareToWhatsApp} disabled={sharing} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                <button type="button" onClick={shareToWhatsApp} disabled={sharing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                   <Share2 className="w-3.5 h-3.5" />
-                  {sharing ? 'Downloading poster…' : 'Download + WhatsApp'}
+                  {sharing ? 'Preparing share…' : 'Share poster'}
                 </button>
               </div>
             </div>
