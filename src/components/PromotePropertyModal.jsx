@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucide-react';
+import QRCode from 'qrcode';
 import { resolvePropertyImage } from '../utils/propertyMapping';
 
 const THEME_OPTIONS = {
@@ -32,7 +33,7 @@ const getPropertyUrl = (property) => {
 
   try {
     return new URL(`/property/${encodeURIComponent(id)}`, window.location.origin).toString();
-  } catch (error) {
+  } catch {
     return `${window.location.origin}/property/${encodeURIComponent(id)}`;
   }
 };
@@ -56,19 +57,105 @@ const getContactDetails = ({ userProfile, currentUser }) => {
   return { name, phone, email, whatsappUrl: whatsappNumber ? `https://wa.me/${whatsappNumber}` : '' };
 };
 
+const getPropertyPhotos = (property) => {
+  const photos = [];
+  const addPhoto = (value) => {
+    const url = typeof value === 'string'
+      ? value
+      : value?.remoteUrl || value?.url || value?.src || value?.preview;
+    if (typeof url === 'string' && /^(https?:\/\/|data:image\/)/i.test(url) && !photos.includes(url)) {
+      photos.push(url);
+    }
+  };
+
+  addPhoto(property?.coverImage);
+  for (const candidate of [property?.images, property?.publicMedia, property?.media, property?.gallery, property?.photos]) {
+    if (Array.isArray(candidate)) candidate.forEach(addPhoto);
+    else addPhoto(candidate);
+  }
+
+  const hero = resolvePropertyImage(property);
+  if (hero && photos.includes(hero)) photos.splice(photos.indexOf(hero), 1);
+  if (hero) photos.unshift(hero);
+  return photos.slice(0, 5);
+};
+
+const getPublicLocation = (property) => (
+  property?.approximateLocation || property?.estate || property?.neighborhood ||
+  property?.ward || property?.town || property?.county || 'Area shared on inquiry'
+);
+
 const getInitialHighlights = (property) => {
-  const highlights = [];
-  if (property?.bedrooms !== undefined && property?.bedrooms !== null && property?.bedrooms !== '') {
-    highlights.push(`Bedrooms: ${property.bedrooms}`);
+  const amenities = [property?.publicAmenities, property?.propertyAmenities, property?.roomAmenities, property?.features,
+    property?.amenities?.property, property?.amenities?.room]
+    .flatMap((items) => Array.isArray(items) ? items : [])
+    .map((item) => typeof item === 'string' ? item : item?.label || item?.name)
+    .filter(Boolean);
+  const highlights = [...amenities];
+  const security = Object.entries(property?.securityFeatures || {})
+    .filter(([, value]) => value === true || value === 'Yes' || value === 'Available')
+    .map(([name]) => name.replace(/([A-Z])/g, ' $1'));
+  highlights.push(...security);
+  if (property?.waterIncluded === true || property?.waterIncluded === 'Yes') highlights.push('Water included');
+  if (property?.electricityIncluded === true || property?.electricityIncluded === 'Yes') highlights.push('Electricity included');
+  if (property?.walkingTimeToMainRoad) highlights.push(`${property.walkingTimeToMainRoad} walk to the main road`);
+  else if (property?.distanceToMainRoad) highlights.push(`${property.distanceToMainRoad} from the main road`);
+  return [...new Set(highlights)].slice(0, 5).join('\n');
+};
+
+const getInitialFeatures = (property) => {
+  const features = [];
+  if (property?.roomType) features.push(property.roomType);
+  if (property?.furnished === true || property?.furnished === 'Yes') features.push('Furnished');
+  if (property?.hasKitchen === true || property?.kitchen) features.push(property.kitchen || 'Kitchen / cooking area');
+  if (property?.bathroom) features.push(property.bathroom);
+  if (property?.parking === true || property?.parking === 'Yes') features.push('Parking available');
+  if (property?.internetOption && property.internetOption !== 'None') features.push(`Internet: ${property.internetOption}`);
+  if (property?.garbageCollection && property.garbageCollection !== 'None') features.push('Garbage collection');
+  return [...new Set(features)].slice(0, 5).join('\n');
+};
+
+const getInitialNearby = (property) => {
+  const places = Array.isArray(property?.nearbyPlaces)
+    ? property.nearbyPlaces.map((place) => typeof place === 'string' ? place : place?.name || place?.label).filter(Boolean)
+    : [];
+  if (property?.institutionName || property?.institution) places.push(property.institutionName || property.institution);
+  if (property?.nearestStage) places.push(`Public transport: ${property.nearestStage}`);
+  if (property?.distanceToCampus) places.push(`Campus / school: ${property.distanceToCampus}`);
+  return [...new Set(places)].slice(0, 5).join('\n');
+};
+
+const getAvailabilityLabel = (property) => {
+  const status = String(property?.availabilityStatus || '').toLowerCase();
+  if (status === 'available' || status === 'vacant') return 'Available now';
+  if (property?.availabilityDate) return `Available ${property.availabilityDate}`;
+  return '';
+};
+
+const getDepositLabel = (property) => {
+  if (property?.depositType) return property.depositType;
+  const deposit = Number(property?.depositAmount || 0);
+  return deposit > 0 ? `KSh ${deposit.toLocaleString()}` : '';
+};
+
+const sanitizeShareText = (value, property) => {
+  let text = String(value || '');
+  const privateAddress = property?.exactAddress;
+  if (typeof privateAddress === 'string' && privateAddress.trim()) {
+    text = text.replace(new RegExp(privateAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), 'nearby neighborhood');
   }
-  if (property?.bathrooms !== undefined && property?.bathrooms !== null && property?.bathrooms !== '') {
-    highlights.push(`Bathrooms: ${property.bathrooms}`);
+
+  const coordinates = property?.exactCoordinates || property?.coordinates;
+  const coordinatePairs = Array.isArray(coordinates)
+    ? coordinates
+    : coordinates && typeof coordinates === 'object'
+      ? [coordinates.lat, coordinates.lng]
+      : [];
+  if (coordinatePairs.length === 2 && coordinatePairs.every((value) => Number.isFinite(Number(value)))) {
+    const pairPattern = new RegExp(`${String(coordinatePairs[0]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,/]\\s*${String(coordinatePairs[1]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
+    text = text.replace(pairPattern, '');
   }
-  if (property?.area) highlights.push(`Area: ${property.area}`);
-  if (Array.isArray(property?.features)) {
-    highlights.push(...property.features.map((item) => typeof item === 'string' ? item : item?.label || item?.name).filter(Boolean));
-  }
-  return highlights.slice(0, 5).join('\n');
+  return text.trim();
 };
 
 const drawWrappedText = (context, text, x, y, maxWidth, lineHeight, maxLines) => {
@@ -91,104 +178,200 @@ const drawWrappedText = (context, text, x, y, maxWidth, lineHeight, maxLines) =>
   return y + Math.min(lines.length, maxLines) * lineHeight;
 };
 
-const createPromoSticker = ({ imageUrl, headline, caption, highlights, property, contact, theme }) => new Promise((resolve, reject) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1350;
-  const context = canvas.getContext('2d');
+const loadPosterImage = (url) => new Promise((resolve) => {
   const image = new Image();
   image.crossOrigin = 'anonymous';
-  image.onload = () => {
-    try {
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      const imageHeight = 570;
-      const scale = Math.max(canvas.width / image.width, imageHeight / image.height);
-      const cropWidth = canvas.width / scale;
-      const cropHeight = imageHeight / scale;
-      context.drawImage(image, (image.width - cropWidth) / 2, (image.height - cropHeight) / 2, cropWidth, cropHeight, 0, 0, canvas.width, imageHeight);
-
-      context.fillStyle = theme.badge;
-      context.fillRect(0, imageHeight, canvas.width, 12);
-      context.fillStyle = '#0f172a';
-      context.font = 'bold 54px sans-serif';
-      let y = drawWrappedText(context, headline || 'Property Listing', 64, 660, 952, 62, 2) + 12;
-
-      context.fillStyle = '#475569';
-      context.font = '30px sans-serif';
-      y = drawWrappedText(context, caption, 64, y, 952, 42, 2) + 28;
-
-      context.fillStyle = theme.accent;
-      context.font = 'bold 34px sans-serif';
-      y = drawWrappedText(context, `KES ${Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}  ·  ${property?.location || property?.approximateLocation || 'Location on request'}`, 64, y, 952, 44, 2) + 4;
-
-      context.fillStyle = '#334155';
-      context.font = '26px sans-serif';
-      y = drawWrappedText(context, `${property?.propertyType || property?.unitType || 'Property'}${property?.status ? `  ·  ${property.status}` : ''}`, 64, y, 952, 36, 1) + 18;
-
-      const points = String(highlights || '').split(/\r?\n/).map((point) => point.trim()).filter(Boolean).slice(0, 4);
-      if (points.length) {
-        context.fillStyle = '#0f172a';
-        context.font = 'bold 25px sans-serif';
-        context.fillText('KEY DETAILS', 64, y);
-        y += 38;
-        context.fillStyle = '#334155';
-        context.font = '24px sans-serif';
-        points.forEach((point) => {
-          y = drawWrappedText(context, `• ${point}`, 70, y, 940, 32, 1) + 4;
-        });
-      }
-
-      if (contact?.phone || contact?.email) {
-        context.fillStyle = '#f1f5f9';
-        context.fillRect(0, 1240, canvas.width, 110);
-        context.fillStyle = '#0f172a';
-        context.font = 'bold 24px sans-serif';
-        context.fillText(contact.name, 64, 1282);
-        context.font = '22px sans-serif';
-        context.fillText(contact.phone ? `WhatsApp: ${contact.phone}` : contact.email, 64, 1320, 952);
-      }
-
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error('Could not create promo image'));
-          return;
-        }
-        resolve(new File([blob], 'property-promo.png', { type: 'image/png' }));
-      }, 'image/png');
-    } catch (error) {
-      reject(error);
-    }
-  };
-  image.onerror = () => reject(new Error('Could not load the property photo for sharing'));
-  image.src = imageUrl;
+  image.onload = () => resolve(image);
+  image.onerror = () => resolve(null);
+  image.src = url;
 });
 
-const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, imageUrl, includeContact, userProfile, currentUser }) => {
-  const title = property?.title || 'Property Listing';
-  const location = property?.location || property?.approximateLocation || 'Location available on request';
+const drawPosterPhoto = (context, image, x, y, width, height) => {
+  const scale = Math.max(width / image.width, height / image.height);
+  const cropWidth = width / scale;
+  const cropHeight = height / scale;
+  context.save();
+  context.beginPath();
+  context.rect(x, y, width, height);
+  context.clip();
+  context.drawImage(image, (image.width - cropWidth) / 2, (image.height - cropHeight) / 2, cropWidth, cropHeight, x, y, width, height);
+  context.restore();
+};
+
+const createPromoSticker = async ({ photos, headline, caption, highlights, features, nearby, property, contact, theme }) => {
+  const photoUrls = photos?.length ? photos : [resolvePropertyImage(property)].filter(Boolean);
+  const loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
+  if (!loadedPhotos.length) throw new Error('Could not load a property photo for the poster.');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 2400;
+  const context = canvas.getContext('2d');
+  const brandColor = theme.accent;
+  const safeHeadline = sanitizeShareText(headline || property?.title || 'Property Listing', property);
+  const safeCaption = sanitizeShareText(caption, property);
+  const safeLocation = sanitizeShareText(getPublicLocation(property), property);
+  const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
+  const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const listingUrl = getPropertyUrl(property);
+  const qrDataUrl = listingUrl ? await QRCode.toDataURL(listingUrl, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) : '';
+  const qrImage = qrDataUrl ? await loadPosterImage(qrDataUrl) : null;
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = brandColor;
+  context.fillRect(0, 0, canvas.width, 96);
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 28px sans-serif';
+  context.fillText('MARKETMIX REAL ESTATES', 56, 60);
+
+  const heroHeight = 500;
+  drawPosterPhoto(context, loadedPhotos[0], 0, 96, canvas.width, heroHeight);
+  let contentStart = 640;
+  if (loadedPhotos.length > 1) {
+    const thumbnails = loadedPhotos.slice(1, 5);
+    const gap = 8;
+    const thumbWidth = (canvas.width - gap * (thumbnails.length - 1)) / thumbnails.length;
+    thumbnails.forEach((image, index) => drawPosterPhoto(context, image, index * (thumbWidth + gap), 604, thumbWidth, 132));
+    contentStart = 790;
+  }
+
+  let y = contentStart;
+  context.fillStyle = brandColor;
+  context.font = 'bold 23px sans-serif';
+  y = drawWrappedText(context, `${property?.propertyType || property?.unitType || 'PROPERTY'}${property?.status === 'rent' ? '  ·  TO LET' : property?.status === 'sale' ? '  ·  FOR SALE' : ''}`, 58, y, 960, 32, 1) + 14;
+
+  context.fillStyle = '#0f172a';
+  context.font = 'bold 54px sans-serif';
+  y = drawWrappedText(context, safeHeadline, 58, y, 960, 62, 2) + 8;
+  context.fillStyle = '#475569';
+  context.font = '26px sans-serif';
+  y = drawWrappedText(context, safeCaption, 58, y, 960, 36, 2) + 16;
+
+  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
+  const priceText = `KSh ${Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}${frequency ? ` / ${frequency.toUpperCase()}` : ''}`;
+  context.fillStyle = '#ecfdf5';
+  context.fillRect(42, y, 996, 112);
+  context.fillStyle = brandColor;
+  context.font = 'bold 52px sans-serif';
+  drawWrappedText(context, priceText, 64, y + 70, 950, 56, 1);
+  y += 145;
+
+  context.fillStyle = '#334155';
+  context.font = 'bold 28px sans-serif';
+  y = drawWrappedText(context, `AREA  ·  ${safeLocation}`, 58, y, 960, 38, 1) + 26;
+
+  const availability = getAvailabilityLabel(property);
+  const deposit = getDepositLabel(property);
+  const detailItems = [
+    property?.bedrooms !== undefined && property?.bedrooms !== '' ? `${property.bedrooms} bedroom${Number(property.bedrooms) === 1 ? '' : 's'}` : '',
+    property?.bathrooms !== undefined && property?.bathrooms !== '' ? `${property.bathrooms} bathroom${Number(property.bathrooms) === 1 ? '' : 's'}` : '',
+    property?.area ? `Area: ${property.area}` : '',
+    availability,
+    deposit ? `Deposit: ${deposit}` : '',
+  ].filter(Boolean);
+  if (detailItems.length) {
+    context.fillStyle = '#334155';
+    context.font = '21px sans-serif';
+    y = drawWrappedText(context, detailItems.join('  ·  '), 58, y, 960, 30, 2) + 18;
+  }
+
+  const drawBulletSection = (title, items, limit) => {
+    const visibleItems = items.slice(0, limit);
+    if (!visibleItems.length) return;
+    context.fillStyle = '#0f172a';
+    context.font = 'bold 24px sans-serif';
+    context.fillText(title, 58, y);
+    y += 42;
+    context.fillStyle = '#334155';
+    context.font = '23px sans-serif';
+    visibleItems.forEach((point) => {
+      y = drawWrappedText(context, `•  ${point}`, 66, y, 940, 32, 1) + 6;
+    });
+    y += 8;
+  };
+  drawBulletSection("WHY YOU'LL LOVE IT", points, 5);
+  drawBulletSection('FEATURES', featurePoints, 4);
+  drawBulletSection('NEARBY', nearbyPoints, 4);
+
+  const footerY = Math.max(1660, y + 18);
+  context.fillStyle = brandColor;
+  context.fillRect(0, footerY, canvas.width, canvas.height - footerY);
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 34px sans-serif';
+  context.fillText('BOOK A SITE VISIT', 58, footerY + 58);
+  context.font = '26px sans-serif';
+  context.fillText('MarketMix Real Estates', 58, footerY + 105);
+  if (contact?.phone) {
+    context.font = 'bold 24px sans-serif';
+    drawWrappedText(context, `Call / WhatsApp: ${contact.phone}`, 58, footerY + 150, 700, 32, 2);
+  } else if (contact?.email) {
+    context.font = '24px sans-serif';
+    drawWrappedText(context, contact.email, 58, footerY + 150, 700, 32, 1);
+  }
+  if (qrImage) {
+    context.fillStyle = '#ffffff';
+    context.fillRect(838, footerY + 28, 188, 188);
+    context.drawImage(qrImage, 852, footerY + 42, 160, 160);
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 17px sans-serif';
+    context.fillText('SCAN FOR DETAILS', 848, footerY + 237);
+  }
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not create promo image');
+  return new File([blob], 'marketmix-property-poster.png', { type: 'image/png' });
+};
+
+const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, features, nearby, includeContact, userProfile, currentUser }) => {
+  const title = sanitizeShareText(property?.title || 'Property Listing', property);
+  const location = sanitizeShareText(getPublicLocation(property), property);
   const price = property?.price || property?.rentAmount || property?.rent || 0;
   const type = property?.propertyType || property?.unitType || 'Property';
   const url = getPropertyUrl(property);
-  const points = String(highlights || '').split(/\r?\n/).map((point) => point.trim()).filter(Boolean);
+  const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
+  const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const safeHeadline = sanitizeShareText(headline || `${title} · ${location}`, property);
+  const safeCaption = sanitizeShareText(caption || `A great ${type.toLowerCase()} in ${location}.`, property);
+  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
+  const availability = getAvailabilityLabel(property);
+  const deposit = getDepositLabel(property);
 
   const lines = [
-    headline || `${title} • ${location}`,
+    'MARKETMIX REAL ESTATES',
+    safeHeadline,
     '',
-    caption || `Beautiful ${type.toLowerCase()} in ${location}.`,
+    safeCaption,
+    '',
+    'WHY YOU’LL LOVE IT',
+    ...points.map((point) => `• ${point}`),
     '',
     'PROPERTY DETAILS',
-    `• Price: KES ${Number(price || 0).toLocaleString()}`,
+    `• Price: KSh ${Number(price || 0).toLocaleString()}${frequency ? ` / ${frequency}` : ''}`,
     `• Location: ${location}`,
     `• Type: ${type}`,
-    ...points.map((point) => `• ${point}`),
+    ...[
+      property?.bedrooms !== undefined && property?.bedrooms !== '' ? `• Bedrooms: ${property.bedrooms}` : '',
+      property?.bathrooms !== undefined && property?.bathrooms !== '' ? `• Bathrooms: ${property.bathrooms}` : '',
+      property?.area ? `• Area: ${property.area}` : '',
+      availability ? `• Availability: ${availability}` : '',
+      deposit ? `• Deposit: ${deposit}` : '',
+    ].filter(Boolean),
+    '',
+    'FEATURES',
+    ...featurePoints.map((point) => `• ${point}`),
+    '',
+    'NEARBY',
+    ...nearbyPoints.map((point) => `• ${point}`),
   ];
 
   if (url) {
     lines.push(`View property: ${url}`);
   }
 
-  if (imageUrl) lines.push(`Property photo: ${imageUrl}`);
+  lines.push('', 'BOOK A SITE VISIT');
 
   const contact = includeContact ? getContactDetails({ userProfile, currentUser }) : null;
   if (contact) {
@@ -202,7 +385,11 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
 };
 
 export default function PromotePropertyModal({ property, currentUser, userProfile, onClose }) {
-  const imageUrl = resolvePropertyImage(property) || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200';
+  const photos = useMemo(() => getPropertyPhotos(property), [property]);
+  const posterPhotos = photos.length ? photos : ['https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200'];
+  const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
+  const imageUrl = posterPhotos[heroPhotoIndex] || posterPhotos[0];
+  const publicLocation = getPublicLocation(property);
   const role = userProfile?.role || 'user';
   const canShowContact = ['admin', 'seller', 'agent'].includes(role);
 
@@ -214,6 +401,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const [highlights, setHighlights] = useState(() => getInitialHighlights(property));
   const [includeContact, setIncludeContact] = useState(canShowContact);
   const [sharing, setSharing] = useState(false);
+  const [posterPreviewUrl, setPosterPreviewUrl] = useState('');
 
   const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.emerald;
   const contact = includeContact && canShowContact
@@ -226,48 +414,59 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
       headline,
       caption,
       highlights,
-      imageUrl,
       includeContact: includeContact && canShowContact,
       userProfile,
       currentUser,
     }),
-    [property, headline, caption, highlights, imageUrl, includeContact, canShowContact, userProfile, currentUser]
+    [property, headline, caption, highlights, includeContact, canShowContact, userProfile, currentUser]
   );
+
+  useEffect(() => {
+    if (!posterPreviewUrl) return undefined;
+    return () => URL.revokeObjectURL(posterPreviewUrl);
+  }, [posterPreviewUrl]);
+
+  const generatePromoPoster = async () => {
+    try {
+      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, property, contact, theme });
+      const nextUrl = URL.createObjectURL(file);
+      setPosterPreviewUrl(nextUrl);
+    } catch (error) {
+      console.error('[Property share] Could not generate poster:', error);
+    }
+  };
 
   const downloadPromoImage = async () => {
     try {
-      const file = await createPromoSticker({ imageUrl, headline, caption, highlights, property, contact, theme });
+      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, property, contact, theme });
       const objectUrl = URL.createObjectURL(file);
+      setPosterPreviewUrl(objectUrl);
       const link = document.createElement('a');
       link.href = objectUrl;
       link.download = file.name;
       link.click();
-      URL.revokeObjectURL(objectUrl);
+      return true;
     } catch (error) {
       console.error('[Property share] Could not create promo image:', error);
+      return false;
     }
   };
 
   const shareToWhatsApp = async () => {
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
-    if (!navigator.share) {
-      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
+    const whatsappWindow = window.open('about:blank', '_blank');
     setSharing(true);
     try {
-      const file = await createPromoSticker({ imageUrl, headline, caption, highlights, property, contact, theme });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: headline, text: finalMessage });
-      } else {
-        await navigator.share({ title: headline, text: finalMessage, url: imageUrl });
+      const downloaded = await downloadPromoImage();
+      if (!downloaded) {
+        whatsappWindow?.close();
+        return;
       }
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
+      if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
+      else window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.warn('[Property share] Image sharing unavailable; opening WhatsApp text share:', error);
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      }
+      console.error('[Property share] Could not prepare WhatsApp share:', error);
+      whatsappWindow?.close();
     } finally {
       setSharing(false);
     }
@@ -357,47 +556,68 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
           <div className="min-w-0 p-4 sm:p-5 bg-white">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Preview</div>
-              <button type="button" onClick={shareToWhatsApp} disabled={sharing} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">
-                <Share2 className="w-3.5 h-3.5" />
-                {sharing ? 'Preparing share…' : 'Share property'}
-              </button>
-              <button type="button" onClick={downloadPromoImage} className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                <Download className="w-3.5 h-3.5" />
-                Download card
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={generatePromoPoster} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Sparkles className="w-3.5 h-3.5" /> Generate poster
+                </button>
+                <button type="button" onClick={downloadPromoImage} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Download className="w-3.5 h-3.5" /> Download
+                </button>
+                <button type="button" onClick={shareToWhatsApp} disabled={sharing} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                  <Share2 className="w-3.5 h-3.5" />
+                  {sharing ? 'Downloading poster…' : 'Download + WhatsApp'}
+                </button>
+              </div>
             </div>
 
             <div className="rounded-[24px] p-3 border border-slate-200" style={{ background: theme.gradient }}>
               <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm">
                 <img src={imageUrl} alt={property?.title || 'Property'} className="h-36 sm:h-52 w-full object-cover" />
+                {posterPhotos.length > 1 && (
+                  <div className="grid grid-cols-4 gap-1 p-1">
+                    {posterPhotos.slice(0, 5).map((photo, index) => (
+                      <button key={photo} type="button" onClick={() => setHeroPhotoIndex(index)} aria-label={`Use property photo ${index + 1} as the poster cover`} className={`overflow-hidden rounded ${heroPhotoIndex === index ? 'ring-2 ring-emerald-600' : ''}`}>
+                        <img src={photo} alt={`Property view ${index + 1}`} className="h-14 w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <span className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white" style={{ background: theme.badge }}>
                       {property?.propertyType || 'Property'}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-500">{property?.location || 'Location'}</span>
+                    <span className="text-[11px] font-medium text-slate-500">{publicLocation}</span>
                   </div>
 
-                  <h4 className="text-xl font-bold text-slate-900 leading-snug">{headline}</h4>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{caption}</p>
+                  <h4 className="text-xl font-bold text-slate-900 leading-snug">{sanitizeShareText(headline, property)}</h4>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{sanitizeShareText(caption, property)}</p>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
-                    <div className="rounded-lg bg-slate-100 px-2 py-1.5">Price: KES {Number(property?.price || property?.rentAmount || 0).toLocaleString()}</div>
+                  <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-xl font-bold text-emerald-900">
+                    KSh {Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}
+                    {(property?.paymentFrequency || property?.status === 'rent') && <span className="ml-1 text-xs font-semibold">/ {(property?.paymentFrequency || 'Monthly').toUpperCase()}</span>}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
                     {property?.bedrooms !== undefined && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Bedrooms: {property.bedrooms}</div>}
                     {property?.bathrooms !== undefined && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Bathrooms: {property.bathrooms}</div>}
                     {property?.area && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Area: {property.area}</div>}
                   </div>
 
-                  {highlights.split(/\r?\n/).map((point) => point.trim()).filter(Boolean).length > 0 && (
+                  {highlights.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).length > 0 && (
                     <div className="mt-4">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Key details</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Why you’ll love it</div>
                       <ul className="mt-1 space-y-1 text-xs text-slate-700">
-                        {highlights.split(/\r?\n/).map((point) => point.trim()).filter(Boolean).map((point, index) => (
+                        {highlights.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5).map((point, index) => (
                           <li key={`${point}-${index}`} className="flex gap-2"><span className="text-emerald-600">•</span><span>{point}</span></li>
                         ))}
                       </ul>
                     </div>
                   )}
+
+                  <div className="mt-4 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white">
+                    Book a site visit
+                  </div>
 
                   {contact && (
                     <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -422,6 +642,12 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 </div>
               </div>
             </div>
+
+            {posterPreviewUrl && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <img src={posterPreviewUrl} alt="Generated MarketMix property poster" className="mx-auto max-h-[560px] w-auto rounded-lg object-contain" />
+              </div>
+            )}
 
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
