@@ -325,16 +325,14 @@ const createPromoSticker = async ({ photos, headline, caption, highlights, featu
   return new File([blob], 'marketmix-property-poster.png', { type: 'image/png' });
 };
 
-const supportsPromoFileSharing = () => {
+const supportsPromoFileSharing = (file) => {
   if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' ||
-      typeof navigator.canShare !== 'function' || typeof File === 'undefined') {
+      typeof navigator.canShare !== 'function' || !file) {
     return false;
   }
 
   try {
-    return navigator.canShare({
-      files: [new File([], 'marketmix-property-poster.png', { type: 'image/png' })],
-    });
+    return navigator.canShare({ files: [file] });
   } catch {
     return false;
   }
@@ -419,6 +417,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const [nearby, setNearby] = useState(() => getInitialNearby(property));
   const [includeContact, setIncludeContact] = useState(canShowContact);
   const [sharing, setSharing] = useState(false);
+  const [posterFile, setPosterFile] = useState(null);
   const [posterPreviewUrl, setPosterPreviewUrl] = useState('');
 
   const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.emerald;
@@ -446,11 +445,24 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     return () => URL.revokeObjectURL(posterPreviewUrl);
   }, [posterPreviewUrl]);
 
+  const cachePromoPoster = (file) => {
+    setPosterFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setPosterPreviewUrl(objectUrl);
+    return objectUrl;
+  };
+
+  const updatePosterContent = (update, value) => {
+    update(value);
+    setPosterFile(null);
+    setPosterPreviewUrl('');
+  };
+
   const generatePromoPoster = async () => {
     try {
       const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-      const nextUrl = URL.createObjectURL(file);
-      setPosterPreviewUrl(nextUrl);
+      cachePromoPoster(file);
+      toast.success('Poster ready. Tap Share poster to share it from your phone.');
     } catch (error) {
       console.error('[Property share] Could not generate poster:', error);
       toast.error(error.message || 'Could not generate the promo poster');
@@ -460,8 +472,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const downloadPromoImage = async () => {
     try {
       const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-      const objectUrl = URL.createObjectURL(file);
-      setPosterPreviewUrl(objectUrl);
+      const objectUrl = cachePromoPoster(file);
       const link = document.createElement('a');
       link.href = objectUrl;
       link.download = file.name;
@@ -475,54 +486,51 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     }
   };
 
-  const shareToWhatsApp = async () => {
-    const canShareFile = supportsPromoFileSharing();
-    const whatsappWindow = canShareFile ? null : window.open('about:blank', '_blank');
-    setSharing(true);
-    try {
-      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-      const objectUrl = URL.createObjectURL(file);
-      setPosterPreviewUrl(objectUrl);
+  const shareToWhatsApp = () => {
+    if (!posterFile) {
+      toast.error('Generate the poster first, then tap Share poster.');
+      return;
+    }
 
-      if (canShareFile) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: property?.title || 'MarketMix property poster',
-            text: finalMessage,
-          });
-          toast.success('Promo poster shared');
-          return;
-        } catch (error) {
+    setSharing(true);
+    if (supportsPromoFileSharing(posterFile)) {
+      let shareRequest;
+      try {
+        shareRequest = navigator.share({
+          files: [posterFile],
+          title: property?.title || 'MarketMix property poster',
+          text: finalMessage,
+        });
+      } catch (error) {
+        shareRequest = Promise.reject(error);
+      }
+
+      Promise.resolve(shareRequest)
+        .then(() => toast.success('Promo poster shared'))
+        .catch((error) => {
           if (error.name === 'AbortError') return;
           console.warn('[Property share] Native file sharing failed; opening WhatsApp instead:', error);
           const link = document.createElement('a');
-          link.href = objectUrl;
-          link.download = file.name;
+          link.href = posterPreviewUrl;
+          link.download = posterFile.name;
           link.click();
           window.location.assign(`https://wa.me/?text=${encodeURIComponent(finalMessage)}`);
           toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
-          return;
-        }
-      }
-
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = file.name;
-      link.click();
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
-      if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
-      else window.location.assign(whatsappUrl);
-      toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('[Property share] Could not prepare property share:', error);
-        toast.error(error.message || 'Could not share the promo poster');
-      }
-      whatsappWindow?.close();
-    } finally {
-      setSharing(false);
+        })
+        .finally(() => setSharing(false));
+      return;
     }
+
+    const whatsappWindow = window.open('about:blank', '_blank');
+    const link = document.createElement('a');
+    link.href = posterPreviewUrl;
+    link.download = posterFile.name;
+    link.click();
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
+    if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
+    else window.location.assign(whatsappUrl);
+    toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
+    setSharing(false);
   };
 
   return (
@@ -550,7 +558,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Headline</label>
                 <input
                   value={headline}
-                  onChange={(e) => setHeadline(e.target.value)}
+                  onChange={(e) => updatePosterContent(setHeadline, e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
@@ -559,7 +567,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Promo message</label>
                 <textarea
                   value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
+                  onChange={(e) => updatePosterContent(setCaption, e.target.value)}
                   rows={4}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
@@ -569,7 +577,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Key points · one per line</label>
                 <textarea
                   value={highlights}
-                  onChange={(e) => setHighlights(e.target.value)}
+                  onChange={(e) => updatePosterContent(setHighlights, e.target.value)}
                   rows={4}
                   placeholder={'Bedrooms: 3\nBathrooms: 2\nNear public transport'}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
@@ -580,7 +588,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Features · one per line</label>
                 <textarea
                   value={features}
-                  onChange={(e) => setFeatures(e.target.value)}
+                  onChange={(e) => updatePosterContent(setFeatures, e.target.value)}
                   rows={3}
                   placeholder="Private bathroom\nKitchen / cooking area\nParking available"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
@@ -591,7 +599,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Nearby · one per line</label>
                 <textarea
                   value={nearby}
-                  onChange={(e) => setNearby(e.target.value)}
+                  onChange={(e) => updatePosterContent(setNearby, e.target.value)}
                   rows={3}
                   placeholder="Public transport\nShopping centre\nCampus / school"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
@@ -605,7 +613,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setThemeKey(key)}
+                      onClick={() => updatePosterContent(setThemeKey, key)}
                       className={`w-8 h-8 rounded-full border-2 ${themeKey === key ? 'border-slate-800' : 'border-white'} shadow-sm`}
                       style={{ background: option.gradient }}
                       title={key}
@@ -619,7 +627,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                   <input
                     type="checkbox"
                     checked={includeContact}
-                    onChange={(e) => setIncludeContact(e.target.checked)}
+                    onChange={(e) => updatePosterContent(setIncludeContact, e.target.checked)}
                     className="h-4 w-4 accent-emerald-600"
                   />
                   Include my WhatsApp number and contact details
@@ -629,21 +637,26 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
           </div>
 
           <div className="min-w-0 p-4 sm:p-5 bg-white">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Preview</div>
               <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                 <button type="button" onClick={generatePromoPoster} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                  <Sparkles className="w-3.5 h-3.5" /> Generate poster
+                  <Sparkles className="w-3.5 h-3.5" /> {posterFile ? 'Regenerate poster' : 'Generate poster'}
                 </button>
                 <button type="button" onClick={downloadPromoImage} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
-                <button type="button" onClick={shareToWhatsApp} disabled={sharing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                <button type="button" onClick={shareToWhatsApp} disabled={sharing || !posterFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                   <Share2 className="w-3.5 h-3.5" />
                   {sharing ? 'Preparing share…' : 'Share poster'}
                 </button>
               </div>
             </div>
+            {!posterFile && (
+              <p className="mb-3 text-xs text-slate-600">
+                On your phone, generate the poster first, then tap Share poster to open the share sheet.
+              </p>
+            )}
 
             <div className="rounded-[24px] p-3 border border-slate-200" style={{ background: theme.gradient }}>
               <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm">
@@ -651,7 +664,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 {posterPhotos.length > 1 && (
                   <div className="grid grid-cols-4 gap-1 p-1">
                     {posterPhotos.slice(0, 5).map((photo, index) => (
-                      <button key={photo} type="button" onClick={() => setHeroPhotoIndex(index)} aria-label={`Use property photo ${index + 1} as the poster cover`} className={`overflow-hidden rounded ${heroPhotoIndex === index ? 'ring-2 ring-emerald-600' : ''}`}>
+                      <button key={photo} type="button" onClick={() => updatePosterContent(setHeroPhotoIndex, index)} aria-label={`Use property photo ${index + 1} as the poster cover`} className={`overflow-hidden rounded ${heroPhotoIndex === index ? 'ring-2 ring-emerald-600' : ''}`}>
                         <img src={photo} alt={`Property view ${index + 1}`} className="h-14 w-full object-cover" />
                       </button>
                     ))}
