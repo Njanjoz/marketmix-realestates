@@ -399,6 +399,8 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     property?.description || `Amazing ${property?.propertyType || 'property'} in ${property?.location || 'Kenya'}.`
   );
   const [highlights, setHighlights] = useState(() => getInitialHighlights(property));
+  const [features, setFeatures] = useState(() => getInitialFeatures(property));
+  const [nearby, setNearby] = useState(() => getInitialNearby(property));
   const [includeContact, setIncludeContact] = useState(canShowContact);
   const [sharing, setSharing] = useState(false);
   const [posterPreviewUrl, setPosterPreviewUrl] = useState('');
@@ -414,11 +416,13 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
       headline,
       caption,
       highlights,
+      features,
+      nearby,
       includeContact: includeContact && canShowContact,
       userProfile,
       currentUser,
     }),
-    [property, headline, caption, highlights, includeContact, canShowContact, userProfile, currentUser]
+    [property, headline, caption, highlights, features, nearby, includeContact, canShowContact, userProfile, currentUser]
   );
 
   useEffect(() => {
@@ -428,7 +432,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const generatePromoPoster = async () => {
     try {
-      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, property, contact, theme });
+      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
       const nextUrl = URL.createObjectURL(file);
       setPosterPreviewUrl(nextUrl);
     } catch (error) {
@@ -438,7 +442,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const downloadPromoImage = async () => {
     try {
-      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, property, contact, theme });
+      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
       const objectUrl = URL.createObjectURL(file);
       setPosterPreviewUrl(objectUrl);
       const link = document.createElement('a');
@@ -524,6 +528,28 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
               </div>
 
               <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Features · one per line</label>
+                <textarea
+                  value={features}
+                  onChange={(e) => setFeatures(e.target.value)}
+                  rows={3}
+                  placeholder="Private bathroom\nKitchen / cooking area\nParking available"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Nearby · one per line</label>
+                <textarea
+                  value={nearby}
+                  onChange={(e) => setNearby(e.target.value)}
+                  rows={3}
+                  placeholder="Public transport\nShopping centre\nCampus / school"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Theme</label>
                 <div className="flex gap-2">
                   {Object.entries(THEME_OPTIONS).map(([key, option]) => (
@@ -602,6 +628,8 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                     {property?.bedrooms !== undefined && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Bedrooms: {property.bedrooms}</div>}
                     {property?.bathrooms !== undefined && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Bathrooms: {property.bathrooms}</div>}
                     {property?.area && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Area: {property.area}</div>}
+                    {getAvailabilityLabel(property) && <div className="rounded-lg bg-slate-100 px-2 py-1.5">{getAvailabilityLabel(property)}</div>}
+                    {getDepositLabel(property) && <div className="rounded-lg bg-slate-100 px-2 py-1.5">Deposit: {getDepositLabel(property)}</div>}
                   </div>
 
                   {highlights.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).length > 0 && (
@@ -609,6 +637,28 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                       <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Why you’ll love it</div>
                       <ul className="mt-1 space-y-1 text-xs text-slate-700">
                         {highlights.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5).map((point, index) => (
+                          <li key={`${point}-${index}`} className="flex gap-2"><span className="text-emerald-600">•</span><span>{point}</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {features.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).length > 0 && (
+                    <div className="mt-4">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Features</div>
+                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                        {features.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4).map((point, index) => (
+                          <li key={`${point}-${index}`} className="flex gap-2"><span className="text-emerald-600">•</span><span>{point}</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {nearby.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).length > 0 && (
+                    <div className="mt-4">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Nearby</div>
+                      <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                        {nearby.split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4).map((point, index) => (
                           <li key={`${point}-${index}`} className="flex gap-2"><span className="text-emerald-600">•</span><span>{point}</span></li>
                         ))}
                       </ul>
