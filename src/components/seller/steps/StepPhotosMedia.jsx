@@ -13,7 +13,9 @@ const StepPhotosMedia = ({ data, update }) => {
       <MediaUploader
         categories={MEDIA_CATEGORIES}
         images={data.images || []}
-        setImages={(imgs) => update({ images: typeof imgs === 'function' ? imgs(data.images || []) : imgs })}
+        setImages={(imgs) => update((prev) => ({
+          images: typeof imgs === 'function' ? imgs(prev.images || []) : imgs,
+        }))}
       />
     </div>
   );

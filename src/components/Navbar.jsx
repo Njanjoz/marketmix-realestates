@@ -123,6 +123,7 @@ const Navbar = () => {
         icon: <LayoutDashboard className="w-4 h-4" />,
         badge: badge
       },
+      ...(userType === 'admin' ? [{ name: 'Moderate Property Ads', path: '/admin/properties', icon: <Building2 className="w-4 h-4" /> }] : []),
       ...baseLinks
     ];
   }, [userProfile?.userType, userProfile?.role]);

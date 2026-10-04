@@ -20,6 +20,10 @@ import {
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
+import PromotePropertyModal from '../PromotePropertyModal';
+import { useAuth } from '../../context/AuthContext';
+
+const YOUTUBE_ADMIN_API = import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
 
 // Glassmorphism styles
 const glass = {
@@ -44,6 +48,7 @@ const yellow = '#f59e0b';
 const yellowLight = 'rgba(245,158,11,0.12)';
 
 const AdminDashboard = () => {
+  const { currentUser } = useAuth();
   const [activeSection, setActiveSection] = useState('listings');
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState([]);
@@ -56,6 +61,28 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('pending');
+  const [allowedOrigins, setAllowedOrigins] = useState([]);
+  const [originInput, setOriginInput] = useState('');
+  const [originLoading, setOriginLoading] = useState(false);
+  const [originSaving, setOriginSaving] = useState(false);
+  const [originError, setOriginError] = useState('');
+  const [promoteProperty, setPromoteProperty] = useState(null);
+  const [agentProfileUserId, setAgentProfileUserId] = useState(null);
+  const [showAgentProfileModal, setShowAgentProfileModal] = useState(false);
+  const [agentProfileDraft, setAgentProfileDraft] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    photo: '',
+    title: 'Real Estate Agent',
+    bio: '',
+    specialties: ['Residential'],
+    languages: ['English'],
+    experience: 1,
+    rating: 4.8,
+    propertiesSold: 0,
+    office: ''
+  });
   
   // Full Seller Info Modal State
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -119,6 +146,12 @@ const AdminDashboard = () => {
     ctaTitle: 'Join Our Team of Experts',
     ctaSubtitle: 'Are you a real estate professional? Join MarketMix Real Estates and grow your career with us.'
   });
+
+  const [customPageSlug, setCustomPageSlug] = useState('homepage');
+  const [customPageJson, setCustomPageJson] = useState(JSON.stringify({
+    title: 'Homepage',
+    subtitle: 'Customize this page from the admin dashboard.'
+  }, null, 2));
 
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -187,6 +220,89 @@ const AdminDashboard = () => {
       console.error('Error loading users:', error);
     }
   };
+
+  const loadAllowedOrigins = async () => {
+    if (!currentUser) return;
+    setOriginLoading(true);
+    setOriginError('');
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${YOUTUBE_ADMIN_API}/api/admin/allowed-origins`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load website domains');
+      setAllowedOrigins(result.allowedOrigins || []);
+    } catch (error) {
+      console.error('Error loading YouTube API domains:', error);
+      setOriginError(error.message || 'Unable to connect to the YouTube server');
+    } finally {
+      setOriginLoading(false);
+    }
+  };
+
+  const handleAddOrigin = (event) => {
+    event.preventDefault();
+    setOriginError('');
+    try {
+      const input = originInput.trim();
+      const url = new URL(input);
+      const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
+      if ((url.protocol !== 'https:' && !localHttp) || url.origin !== input) {
+        throw new Error('Enter a secure website origin only, such as https://example.com (no path).');
+      }
+      if (allowedOrigins.includes(url.origin)) {
+        throw new Error('That domain is already allowed.');
+      }
+      setAllowedOrigins((origins) => [...origins, url.origin]);
+      setOriginInput('');
+    } catch (error) {
+      setOriginError(error.message || 'Enter a valid website origin.');
+    }
+  };
+
+  const handleSaveOrigins = async () => {
+    if (!currentUser) return;
+    setOriginSaving(true);
+    setOriginError('');
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${YOUTUBE_ADMIN_API}/api/admin/allowed-origins`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ allowedOrigins }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to save website domains');
+      setAllowedOrigins(result.allowedOrigins || []);
+      toast.success('Allowed website domains updated.');
+    } catch (error) {
+      console.error('Error saving YouTube API domains:', error);
+      setOriginError(error.message || 'Unable to save website domains');
+      toast.error('Could not save allowed domains.');
+    } finally {
+      setOriginSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'apiDomains') loadAllowedOrigins();
+  }, [activeSection, currentUser]);
+
+  useEffect(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const nextUsers = users.filter(user => {
+      const role = user.role || 'user';
+      const matchesRole = selectedRole === 'all' || role === selectedRole;
+      const haystack = `${user.name || ''} ${user.email || ''} ${role}`.toLowerCase();
+      const matchesSearch = !term || haystack.includes(term);
+      return matchesRole && matchesSearch;
+    });
+    setFilteredUsers(nextUsers);
+  }, [users, searchTerm, selectedRole]);
 
   const loadAllPagesSettings = async () => {
     try {
@@ -263,6 +379,35 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Error saving agents page:', error);
       toast.error('Failed to update agents page');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadCustomPage = async (pageSlug) => {
+    try {
+      const pageSnap = await getDoc(doc(db, 'settings', pageSlug));
+      if (pageSnap.exists()) {
+        setCustomPageJson(JSON.stringify(pageSnap.data(), null, 2));
+      } else {
+        setCustomPageJson(JSON.stringify({ title: `${pageSlug} page`, subtitle: 'Page content', status: 'draft' }, null, 2));
+      }
+    } catch (error) {
+      console.error('Error loading custom page:', error);
+      toast.error('Unable to load the selected page');
+    }
+  };
+
+  const handleSaveCustomPageSettings = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const parsed = JSON.parse(customPageJson);
+      await setDoc(doc(db, 'settings', customPageSlug), parsed, { merge: true });
+      toast.success(`Page "${customPageSlug}" updated successfully.`);
+    } catch (error) {
+      console.error('Error saving custom page:', error);
+      toast.error('Custom page JSON is invalid. Fix the format and try again.');
     } finally {
       setLoading(false);
     }
@@ -389,12 +534,77 @@ const AdminDashboard = () => {
   const handleUpdateUserRole = async (userId, newRole) => {
     try {
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { role: newRole, updatedAt: serverTimestamp() });
-      setUsers(prev => prev.map(user => user.id === userId ? { ...user, role: newRole } : user));
+      await updateDoc(userRef, {
+        role: newRole,
+        userType: newRole,
+        updatedAt: serverTimestamp()
+      });
+      setUsers(prev => prev.map(user => user.id === userId ? { ...user, role: newRole, userType: newRole } : user));
       toast.success('User role updated successfully');
     } catch (error) {
       console.error('Error updating user role:', error);
       toast.error('Failed to update user role');
+    }
+  };
+
+  const openAgentProfileEditor = (user) => {
+    const profile = user.agentProfile || {};
+    setAgentProfileUserId(user.id);
+    setAgentProfileDraft({
+      name: profile.name || user.name || '',
+      email: profile.email || user.email || '',
+      phone: profile.phone || user.phone || '',
+      photo: profile.photo || '',
+      title: profile.title || 'Real Estate Agent',
+      bio: profile.bio || '',
+      specialties: Array.isArray(profile.specialties) && profile.specialties.length ? profile.specialties : ['Residential'],
+      languages: Array.isArray(profile.languages) && profile.languages.length ? profile.languages : ['English'],
+      experience: Number(profile.experience ?? user.experience ?? 1),
+      rating: Number(profile.rating ?? user.rating ?? 4.8),
+      propertiesSold: Number(profile.propertiesSold ?? user.propertiesSold ?? 0),
+      office: profile.office || ''
+    });
+    setShowAgentProfileModal(true);
+  };
+
+  const handleSaveAgentProfile = async (e) => {
+    e.preventDefault();
+    if (!agentProfileUserId) return;
+
+    try {
+      const userRef = doc(db, 'users', agentProfileUserId);
+      const payload = {
+        role: 'agent',
+        userType: 'agent',
+        email: agentProfileDraft.email,
+        name: agentProfileDraft.name,
+        phone: agentProfileDraft.phone,
+        photo: agentProfileDraft.photo,
+        agentProfile: {
+          name: agentProfileDraft.name,
+          email: agentProfileDraft.email,
+          phone: agentProfileDraft.phone,
+          photo: agentProfileDraft.photo,
+          title: agentProfileDraft.title,
+          bio: agentProfileDraft.bio,
+          specialties: Array.isArray(agentProfileDraft.specialties) ? agentProfileDraft.specialties : String(agentProfileDraft.specialties || '').split(',').map(item => item.trim()).filter(Boolean),
+          languages: Array.isArray(agentProfileDraft.languages) ? agentProfileDraft.languages : String(agentProfileDraft.languages || '').split(',').map(item => item.trim()).filter(Boolean),
+          experience: Number(agentProfileDraft.experience || 1),
+          rating: Number(agentProfileDraft.rating || 4.8),
+          propertiesSold: Number(agentProfileDraft.propertiesSold || 0),
+          office: agentProfileDraft.office,
+          updatedAt: serverTimestamp()
+        },
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(userRef, payload);
+      setUsers(prev => prev.map(user => user.id === agentProfileUserId ? { ...user, ...payload, agentProfile: payload.agentProfile } : user));
+      setShowAgentProfileModal(false);
+      toast.success('Agent profile saved successfully.');
+    } catch (error) {
+      console.error('Error saving agent profile:', error);
+      toast.error('Failed to save agent profile.');
     }
   };
 
@@ -437,7 +647,8 @@ const AdminDashboard = () => {
     { id: 'homepageEditor', label: 'Edit All Pages (Home, Explore, About, Agents)', icon: <Edit size={18} /> },
     { id: 'users', label: 'User Management', icon: <Users size={18} /> },
     { id: 'allProperties', label: 'All Properties', icon: <Building size={18} /> },
-    { id: 'analytics', label: 'Analytics', icon: <BarChart size={18} /> }
+    { id: 'analytics', label: 'Analytics', icon: <BarChart size={18} /> },
+    { id: 'apiDomains', label: 'API Domains', icon: <Globe size={18} /> }
   ];
 
   const getCurrentListings = () => {
@@ -663,6 +874,13 @@ const AdminDashboard = () => {
                               <Info size={14} /> View All Seller Info
                             </button>
 
+                            <button
+                              onClick={() => setPromoteProperty(listing)}
+                              style={{ padding: '8px 16px', background: greenLight, color: green, border: '1px solid rgba(16,185,129,0.35)', borderRadius: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                            >
+                              <MessageCircle size={14} /> Promote
+                            </button>
+
                             {listing.verificationStatus !== 'approved' && listing.approvalStatus !== 'approved' && (
                               <button
                                 onClick={() => handleOpenApproval(listing.id)}
@@ -779,7 +997,8 @@ const AdminDashboard = () => {
                   { id: 'homepage', label: 'Homepage' },
                   { id: 'explore', label: 'Explore Page' },
                   { id: 'about', label: 'About Page' },
-                  { id: 'agents', label: 'Agents Page' }
+                  { id: 'agents', label: 'Agents Page' },
+                  { id: 'custom', label: 'Custom Page' }
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -1028,6 +1247,51 @@ const AdminDashboard = () => {
                 </div>
               </form>
             )}
+
+            {editorSubTab === 'custom' && (
+              <form onSubmit={handleSaveCustomPageSettings} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ background: 'rgba(255,255,255,0.5)', padding: 20, borderRadius: 16, border: `1px solid ${rule}` }}>
+                  <h3 style={{ fontFamily: serif, fontSize: 16, fontWeight: 600, marginBottom: 12, color: red }}>Custom Page Editor</h3>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Page slug</label>
+                    <input
+                      type="text"
+                      value={customPageSlug}
+                      onChange={(e) => setCustomPageSlug(e.target.value.trim() || 'homepage')}
+                      style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleLoadCustomPage(customPageSlug)}
+                      style={{ padding: '8px 12px', borderRadius: 10, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.8)', color: ink2, cursor: 'pointer' }}
+                    >
+                      Load page
+                    </button>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Page JSON</label>
+                    <textarea
+                      rows="18"
+                      value={customPageJson}
+                      onChange={(e) => setCustomPageJson(e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{ padding: '12px 28px', background: red, color: 'white', border: 'none', borderRadius: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <Save size={16} /> {loading ? 'Saving...' : 'Save Custom Page'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
@@ -1036,8 +1300,46 @@ const AdminDashboard = () => {
           <div style={{ ...glass, padding: '24px' }}>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500 }}>User Management</div>
-              <div style={{ fontSize: 12, color: ink2 }}>Manage user roles and permissions</div>
+              <div style={{ fontSize: 12, color: ink2 }}>Manage users, agents, sellers, and staff access</div>
             </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['all', ...roles.map(role => role.value)].map(roleValue => {
+                  const roleMeta = roles.find(role => role.value === roleValue) || { label: 'All Users', value: 'all' };
+                  const count = roleValue === 'all' ? users.length : users.filter(user => (user.role || 'user') === roleValue).length;
+                  return (
+                    <button
+                      key={roleValue}
+                      onClick={() => setSelectedRole(roleValue)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 20,
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        background: selectedRole === roleValue ? red : 'rgba(255,255,255,0.15)',
+                        color: selectedRole === roleValue ? 'white' : ink2,
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {roleMeta.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ minWidth: 220, flex: 1, maxWidth: 340 }}>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search user name or email"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 12, border: `1px solid ${rule}`, background: 'rgba(255,255,255,0.5)', color: ink }}
+                />
+              </div>
+            </div>
+
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
@@ -1075,14 +1377,27 @@ const AdminDashboard = () => {
                         </select>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right' }}>
-                        <button onClick={() => handleDeleteUser(user.id, user.name || user.email)} style={{ padding: 6, background: redLight, border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-                          <Trash2 size={14} color={red} />
-                        </button>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                          {(user.role === 'agent' || user.role === 'seller') && (
+                            <button onClick={() => openAgentProfileEditor(user)} style={{ padding: 6, background: 'rgba(59,130,246,0.12)', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#2563eb' }}>
+                              <UserCheck size={14} />
+                            </button>
+                          )}
+                          <button onClick={() => handleDeleteUser(user.id, user.name || user.email)} style={{ padding: 6, background: redLight, border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                            <Trash2 size={14} color={red} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {filteredUsers.length === 0 && (
+                <div style={{ padding: '24px 12px', textAlign: 'center', color: ink2 }}>
+                  No users found for this role or search.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1110,12 +1425,174 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {showAgentProfileModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 1000 }}>
+            <div style={{ width: '100%', maxWidth: 620, maxHeight: '85vh', overflowY: 'auto', background: '#fff', borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 600, color: red }}>Agent Profile</div>
+                  <div style={{ fontSize: 12, color: ink2 }}>Update the account profile associated with this agent login email.</div>
+                </div>
+                <button onClick={() => setShowAgentProfileModal(false)} style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: ink2 }}>×</button>
+              </div>
+
+              <form onSubmit={handleSaveAgentProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Full name</label>
+                  <input value={agentProfileDraft.name} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, name: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Login email</label>
+                  <input value={agentProfileDraft.email} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, email: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Phone</label>
+                  <input value={agentProfileDraft.phone} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, phone: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Role title</label>
+                  <input value={agentProfileDraft.title} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, title: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Photo URL</label>
+                  <input value={agentProfileDraft.photo} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, photo: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Bio</label>
+                  <textarea rows="3" value={agentProfileDraft.bio} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, bio: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Specialties</label>
+                  <input value={agentProfileDraft.specialties.join(', ')} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, specialties: e.target.value.split(',').map(item => item.trim()).filter(Boolean) })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Languages</label>
+                  <input value={agentProfileDraft.languages.join(', ')} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, languages: e.target.value.split(',').map(item => item.trim()).filter(Boolean) })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Experience (years)</label>
+                  <input type="number" value={agentProfileDraft.experience} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, experience: Number(e.target.value || 1) })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Rating</label>
+                  <input type="number" step="0.1" min="0" max="5" value={agentProfileDraft.rating} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, rating: Number(e.target.value || 4.8) })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Properties sold</label>
+                  <input type="number" value={agentProfileDraft.propertiesSold} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, propertiesSold: Number(e.target.value || 0) })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, marginBottom: 6, color: ink2 }}>Office / branch</label>
+                  <input value={agentProfileDraft.office} onChange={(e) => setAgentProfileDraft({ ...agentProfileDraft, office: e.target.value })} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db' }} />
+                </div>
+
+                <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                  <button type="button" onClick={() => setShowAgentProfileModal(false)} style={{ padding: '10px 18px', borderRadius: 12, border: `1px solid ${rule}`, background: '#fff', color: ink2, cursor: 'pointer' }}>Cancel</button>
+                  <button type="submit" style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: red, color: '#fff', cursor: 'pointer' }}>Save agent profile</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Analytics Section */}
         {activeSection === 'analytics' && (
           <div style={{ ...glass, padding: '24px', textAlign: 'center' }}>
             <BarChart size={48} style={{ margin: '40px auto 16px', opacity: 0.5 }} />
             <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Analytics Dashboard</div>
             <div style={{ fontSize: 13, color: ink2 }}>Platform metrics, inquiries, and revenue overview.</div>
+          </div>
+        )}
+
+        {activeSection === 'apiDomains' && (
+          <div style={{ ...glass, padding: '24px', maxWidth: 900 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 500 }}>YouTube API Website Domains</div>
+                <div style={{ fontSize: 12, color: ink2, marginTop: 4 }}>
+                  Control which MarketMix websites may call the video API. Changes apply immediately.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={loadAllowedOrigins}
+                disabled={originLoading}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 12, background: '#fff', color: ink2, border: `1px solid ${rule}`, cursor: originLoading ? 'wait' : 'pointer' }}
+              >
+                <RefreshCw size={15} className={originLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+              <a href={`${YOUTUBE_ADMIN_API}/health`} target="_blank" rel="noreferrer" style={{ color: red, fontSize: 12, fontWeight: 600 }}>
+                Open YouTube API health
+              </a>
+              <span style={{ color: ink3, fontSize: 12 }}>{YOUTUBE_ADMIN_API}</span>
+            </div>
+
+            <form onSubmit={handleAddOrigin} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              <input
+                type="url"
+                value={originInput}
+                onChange={(event) => setOriginInput(event.target.value)}
+                placeholder="https://your-new-domain.com"
+                aria-label="Website origin to allow"
+                style={{ flex: '1 1 280px', minWidth: 0, padding: '11px 12px', border: '1px solid #d1d5db', borderRadius: 10, background: '#fff', fontSize: 13 }}
+              />
+              <button type="submit" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 16px', border: 0, borderRadius: 10, background: red, color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                <Plus size={16} /> Add domain
+              </button>
+            </form>
+
+            <div style={{ fontSize: 11, color: ink3, marginBottom: 16 }}>
+              Enter the origin only: HTTPS scheme and domain, with no page path. Localhost is allowed for local development.
+            </div>
+
+            {originError && (
+              <div role="alert" style={{ marginBottom: 16, padding: 12, color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 12 }}>
+                {originError}
+              </div>
+            )}
+
+            {originLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: ink2, padding: 18 }}>
+                <Loader size={16} className="animate-spin" /> Loading allowed domains…
+              </div>
+            ) : allowedOrigins.length === 0 ? (
+              <div style={{ padding: 18, border: `1px dashed ${rule}`, borderRadius: 12, color: ink2, fontSize: 13 }}>
+                No domains loaded. Check the YouTube server connection and Firebase admin credentials.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {allowedOrigins.map((origin) => (
+                  <div key={origin} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 12px', border: `1px solid ${rule}`, borderRadius: 10, background: 'rgba(255,255,255,0.65)' }}>
+                    <span style={{ minWidth: 0, overflowWrap: 'anywhere', color: ink, fontSize: 13 }}>{origin}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAllowedOrigins((origins) => origins.filter((item) => item !== origin))}
+                      aria-label={`Remove ${origin}`}
+                      title="Remove domain"
+                      style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, border: 0, borderRadius: 8, background: redLight, color: red, cursor: 'pointer' }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={handleSaveOrigins}
+                disabled={originLoading || originSaving}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', border: 0, borderRadius: 12, background: green, color: '#fff', fontWeight: 600, cursor: originSaving ? 'wait' : 'pointer', opacity: originLoading || originSaving ? 0.6 : 1 }}
+              >
+                {originSaving ? <Loader size={15} className="animate-spin" /> : <Save size={15} />}
+                {originSaving ? 'Saving…' : 'Save domains'}
+              </button>
+            </div>
           </div>
         )}
       </div>

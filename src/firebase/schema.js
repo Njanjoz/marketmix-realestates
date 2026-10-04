@@ -47,7 +47,9 @@ export const propertySchema = {
         experience: 'Number', // years
         languages: 'Array',
         activeListings: 'Number',
-        joinedAt: 'Timestamp'
+        joinedAt: 'Timestamp',
+        agentProfile: 'Object', // linked to the user account with same email login
+        userRole: 'String' // agent
       }
     },
     

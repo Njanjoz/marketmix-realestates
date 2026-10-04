@@ -21,6 +21,7 @@ import {
   createSiteVisit,
 } from '../services/propertyService';
 import toast from 'react-hot-toast';
+import { shareProperty } from '../services/shareService';
 
 // ─── tiny helpers ────────────────────────────────────────
 const KSh = (n) => `KSh ${(Number(n) || 0).toLocaleString()}`;
@@ -335,9 +336,22 @@ const PropertyDetailspage = () => {
           </button>
           <button
             className="bg-white/90 backdrop-blur rounded-full p-2 shadow"
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              toast.success('Link copied');
+            onClick={async () => {
+              try {
+                const result = await shareProperty(p);
+                if (result?.source === 'clipboard') {
+                  toast.success('Property details copied');
+                } else if (result?.source === 'whatsapp') {
+                  toast.success('WhatsApp share opened');
+                } else if (result?.shared) {
+                  toast.success('Property shared');
+                } else {
+                  toast.success('Share link ready');
+                }
+              } catch (error) {
+                console.error('Share property error:', error);
+                toast.error('Could not share property');
+              }
             }}
           >
             <Share2 className="w-5 h-5" />

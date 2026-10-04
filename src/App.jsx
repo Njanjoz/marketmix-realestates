@@ -33,6 +33,7 @@ const DashboardRouter = lazy(() => import('./components/dashboards/DashboardRout
 
 // Admin Dashboard
 const AdminDashboard = lazy(() => import('./components/dashboards/AdminDashboard'));
+const PropertyModerationPage = lazy(() => import('./pages/admin/PropertyModerationPage'));
 
 // User Pages
 const ProfilePage = lazy(() => import('./pages/user/ProfilePage'));
@@ -119,7 +120,13 @@ function App() {
                           <AdminDashboard />
                         </ProtectedRoute>
                       } />
-                      
+
+                      <Route path="/admin/properties" element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                          <PropertyModerationPage />
+                        </ProtectedRoute>
+                      } />
+
                       {/* User Profile Routes */}
                       <Route path="/profile" element={
                         <ProtectedRoute>

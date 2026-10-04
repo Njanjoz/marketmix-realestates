@@ -9,6 +9,7 @@ import SellerPropertyEdit from '../seller/SellerPropertyEdit';
 import { Building, Eye, MessageSquare, TrendingUp, Plus, Edit, Trash2, MapPin, Bed, Bath, Square, DollarSign, Loader, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
+import PromotePropertyModal from '../PromotePropertyModal';
 
 const glass = {
   background: 'rgba(255,255,255,0.62)',
@@ -80,6 +81,7 @@ export default function SellerDashboard() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
+  const [promoteProperty, setPromoteProperty] = useState(null);
   const [stats, setStats] = useState({ 
     activeListings: 0, 
     totalViews: 0, 
@@ -339,7 +341,12 @@ export default function SellerDashboard() {
                           <span>💬 {listing.inquiries || 0} inquiries</span>
                         </div>
 
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button 
+                            onClick={() => setPromoteProperty(listing)}
+                            style={{ background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.35)', color: green, borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            Promote
+                          </button>
                           <button 
                             onClick={() => handleEditClick(listing)}
                             style={{ background: 'rgba(255,255,255,0.8)', border: `1px solid ${rule}`, borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -374,6 +381,15 @@ export default function SellerDashboard() {
           property={editingProperty}
           onClose={() => { setShowEditModal(false); setEditingProperty(null); }}
           onSuccess={handleEditSuccess}
+        />
+      )}
+
+      {promoteProperty && (
+        <PromotePropertyModal
+          property={promoteProperty}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          onClose={() => setPromoteProperty(null)}
         />
       )}
     </div>

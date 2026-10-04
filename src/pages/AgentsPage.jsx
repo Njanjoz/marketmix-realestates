@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { FaStar, FaPhone, FaEnvelope, FaSearch, FaFilter } from 'react-icons/fa'; 
 import { ExternalLink } from 'lucide-react'; 
 import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 const PRIMARY_COLOR = '#0284c7'; 
 const SECONDARY_COLOR = '#0c4a6e';
@@ -12,6 +12,7 @@ const SECONDARY_COLOR = '#0c4a6e';
 const AgentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSpecialty, setFilterSpecialty] = useState('all');
+  const [agents, setAgents] = useState([]);
   const [agentsSettings, setAgentsSettings] = useState({
     title: 'Meet Our Real Estate Experts',
     subtitle: 'Connect with top-rated agents specializing in luxury homes, commercial properties, and rentals.',
@@ -30,71 +31,64 @@ const AgentsPage = () => {
         console.error(err);
       }
     };
-    loadAgentsSettings();
-  }, []);
 
-  const agents = [
-    {
-      id: 1,
-      name: "Sarah Johnson",
-      title: "Senior Real Estate Agent",
-      photo: "https://images.unsplash.com/photo-1494790108755-2616b612b786",
-      rating: 4.9,
-      experience: 12,
-      propertiesSold: 245,
-      specialties: ["Luxury Homes", "Commercial", "Apartments"],
-      phone: "+254 712 345 678",
-      email: "sarah@marketmix.co.ke"
-    },
-    {
-      id: 2,
-      name: "Michael Chen",
-      title: "Property Management Expert",
-      photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e",
-      rating: 4.8,
-      experience: 8,
-      propertiesSold: 189,
-      specialties: ["Residential", "Rentals", "Investment"],
-      phone: "+254 701 234 567",
-      email: "michael@marketmix.co.ke"
-    },
-    {
-        id: 3,
-        name: "Aisha Hassan",
-        title: "Commercial Property Specialist",
-        photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2",
-        rating: 5.0,
-        experience: 5,
-        propertiesSold: 92,
-        specialties: ["Commercial", "Land"],
-        phone: "+254 722 987 654",
-        email: "aisha@marketmix.co.ke"
-    },
-    {
-        id: 4,
-        name: "David Kimani",
-        title: "Residential Sales Agent",
-        photo: "https://images.unsplash.com/photo-1531427186208-eb287f7cdba7",
-        rating: 4.7,
-        experience: 15,
-        propertiesSold: 350,
-        specialties: ["Houses", "Villas", "Luxury Homes"],
-        phone: "+254 733 456 789",
-        email: "david@marketmix.co.ke"
-    },
-  ];
+    const loadAgents = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'agent'));
+        const snapshot = await getDocs(q);
+
+        const agentList = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          const profile = data.agentProfile || {};
+          const specialties = Array.isArray(profile.specialties) && profile.specialties.length
+            ? profile.specialties
+            : Array.isArray(data.specialties)
+              ? data.specialties
+              : ['Residential'];
+
+          return {
+            id: docSnap.id,
+            name: profile.name || data.name || 'Agent',
+            title: profile.title || data.title || 'Real Estate Agent',
+            photo: profile.photo || data.photo || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
+            rating: Number(profile.rating ?? data.rating ?? 4.8),
+            experience: Number(profile.experience ?? data.experience ?? 1),
+            propertiesSold: Number(profile.propertiesSold ?? data.propertiesSold ?? 0),
+            specialties,
+            phone: profile.phone || data.phone || '',
+            email: profile.email || data.email || '',
+            bio: profile.bio || data.bio || 'Experienced real estate professional helping clients buy, sell, and invest.',
+            languages: Array.isArray(profile.languages) && profile.languages.length ? profile.languages : ['English'],
+            office: profile.office || data.office || '',
+          };
+        });
+
+        setAgents(agentList);
+      } catch (err) {
+        console.error('Failed to load agent data:', err);
+        setAgents([]);
+      }
+    };
+
+    loadAgentsSettings();
+    loadAgents();
+  }, []);
 
   const specialtyOptions = [
     'all', 'Luxury Homes', 'Commercial', 'Apartments', 'Residential', 'Rentals', 'Investment', 'Land', 'Houses', 'Villas'
   ];
 
   const filteredAgents = agents.filter(agent => {
-    const searchMatch = searchQuery === '' || 
-                        agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        agent.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        agent.specialties.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+    const name = (agent.name || '').toLowerCase();
+    const title = (agent.title || '').toLowerCase();
+    const specialties = Array.isArray(agent.specialties) ? agent.specialties : [];
 
-    const specialtyMatch = filterSpecialty === 'all' || agent.specialties.includes(filterSpecialty);
+    const searchMatch = searchQuery === '' ||
+      name.includes(searchQuery.toLowerCase()) ||
+      title.includes(searchQuery.toLowerCase()) ||
+      specialties.some(s => (s || '').toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const specialtyMatch = filterSpecialty === 'all' || specialties.includes(filterSpecialty);
 
     return searchMatch && specialtyMatch;
   });

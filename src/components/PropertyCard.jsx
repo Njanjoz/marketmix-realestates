@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Bed, Bath, Square, Heart, Eye } from 'lucide-react';
+import { MapPin, Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
 import { getPropertyImage } from '../services/propertyService';
+import { shareProperty } from '../services/shareService';
+import toast from 'react-hot-toast';
 
 const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
   const [saved, setSaved] = useState(false);
@@ -28,6 +30,25 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
 
     localStorage.setItem(key, JSON.stringify(next));
     setSaved(next.includes(id));
+  };
+
+  const handleShare = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      const result = await shareProperty(property);
+      if (result?.source === 'whatsapp') {
+        toast.success('WhatsApp share opened');
+      } else if (result?.source === 'clipboard') {
+        toast.success('Property details copied');
+      } else if (result?.shared) {
+        toast.success('Property shared');
+      }
+    } catch (error) {
+      console.error('Share property error:', error);
+      toast.error('Could not share property');
+    }
   };
 
   const formatPrice = (price) => {
@@ -71,12 +92,24 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
             )}
           </div>
           <div className="flex-1 p-5">
-            <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
-              {property.title}
-            </h3>
-            <div className="flex items-center text-gray-500 text-sm mb-3">
-              <MapPin className="w-4 h-4 mr-1" />
-              {property.location}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
+                  {property.title}
+                </h3>
+                <div className="flex items-center text-gray-500 text-sm mb-3">
+                  <MapPin className="w-4 h-4 mr-1" />
+                  {property.location}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Share property"
+                onClick={handleShare}
+                className="p-2 rounded-full bg-gray-100 text-gray-700 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
             </div>
             <div className="flex flex-wrap gap-4 mb-4 text-gray-600">
               <span className="flex items-center gap-1"><Bed className="w-4 h-4" /> {property.bedrooms || 0} beds</span>
@@ -119,14 +152,24 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               📍 {distance} km away
             </div>
           )}
-          <button
-            type="button"
-            aria-label="Save property"
-            onClick={toggleSaved}
-            className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
-          >
-            <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`} />
-          </button>
+          <div className="absolute top-3 right-3 flex gap-2">
+            <button
+              type="button"
+              aria-label="Share property"
+              onClick={handleShare}
+              className="p-2 bg-white/90 rounded-full hover:bg-white transition-colors text-gray-700 hover:text-emerald-600"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Save property"
+              onClick={toggleSaved}
+              className="p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+            >
+              <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`} />
+            </button>
+          </div>
         </div>
         <div className="p-4">
           <div className="flex flex-wrap gap-2 mb-2">

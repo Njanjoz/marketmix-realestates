@@ -2,80 +2,25 @@
 import React, { useRef, useState } from 'react';
 import { Upload, X, Loader, CheckCircle, AlertCircle, Star, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { resizeImage, uploadFileToR2 } from '../../../utils/cloudflareUpload';
 
-const CLOUDFLARE_WORKER_URL = 'https://marketmix-uploader.johnnjanjo4.workers.dev';
 const MAX_IMAGES = 20;
 
 // ─── helpers ─────────────────────────────────────────────
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-const resizeImage = (file, maxWidth = 1200, maxHeight = 800) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('FileReader failed'));
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Image load failed'));
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          if (width > height) {
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-          } else {
-            if (height > maxHeight) {
-              width = Math.round((width * maxHeight) / height);
-              height = maxHeight;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) return reject(new Error('canvas.toBlob returned null'));
-              resolve(new File([blob], file.name, { type: file.type, lastModified: Date.now() }));
-            },
-            file.type,
-            0.85
-          );
-        } catch (err) {
-          reject(err);
-        }
-      };
-      img.src = e.target.result;
-    };
-  });
-};
-
-const uploadToCloudflare = async (file) => {
-  const fd = new FormData();
-  fd.append('file', file);
+const getImageName = (img) => {
+  if (img.file?.name || img.name) return img.file?.name || img.name;
   try {
-    const res = await fetch(`${CLOUDFLARE_WORKER_URL}/upload`, { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-    const data = await res.json();
-    if (!data?.url) throw new Error('Worker did not return a URL');
-    return { url: data.url, key: data.key };
-  } catch (error) {
-    console.warn('Cloudflare R2 worker CORS/network error, using local Data URL fallback:', error);
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve({ url: reader.result, key: `local-${Date.now()}-${file.name}` });
-      reader.onerror = (err) => reject(new Error('Failed to read file locally'));
-      reader.readAsDataURL(file);
-    });
+    return decodeURIComponent(new URL(img.remoteUrl).pathname.split('/').filter(Boolean).pop()) || 'Property photo';
+  } catch {
+    return 'Property photo';
   }
 };
 
 // ─── Image Card Component ──────────────────────────────
 const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRemove, isCover, catLabel }) => {
-  const src = img.localPreviewUrl || img.remoteUrl;
+  const src = img.remoteUrl;
+  const imageName = getImageName(img);
 
   return (
     <div
@@ -98,7 +43,17 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
       {img.status === 'uploading' && (
         <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white text-xs gap-1">
           <Loader className="w-5 h-5 animate-spin" />
-          <span>Uploading…</span>
+          <span>{img.phase === 'processing' ? 'Preparing image…' : `Uploading ${img.progress || 0}%`}</span>
+          <div
+            className="w-3/4 h-1.5 bg-white/30 rounded-full overflow-hidden mt-1"
+            role="progressbar"
+            aria-label={`Uploading ${img.file?.name || 'image'}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={img.progress || 0}
+          >
+            <div className="h-full bg-emerald-400 transition-[width]" style={{ width: img.phase === 'processing' ? '12%' : `${img.progress || 0}%` }} />
+          </div>
         </div>
       )}
       {img.status === 'uploaded' && (
@@ -116,10 +71,14 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
       )}
 
       {isCover && (
-        <span className="absolute bottom-2 left-2 bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+        <span className="absolute top-8 left-2 bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
           Cover ⭐
         </span>
       )}
+
+      <span title={imageName} className="absolute bottom-2 left-2 right-2 bg-black/75 text-white text-[10px] px-2 py-1 rounded truncate">
+        {imageName}
+      </span>
 
       <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full">
         {catLabel}
@@ -153,22 +112,66 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
 const MediaUploader = ({ categories, images, setImages }) => {
   const [dragOver, setDragOver] = useState(false);
   const [draggedId, setDraggedId] = useState(null);
+  const [photoUrl, setPhotoUrl] = useState('');
   const inputRef = useRef(null);
   const [activeCategory, setActiveCategory] = useState(categories[0].id);
   const [viewMode, setViewMode] = useState('category');
 
+  const addImageFromUrl = () => {
+    const trimmedUrl = photoUrl.trim();
+    if (!trimmedUrl) {
+      toast.error('Paste an image URL first.');
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      toast.error('Please enter a valid image URL starting with http:// or https://');
+      return;
+    }
+
+    setImages((currentImages) => {
+      const remaining = MAX_IMAGES - currentImages.length;
+      if (remaining <= 0) {
+        toast.error(`Maximum ${MAX_IMAGES} images allowed`);
+        return currentImages;
+      }
+
+      return [
+        ...currentImages,
+        {
+          id: uid(),
+          file: null,
+          localPreviewUrl: trimmedUrl,
+          remoteUrl: trimmedUrl,
+          r2Key: null,
+          status: 'uploaded',
+          category: activeCategory,
+          error: null,
+        },
+      ];
+    });
+
+    setPhotoUrl('');
+    toast.success('Image URL added to this gallery.');
+  };
+
   // Upload ONE image by its stable id. No indexes anywhere.
-  const uploadOne = async (imgId) => {
-    const target = images.find((i) => i.id === imgId);
-    if (!target || !target.file) return;
+  const uploadOne = async (imgId, selectedFile = null) => {
+    const file = selectedFile || images.find((i) => i.id === imgId)?.file;
+    if (!file) return;
 
     setImages((prev) =>
       prev.map((im) => (im.id === imgId ? { ...im, status: 'uploading', error: null } : im))
     );
 
     try {
-      const resized = await resizeImage(target.file);
-      const result = await uploadToCloudflare(resized);
+      console.info(`[Property media upload] Resizing ${file.name}`);
+      const resized = await resizeImage(file);
+      console.info(`[Property media upload] Resized ${file.name}; sending to Cloudflare`);
+      setImages((prev) => prev.map((im) => im.id === imgId ? { ...im, phase: 'uploading' } : im));
+      const result = await uploadFileToR2(resized, (progress) => {
+        setImages((prev) => prev.map((im) => im.id === imgId ? { ...im, progress } : im));
+      });
       setImages((prev) =>
         prev.map((im) =>
           im.id === imgId
@@ -177,7 +180,7 @@ const MediaUploader = ({ categories, images, setImages }) => {
         )
       );
     } catch (e) {
-      console.error('Upload error:', e);
+      console.error(`[Property media upload] Failed ${file.name}:`, e);
       setImages((prev) =>
         prev.map((im) =>
           im.id === imgId ? { ...im, status: 'error', error: e.message || 'Upload failed' } : im
@@ -189,30 +192,27 @@ const MediaUploader = ({ categories, images, setImages }) => {
   const handleFiles = (files, category) => {
     if (!files || files.length === 0) return;
 
-    setImages((currentImages) => {
-      const remaining = MAX_IMAGES - currentImages.length;
-      if (remaining <= 0) {
-        toast.error(`Maximum ${MAX_IMAGES} images allowed`);
-        return currentImages;
-      }
-      const arr = Array.from(files).slice(0, remaining);
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0) {
+      toast.error(`Maximum ${MAX_IMAGES} images allowed`);
+      return;
+    }
+    const selectedFiles = Array.from(files).slice(0, remaining);
+    const newImgs = selectedFiles.map((file) => ({
+      id: uid(),
+      file,
+      localPreviewUrl: null,
+      remoteUrl: null,
+      r2Key: null,
+      status: 'uploading',
+      phase: 'processing',
+      progress: 0,
+      category,
+      error: null,
+    }));
 
-      const newImgs = arr.map((file) => ({
-        id: uid(),
-        file,
-        localPreviewUrl: URL.createObjectURL(file),
-        remoteUrl: null,
-        r2Key: null,
-        status: 'previewing', // previewing | uploading | uploaded | error
-        category,
-        error: null,
-      }));
-
-      // Kick off uploads AFTER state has committed
-      queueMicrotask(() => newImgs.forEach((img) => uploadOne(img.id)));
-
-      return [...currentImages, ...newImgs];
-    });
+    setImages((currentImages) => [...currentImages, ...newImgs]);
+    newImgs.forEach((img) => uploadOne(img.id, img.file));
   };
 
   const retry = (id) => uploadOne(id);
@@ -252,7 +252,6 @@ const MediaUploader = ({ categories, images, setImages }) => {
   };
 
   const activeCategoryObj = categories.find((c) => c.id === activeCategory) || categories[0];
-  const categoryImages = images.filter((img) => img.category === activeCategory);
   const coverId = images[0]?.id; // true global cover
 
   return (
@@ -375,21 +374,40 @@ const MediaUploader = ({ categories, images, setImages }) => {
                 e.target.value = '';
               }}
             />
+
+            <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mb-2">
+                Or paste an image URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={photoUrl}
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  className="flex-1 min-w-0 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+                <button
+                  type="button"
+                  onClick={addImageFromUrl}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  Add URL
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between text-xs text-gray-600">
-              <span className="font-medium">
-                Previews for "{activeCategoryObj.label}" ({categoryImages.length})
-              </span>
-              {categoryImages.length === 0 && (
-                <span className="italic text-gray-400">No photos uploaded for this category yet.</span>
-              )}
+              <span className="font-medium">Photo previews · all categories ({images.length})</span>
             </div>
 
-            {categoryImages.length > 0 && (
+            {images.length === 0 ? (
+              <p className="text-xs italic text-gray-400">Uploaded photos will appear here with their category and filename.</p>
+            ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {categoryImages.map((img) => (
+                {images.map((img) => (
                   <ImageCard
                     key={`category-${img.id}`}
                     img={img}

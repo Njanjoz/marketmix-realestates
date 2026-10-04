@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
 import { collection, getDocs, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import PromotePropertyModal from '../PromotePropertyModal';
 import { 
   Building, TrendingUp, DollarSign, Users, Calendar, 
   MessageSquare, CheckCircle, Star, Plus, Eye, Home,
@@ -46,6 +47,7 @@ const AgentDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [promoteProperty, setPromoteProperty] = useState(null);
   const [stats, setStats] = useState({
     activeListings: 0,
     totalViews: 0,
@@ -261,6 +263,15 @@ const AgentDashboard = () => {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Eye size={12} /> {listing.views || 0} views</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MessageSquare size={12} /> {listing.inquiries || 0} inquiries</span>
                 </div>
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setPromoteProperty(listing)}
+                    style={{ fontFamily: sans, fontSize: 11, color: agentBlue, background: agentBlueLight, border: `1px solid ${agentBlue}40`, borderRadius: 999, padding: '7px 12px', cursor: 'pointer' }}
+                  >
+                    Promote
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -325,6 +336,15 @@ const AgentDashboard = () => {
           </div>
         </div>
       </div>
+
+      {promoteProperty && (
+        <PromotePropertyModal
+          property={promoteProperty}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          onClose={() => setPromoteProperty(null)}
+        />
+      )}
     </div>
   );
 };

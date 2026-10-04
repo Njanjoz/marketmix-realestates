@@ -339,7 +339,7 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
   }, [stepIndex, visibleSteps]);
 
   const update = useCallback((patch) => {
-    setData((prev) => ({ ...prev, ...patch }));
+    setData((prev) => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));
   }, []);
 
   const goNext = () => {
@@ -396,14 +396,31 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
       const pid = property.propertyId || property.id;
       if (!pid) throw new Error('Property ID is missing');
 
-      const uploadedImages = normalizeImageEntries(data.images || [])
+      const normalizedImages = normalizeImageEntries(data.images || []);
+      const hasPendingUploads = normalizedImages.some((i) => {
+        const isBlobPreview = typeof (i?.localPreviewUrl || i?.remoteUrl || i?.url) === 'string' &&
+          (i.localPreviewUrl || i.remoteUrl || i.url).startsWith('blob:');
+        return (i.status === 'previewing' || i.status === 'uploading') && !isBlobPreview;
+      });
+
+      if (hasPendingUploads) {
+        toast.error('Please wait for the image uploads to finish before saving the listing.');
+        setSubmitting(false);
+        return;
+      }
+
+      const uploadedImages = normalizedImages
         .filter((i) => i.remoteUrl || i.url || i.localPreviewUrl || i.file)
-        .map((i) => ({
-          url: i.remoteUrl || i.url || i.localPreviewUrl || '',
-          key: i.r2Key || i.key || null,
-          category: i.category || 'other',
-        }))
-        .filter((i) => i.url);
+        .map((i) => {
+          const url = i.remoteUrl || i.url || i.localPreviewUrl || '';
+          const cleanUrl = typeof url === 'string' && url.startsWith('blob:') ? '' : url;
+          return {
+            url: cleanUrl,
+            key: i.r2Key || i.key || null,
+            category: i.category || 'other',
+          };
+        })
+        .filter((i) => i.url && !i.url.startsWith('blob:'));
 
       const publicMedia = uploadedImages.map((i) => i.url);
 

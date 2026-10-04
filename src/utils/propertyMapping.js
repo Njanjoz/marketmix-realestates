@@ -30,6 +30,13 @@ export const PROTECTED_FIELDS = [
   'youtubeVideoId', 'youtubeUrl'
 ];
 
+const isPersistableImageUrl = (value) => {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('blob:')) return false;
+  return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/');
+};
+
 export const resolvePropertyImage = (property) => {
   if (!property) return '';
 
@@ -43,23 +50,23 @@ export const resolvePropertyImage = (property) => {
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
+    if (typeof candidate === 'string' && isPersistableImageUrl(candidate)) {
       return candidate;
     }
 
     if (Array.isArray(candidate)) {
       for (const item of candidate) {
-        if (typeof item === 'string' && item.trim()) return item;
+        if (typeof item === 'string' && isPersistableImageUrl(item)) return item;
         if (item && typeof item === 'object') {
           const url = item.remoteUrl || item.url || item.src || item.localPreviewUrl || item.preview;
-          if (typeof url === 'string' && url.trim()) return url;
+          if (isPersistableImageUrl(url)) return url;
         }
       }
     }
 
     if (candidate && typeof candidate === 'object') {
       const url = candidate.remoteUrl || candidate.url || candidate.src || candidate.localPreviewUrl || candidate.preview;
-      if (typeof url === 'string' && url.trim()) return url;
+      if (isPersistableImageUrl(url)) return url;
     }
   }
 

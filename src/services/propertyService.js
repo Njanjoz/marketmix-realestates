@@ -13,6 +13,13 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
+const isPersistableImageUrl = (value) => {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('blob:')) return false;
+  return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/');
+};
+
 export const getPropertyImage = (property) => {
   const candidates = [
     property?.images,
@@ -25,10 +32,10 @@ export const getPropertyImage = (property) => {
     if (!Array.isArray(candidate)) continue;
 
     for (const item of candidate) {
-      if (typeof item === 'string' && item.trim()) return item;
+      if (typeof item === 'string' && isPersistableImageUrl(item)) return item;
       if (item && typeof item === 'object') {
         const url = item.remoteUrl || item.url || item.src || item.localPreviewUrl || item.preview;
-        if (typeof url === 'string' && url.trim()) return url;
+        if (isPersistableImageUrl(url)) return url;
       }
     }
   }

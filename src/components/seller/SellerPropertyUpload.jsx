@@ -6,15 +6,14 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { X, Upload, MapPin, DollarSign, Bed, Bath, Square, Loader, CheckCircle, AlertCircle, Crosshair } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LocationPicker from '../LocationPicker';
-
-// Cloudflare R2 upload URL
-const CLOUDFLARE_WORKER_URL = 'https://marketmix-uploader.johnnjanjo4.workers.dev';
+import { resizeImage, uploadFileToR2, sanitizeImageEntries } from '../../utils/cloudflareUpload';
 
 const SellerPropertyUpload = ({ onClose, onSuccess }) => {
   const { currentUser, userProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadedImages, setUploadedImages] = useState([]);
+  const [urlInput, setUrlInput] = useState('');
   const [selectedLocation, setSelectedLocation] = useState(null);
   
   const [formData, setFormData] = useState({
@@ -31,77 +30,6 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     coordinates: null
   });
 
-  // Upload image to Cloudflare R2 with local fallback
-  const uploadToCloudflare = async (file) => {
-    const formDataObj = new FormData();
-    formDataObj.append('file', file);
-
-    try {
-      const response = await fetch(`${CLOUDFLARE_WORKER_URL}/upload`, {
-        method: 'POST',
-        body: formDataObj,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (!data?.url) throw new Error('Worker did not return a URL');
-      return { url: data.url, key: data.key };
-    } catch (error) {
-      console.warn('Cloudflare upload fallback to local data URL:', error);
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve({ url: reader.result, key: `local-${Date.now()}-${file.name}` });
-        reader.onerror = (err) => reject(new Error('Failed to read file locally'));
-        reader.readAsDataURL(file);
-      });
-    }
-  };
-
-  // Resize image before upload
-  const resizeImage = (file, maxWidth = 1200, maxHeight = 800) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        const img = new Image();
-        img.src = e.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > height) {
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-          } else {
-            if (height > maxHeight) {
-              width = Math.round((width * maxHeight) / height);
-              height = maxHeight;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          canvas.toBlob((blob) => {
-            const resizedFile = new File([blob], file.name, {
-              type: file.type,
-              lastModified: Date.now(),
-            });
-            resolve(resizedFile);
-          }, file.type, 0.85);
-        };
-      };
-    });
-  };
-
   // Handle multiple image selection with stable unique IDs
   const handleImageSelect = async (e) => {
     const files = Array.from(e.target.files);
@@ -110,31 +38,49 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     const newImages = files.map(file => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       file,
-      preview: URL.createObjectURL(file),
+      preview: null,
       status: 'uploading',
+      phase: 'processing',
+      progress: 0,
       url: null
     }));
     
     setUploadedImages(prev => [...prev, ...newImages]);
     setUploadingImages(true);
+    let failedCount = 0;
     
     for (const imgItem of newImages) {
       try {
+        console.info(`[Property upload] Resizing ${imgItem.file.name}`);
         const resizedFile = await resizeImage(imgItem.file);
-        const result = await uploadToCloudflare(resizedFile);
+        console.info(`[Property upload] Resized ${imgItem.file.name}; sending to Cloudflare`);
+        setUploadedImages(prev => prev.map(img =>
+          img.id === imgItem.id ? { ...img, phase: 'uploading' } : img
+        ));
+        const result = await uploadFileToR2(resizedFile, progress => {
+          setUploadedImages(prev => prev.map(img =>
+            img.id === imgItem.id ? { ...img, progress } : img
+          ));
+        });
         
         setUploadedImages(prev => prev.map(img => 
-          img.id === imgItem.id ? { ...img, url: result.url, key: result.key, status: 'uploaded' } : img
+          img.id === imgItem.id ? { ...img, url: result.url, key: result.key, status: 'uploaded', error: null } : img
         ));
       } catch (error) {
+        failedCount += 1;
+        console.error(`[Property upload] Failed ${imgItem.file.name}:`, error);
         setUploadedImages(prev => prev.map(img => 
-          img.id === imgItem.id ? { ...img, status: 'error' } : img
+          img.id === imgItem.id ? { ...img, status: 'error', error: error.message || 'Upload failed' } : img
         ));
       }
     }
     
     setUploadingImages(false);
-    toast.success(`${newImages.length} image(s) uploaded successfully!`);
+    if (failedCount === 0) {
+      toast.success(`${newImages.length} image(s) uploaded successfully!`);
+    } else {
+      toast.error(`${failedCount} image(s) failed to upload. Retry before submitting.`);
+    }
   };
 
   const removeImage = (id) => {
@@ -145,23 +91,55 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     });
   };
 
+  const addImageFromUrl = () => {
+    const value = urlInput.trim();
+    if (!value) {
+      toast.error('Paste an image URL first.');
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(value)) {
+      toast.error('Please enter a valid image URL.');
+      return;
+    }
+
+    const newImage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      file: null,
+      preview: value,
+      status: 'uploaded',
+      url: value,
+      key: null,
+    };
+
+    setUploadedImages(prev => [...prev, newImage]);
+    setUrlInput('');
+    toast.success('Image URL added.');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    const uploadedUrls = uploadedImages.filter(img => img.status === 'uploaded');
+    const sanitizedImages = sanitizeImageEntries(uploadedImages);
+    const uploadedUrls = sanitizedImages.filter((img) => typeof img === 'string' ? true : (img?.url || img?.remoteUrl));
+    const hasPendingBlob = uploadedImages.some(img => img.status === 'uploading' || img.status === 'previewing' || String(img.preview || '').startsWith('blob:'));
     if (uploadedUrls.length === 0) {
-      toast.error('Please upload at least one image');
+      toast.error('Please upload at least one valid image');
+      return;
+    }
+    if (hasPendingBlob) {
+      toast.error('Please wait for all selected images to finish uploading before submitting.');
       return;
     }
     
     setLoading(true);
     try {
-      const formattedMedia = uploadedUrls.map(img => ({
-        url: img.url,
-        key: img.key || null,
+      const formattedMedia = uploadedUrls.map((img) => ({
+        url: typeof img === 'string' ? img : (img.url || img.remoteUrl),
+        key: typeof img === 'string' ? null : (img.key || null),
         category: 'other'
       }));
-      const publicUrls = uploadedUrls.map(img => img.url);
+      const publicUrls = uploadedUrls.map((img) => typeof img === 'string' ? img : (img.url || img.remoteUrl));
 
       const propertyData = {
         ...formData,
@@ -231,6 +209,26 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
               />
               <p className="text-xs text-gray-500 mt-2">Upload multiple images (max 10). First image is cover photo.</p>
             </div>
+
+            <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mb-2">Add image by URL</label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  className="flex-1 min-w-0 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+                <button
+                  type="button"
+                  onClick={addImageFromUrl}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  Add URL
+                </button>
+              </div>
+            </div>
             
             {uploadedImages.length > 0 && (
               <div className="mt-4">
@@ -240,10 +238,32 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                 <div className="grid grid-cols-3 gap-2">
                   {uploadedImages.map((img, idx) => (
                     <div key={img.id} className="relative group">
-                      <img src={img.preview} className="w-full h-24 object-cover rounded-lg" />
+                      {img.url || img.preview ? (
+                        <img src={img.url || img.preview} alt="Property" className="w-full h-24 object-cover rounded-lg" />
+                      ) : (
+                        <div className="w-full h-24 rounded-lg bg-gray-100" />
+                      )}
                       {img.status === 'uploading' && (
-                        <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                        <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-2 px-3">
                           <Loader className="w-5 h-5 text-white animate-spin" />
+                          <span className="text-[10px] text-white">
+                            {img.phase === 'processing' ? 'Preparing image…' : `Uploading ${img.progress}%`}
+                          </span>
+                          <div
+                            className="w-full h-1.5 bg-white/30 rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-label={`Uploading ${img.file?.name || 'image'}`}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={img.progress}
+                          >
+                            <div className="h-full bg-emerald-400 transition-[width]" style={{ width: img.phase === 'processing' ? '12%' : `${img.progress}%` }} />
+                          </div>
+                        </div>
+                      )}
+                      {img.status === 'error' && (
+                        <div className="absolute inset-0 bg-red-500/70 rounded-lg flex items-center justify-center" title={img.error || 'Cloudflare upload failed'}>
+                          <AlertCircle className="w-5 h-5 text-white" />
                         </div>
                       )}
                       {img.status === 'uploaded' && (

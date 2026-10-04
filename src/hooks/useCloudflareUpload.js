@@ -4,7 +4,7 @@ import { uploadFileToR2, uploadMultipleFilesToR2, deleteFileFromR2, revokePrevie
 
 export const useCloudflareUpload = () => {
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [error, setError] = useState(null);
 
@@ -18,7 +18,7 @@ export const useCloudflareUpload = () => {
         file,
         url: result.url,
         key: result.key,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl: result.url,
         name: file.name,
         size: file.size,
         type: file.type,
@@ -38,12 +38,12 @@ export const useCloudflareUpload = () => {
   const uploadMultiple = useCallback(async (files) => {
     setUploading(true);
     setError(null);
-    setProgress({ current: 0, total: files.length });
+    setProgress({ current: 0, total: files.length, percent: 0 });
     
-    // Add temporary previews for all files
+    // Keep files hidden until Cloudflare returns their image URLs.
     const tempFiles = files.map(file => ({
       file,
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: null,
       name: file.name,
       size: file.size,
       type: file.type,
@@ -52,8 +52,8 @@ export const useCloudflareUpload = () => {
     setUploadedFiles(prev => [...prev, ...tempFiles]);
     
     try {
-      const results = await uploadMultipleFilesToR2(files, (completed, total) => {
-        setProgress({ current: completed, total });
+      const results = await uploadMultipleFilesToR2(files, (completed, total, percent = 0) => {
+        setProgress({ current: completed, total, percent });
       });
       
       // Update files with uploaded URLs
@@ -65,6 +65,7 @@ export const useCloudflareUpload = () => {
               ...existingFile,
               url: result.url,
               key: result.key,
+              previewUrl: result.url,
               status: 'success'
             };
           } else if (result && result.error) {
@@ -113,7 +114,7 @@ export const useCloudflareUpload = () => {
       }
     }
     setUploadedFiles([]);
-    setProgress({ current: 0, total: 0 });
+    setProgress({ current: 0, total: 0, percent: 0 });
   }, [uploadedFiles]);
 
   const getSuccessFiles = useCallback(() => {
