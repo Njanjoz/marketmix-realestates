@@ -26,6 +26,10 @@ const THEME_OPTIONS = {
   },
 };
 
+const POSTER_PHOTO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="300" viewBox="0 0 1080 300"><rect width="1080" height="300" fill="#e2e8f0"/><path d="M0 250 250 80l180 130 190-170 460 280v-20H0z" fill="#cbd5e1"/><text x="540" y="275" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#475569">PROPERTY PHOTO UNAVAILABLE</text></svg>'
+)}`;
+
 const getPropertyUrl = (property) => {
   if (property?.url || property?.propertyUrl) return property.url || property.propertyUrl;
 
@@ -64,7 +68,7 @@ const getPropertyPhotos = (property) => {
   const addPhoto = (value) => {
     const url = typeof value === 'string'
       ? value
-      : value?.remoteUrl || value?.url || value?.src || value?.preview;
+      : value?.remoteUrl || value?.url || value?.src || value?.localPreviewUrl || value?.preview;
     if (typeof url === 'string' && /^(https?:\/\/|data:image\/)/i.test(url) && !photos.includes(url)) {
       photos.push(url);
     }
@@ -182,7 +186,7 @@ const drawWrappedText = (context, text, x, y, maxWidth, lineHeight, maxLines) =>
 
 const loadPosterImage = (url) => new Promise((resolve) => {
   const image = new Image();
-  image.crossOrigin = 'anonymous';
+  if (!url.startsWith('data:')) image.crossOrigin = 'anonymous';
   image.onload = () => resolve(image);
   image.onerror = () => resolve(null);
   image.src = url;
@@ -215,8 +219,13 @@ const supportsPromoFileSharing = (file) => {
 
 const createPromoSticker = async ({ photos, headline, caption, highlights, features, nearby, property, contact, theme }) => {
   const photoUrls = photos?.length ? photos : [resolvePropertyImage(property)].filter(Boolean);
-  const loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
-  if (!loadedPhotos.length) throw new Error('Could not load a property photo for the poster.');
+  let loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
+  const hasPropertyPhoto = loadedPhotos.length > 0;
+  if (!hasPropertyPhoto) {
+    const placeholder = await loadPosterImage(POSTER_PHOTO_PLACEHOLDER);
+    if (!placeholder) throw new Error('Could not prepare the poster photo area.');
+    loadedPhotos = [placeholder];
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
@@ -337,7 +346,10 @@ const createPromoSticker = async ({ photos, headline, caption, highlights, featu
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Could not create promo image');
-  return new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' });
+  return {
+    file: new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' }),
+    hasPropertyPhoto,
+  };
 };
 
 const downloadPosterFile = (file) => {
@@ -345,8 +357,23 @@ const downloadPosterFile = (file) => {
   const link = document.createElement('a');
   link.href = downloadUrl;
   link.download = file.name;
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+};
+
+const openWhatsAppWithMessage = (message) => {
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const link = document.createElement('a');
+  link.href = whatsappUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 };
 
 const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, features, nearby, includeContact, userProfile, currentUser }) => {
@@ -475,9 +502,13 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const generatePromoPoster = async () => {
     try {
-      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
+      const { file, hasPropertyPhoto } = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
       cachePromoPoster(file);
-      toast.success('Poster ready. Tap Share poster to share it from your phone.');
+      if (hasPropertyPhoto) {
+        toast.success('Poster ready. Tap Share poster to share it from your phone.');
+      } else {
+        toast.error('Poster created, but the cover photo could not be loaded. Check the image URL or photo access settings.');
+      }
     } catch (error) {
       console.error('[Property share] Could not generate poster:', error);
       toast.error(error.message || 'Could not generate the promo poster');
@@ -486,10 +517,20 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const downloadPromoImage = async () => {
     try {
-      const file = posterFile || await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-      if (!posterFile) cachePromoPoster(file);
+      let file = posterFile;
+      let hasPropertyPhoto = true;
+      if (!file) {
+        const generated = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
+        file = generated.file;
+        hasPropertyPhoto = generated.hasPropertyPhoto;
+        cachePromoPoster(file);
+      }
       downloadPosterFile(file);
-      toast.success('Promo poster downloaded');
+      if (hasPropertyPhoto) {
+        toast.success('Promo poster downloaded');
+      } else {
+        toast.error('Poster downloaded with a photo placeholder because the cover photo could not be loaded.');
+      }
       return true;
     } catch (error) {
       console.error('[Property share] Could not create promo image:', error);
@@ -507,24 +548,23 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     setSharing(true);
     try {
       if (supportsPromoFileSharing(posterFile)) {
-        await navigator.share({
-          files: [posterFile],
-          title: property?.title || 'MarketMix property poster',
-          text: finalMessage,
-        });
-        toast.success('Poster shared');
-        return;
+        try {
+          await navigator.share({
+            files: [posterFile],
+            title: property?.title || 'MarketMix property poster',
+            text: finalMessage,
+          });
+          toast.success('Poster shared. Choose WhatsApp to send it.');
+          return;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+          console.warn('[Property share] Native poster sharing failed; using download and WhatsApp fallback:', error);
+        }
       }
 
       downloadPosterFile(posterFile);
-      const whatsappLink = document.createElement('a');
-      whatsappLink.href = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
-      whatsappLink.target = '_blank';
-      whatsappLink.rel = 'noopener noreferrer';
-      document.body.appendChild(whatsappLink);
-      whatsappLink.click();
-      whatsappLink.remove();
-      toast.success('A4 poster downloaded; WhatsApp opened with the listing text. Attach the poster before sending.');
+      openWhatsAppWithMessage(finalMessage);
+      toast.success('A4 poster download started; WhatsApp opened with the listing text. Attach the poster before sending.');
     } catch (error) {
       if (error.name === 'AbortError') return;
       console.error('[Property share] Could not open WhatsApp or download poster:', error);
