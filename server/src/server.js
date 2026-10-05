@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import process from 'node:process';
 import youtubeRoutes from './routes/youtube.js';
+import posterRoutes from './routes/poster.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -15,6 +17,7 @@ const allowedOrigins = new Set([
   ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
 ]);
 const corsOptions = {
+  exposedHeaders: ['X-Poster-Photo'],
   origin(origin, callback) {
     const isVercelPreview = /^https:\/\/marketmix-realestates(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin || '');
     callback(null, !origin || allowedOrigins.has(origin) || isVercelPreview);
@@ -30,6 +33,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/', youtubeRoutes);
+app.use('/', posterRoutes);
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

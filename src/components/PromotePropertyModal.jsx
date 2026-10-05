@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucide-react';
-import QRCode from 'qrcode';
 import { resolvePropertyImage } from '../utils/propertyMapping';
 import { getYouTubeTourUrl } from '../services/shareService';
+import { generatePromoPoster as requestPromoPoster, getPromoCoverImage } from '../services/posterService';
 import toast from 'react-hot-toast';
 
 const THEME_OPTIONS = {
@@ -25,10 +25,6 @@ const THEME_OPTIONS = {
     panel: '#ffffff',
   },
 };
-
-const POSTER_PHOTO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="300" viewBox="0 0 1080 300"><rect width="1080" height="300" fill="#e2e8f0"/><path d="M0 250 250 80l180 130 190-170 460 280v-20H0z" fill="#cbd5e1"/><text x="540" y="275" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#475569">PROPERTY PHOTO UNAVAILABLE</text></svg>'
-)}`;
 
 const getPropertyUrl = (property) => {
   if (property?.url || property?.propertyUrl) return property.url || property.propertyUrl;
@@ -164,46 +160,6 @@ const sanitizeShareText = (value, property) => {
   return text.trim();
 };
 
-const drawWrappedText = (context, text, x, y, maxWidth, lineHeight, maxLines) => {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = '';
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (line && context.measureText(candidate).width > maxWidth) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line) lines.push(line);
-  lines.slice(0, maxLines).forEach((textLine, index) => {
-    context.fillText(textLine, x, y + index * lineHeight, maxWidth);
-  });
-  return y + Math.min(lines.length, maxLines) * lineHeight;
-};
-
-const loadPosterImage = (url) => new Promise((resolve) => {
-  const image = new Image();
-  if (!url.startsWith('data:')) image.crossOrigin = 'anonymous';
-  image.onload = () => resolve(image);
-  image.onerror = () => resolve(null);
-  image.src = url;
-});
-
-const drawPosterPhoto = (context, image, x, y, width, height) => {
-  const scale = Math.max(width / image.width, height / image.height);
-  const cropWidth = width / scale;
-  const cropHeight = height / scale;
-  context.save();
-  context.beginPath();
-  context.rect(x, y, width, height);
-  context.clip();
-  context.drawImage(image, (image.width - cropWidth) / 2, (image.height - cropHeight) / 2, cropWidth, cropHeight, x, y, width, height);
-  context.restore();
-};
-
 const supportsPromoFileSharing = (file) => {
   if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' ||
       typeof navigator.canShare !== 'function' || !file) {
@@ -215,141 +171,6 @@ const supportsPromoFileSharing = (file) => {
   } catch {
     return false;
   }
-};
-
-const createPromoSticker = async ({ photos, headline, caption, highlights, features, nearby, property, contact, theme }) => {
-  const photoUrls = photos?.length ? photos : [resolvePropertyImage(property)].filter(Boolean);
-  let loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
-  const hasPropertyPhoto = loadedPhotos.length > 0;
-  if (!hasPropertyPhoto) {
-    const placeholder = await loadPosterImage(POSTER_PHOTO_PLACEHOLDER);
-    if (!placeholder) throw new Error('Could not prepare the poster photo area.');
-    loadedPhotos = [placeholder];
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = Math.round(canvas.width * 297 / 210);
-  const context = canvas.getContext('2d');
-  const brandColor = theme.accent;
-  const safeHeadline = sanitizeShareText(headline || property?.title || 'Property Listing', property);
-  const safeCaption = sanitizeShareText(caption, property);
-  const safeLocation = sanitizeShareText(getPublicLocation(property), property);
-  const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
-  const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
-  const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
-  const listingUrl = getPropertyUrl(property);
-  const qrDataUrl = listingUrl ? await QRCode.toDataURL(listingUrl, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) : '';
-  const qrImage = qrDataUrl ? await loadPosterImage(qrDataUrl) : null;
-  const footerHeight = 220;
-  const footerY = canvas.height - footerHeight;
-
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = brandColor;
-  context.fillRect(0, 0, canvas.width, 72);
-  context.fillStyle = '#ffffff';
-  context.font = 'bold 25px sans-serif';
-  context.fillText('MARKETMIX REAL ESTATES', 56, 47);
-
-  const heroHeight = 300;
-  drawPosterPhoto(context, loadedPhotos[0], 0, 72, canvas.width, heroHeight);
-  let contentStart = 400;
-  if (loadedPhotos.length > 1) {
-    const thumbnails = loadedPhotos.slice(1, 5);
-    const gap = 8;
-    const thumbWidth = (canvas.width - gap * (thumbnails.length - 1)) / thumbnails.length;
-    thumbnails.forEach((image, index) => drawPosterPhoto(context, image, index * (thumbWidth + gap), 380, thumbWidth, 70));
-    contentStart = 465;
-  }
-
-  let y = contentStart;
-  context.fillStyle = brandColor;
-  context.font = 'bold 19px sans-serif';
-  y = drawWrappedText(context, `${property?.propertyType || property?.unitType || 'PROPERTY'}${property?.status === 'rent' ? '  ·  TO LET' : property?.status === 'sale' ? '  ·  FOR SALE' : ''}`, 58, y, 960, 25, 1) + 6;
-
-  context.fillStyle = '#0f172a';
-  context.font = 'bold 43px sans-serif';
-  y = drawWrappedText(context, safeHeadline, 58, y, 960, 49, 2) + 4;
-  context.fillStyle = '#475569';
-  context.font = '22px sans-serif';
-  y = drawWrappedText(context, safeCaption, 58, y, 960, 28, 2) + 10;
-
-  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
-  const priceText = `KSh ${Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}${frequency ? ` / ${frequency.toUpperCase()}` : ''}`;
-  context.fillStyle = '#ecfdf5';
-  context.fillRect(42, y, 996, 76);
-  context.fillStyle = brandColor;
-  context.font = 'bold 39px sans-serif';
-  drawWrappedText(context, priceText, 64, y + 50, 950, 44, 1);
-  y += 94;
-
-  context.fillStyle = '#334155';
-  context.font = 'bold 22px sans-serif';
-  y = drawWrappedText(context, `AREA  ·  ${safeLocation}`, 58, y, 960, 29, 1) + 10;
-
-  const availability = getAvailabilityLabel(property);
-  const deposit = getDepositLabel(property);
-  const detailItems = [
-    property?.bedrooms !== undefined && property?.bedrooms !== '' ? `${property.bedrooms} bedroom${Number(property.bedrooms) === 1 ? '' : 's'}` : '',
-    property?.bathrooms !== undefined && property?.bathrooms !== '' ? `${property.bathrooms} bathroom${Number(property.bathrooms) === 1 ? '' : 's'}` : '',
-    property?.area ? `Area: ${property.area}` : '',
-    availability,
-    deposit ? `Deposit: ${deposit}` : '',
-  ].filter(Boolean);
-  if (detailItems.length) {
-    context.fillStyle = '#334155';
-    context.font = '18px sans-serif';
-    y = drawWrappedText(context, detailItems.join('  ·  '), 58, y, 960, 24, 2) + 8;
-  }
-
-  const drawBulletSection = (title, items, limit) => {
-    const visibleItems = items.slice(0, limit);
-    if (!visibleItems.length) return;
-    context.fillStyle = '#0f172a';
-    context.font = 'bold 18px sans-serif';
-    context.fillText(title, 58, y + 18);
-    y += 27;
-    context.fillStyle = '#334155';
-    context.font = '17px sans-serif';
-    visibleItems.forEach((point) => {
-      y = drawWrappedText(context, `•  ${point}`, 66, y, 940, 22, 1) + 2;
-    });
-    y += 2;
-  };
-  drawBulletSection("WHY YOU'LL LOVE IT", points, 3);
-  drawBulletSection('FEATURES', featurePoints, 3);
-  drawBulletSection('NEARBY', nearbyPoints, 3);
-
-  context.fillStyle = brandColor;
-  context.fillRect(0, footerY, canvas.width, footerHeight);
-  context.fillStyle = '#ffffff';
-  context.font = 'bold 27px sans-serif';
-  context.fillText('BOOK A SITE VISIT', 58, footerY + 45);
-  context.font = '21px sans-serif';
-  context.fillText('MarketMix Real Estates', 58, footerY + 80);
-  if (contact?.phone) {
-    context.font = 'bold 19px sans-serif';
-    drawWrappedText(context, `Call / WhatsApp: ${contact.phone}`, 58, footerY + 116, 700, 25, 2);
-  } else if (contact?.email) {
-    context.font = '19px sans-serif';
-    drawWrappedText(context, contact.email, 58, footerY + 116, 700, 25, 1);
-  }
-  if (qrImage) {
-    context.fillStyle = '#ffffff';
-    context.fillRect(858, footerY + 14, 168, 168);
-    context.drawImage(qrImage, 870, footerY + 26, 144, 144);
-    context.fillStyle = '#ffffff';
-    context.font = 'bold 17px sans-serif';
-    context.fillText('SCAN FOR DETAILS', 860, footerY + 207);
-  }
-
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) throw new Error('Could not create promo image');
-  return {
-    file: new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' }),
-    hasPropertyPhoto,
-  };
 };
 
 const downloadPosterFile = (file) => {
@@ -461,6 +282,9 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const [sharing, setSharing] = useState(false);
   const [posterFile, setPosterFile] = useState(null);
   const [posterPreviewUrl, setPosterPreviewUrl] = useState('');
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverLoading, setCoverLoading] = useState(true);
+  const [coverError, setCoverError] = useState('');
 
   const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.emerald;
   const contact = includeContact && canShowContact
@@ -487,6 +311,29 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     return () => URL.revokeObjectURL(posterPreviewUrl);
   }, [posterPreviewUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setCoverLoading(true);
+    setCoverError('');
+    setCoverFile(null);
+
+    getPromoCoverImage([imageUrl])
+      .then(({ file }) => {
+        if (!cancelled) setCoverFile(file);
+      })
+      .catch((error) => {
+        console.error('[Property share] Could not prepare cover photo:', error);
+        if (!cancelled) setCoverError(error.message || 'Could not prepare the cover photo');
+      })
+      .finally(() => {
+        if (!cancelled) setCoverLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
   const cachePromoPoster = (file) => {
     setPosterFile(file);
     const objectUrl = URL.createObjectURL(file);
@@ -500,14 +347,43 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     setPosterPreviewUrl('');
   };
 
+  const createPoster = () => requestPromoPoster({
+    photos: posterPhotos,
+    headline,
+    caption,
+    highlights: highlights.split(/\r?\n/).filter(Boolean).slice(0, 5),
+    features: features.split(/\r?\n/).filter(Boolean).slice(0, 4),
+    nearby: nearby.split(/\r?\n/).filter(Boolean).slice(0, 4),
+    property: {
+      title: property?.title,
+      propertyType: property?.propertyType,
+      unitType: property?.unitType,
+      status: property?.status,
+      price: property?.price,
+      rentAmount: property?.rentAmount,
+      rent: property?.rent,
+      paymentFrequency: property?.paymentFrequency,
+      bedrooms: property?.bedrooms,
+      bathrooms: property?.bathrooms,
+      area: property?.area,
+    },
+    location: publicLocation,
+    price: property?.price || property?.rentAmount || property?.rent || 0,
+    availability: getAvailabilityLabel(property),
+    deposit: getDepositLabel(property),
+    listingUrl: getPropertyUrl(property),
+    contact: contact ? { phone: contact.phone, email: contact.email } : null,
+    theme: themeKey,
+  });
+
   const generatePromoPoster = async () => {
     try {
-      const { file, hasPropertyPhoto } = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
+      const { file, hasPropertyPhoto } = await createPoster();
       cachePromoPoster(file);
       if (hasPropertyPhoto) {
-        toast.success('Poster ready. Tap Share poster to share it from your phone.');
+        toast.success('A4 poster ready. Use Download A4 poster to save it.');
       } else {
-        toast.error('Poster created, but the cover photo could not be loaded. Check the image URL or photo access settings.');
+        toast.error('Poster created with a photo placeholder. Add the image host to POSTER_IMAGE_HOSTS on the poster server to load property photos.');
       }
     } catch (error) {
       console.error('[Property share] Could not generate poster:', error);
@@ -516,21 +392,14 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   };
 
   const downloadPromoImage = async () => {
+    if (!posterFile) {
+      toast.error('Generate the A4 poster first, then download it.');
+      return false;
+    }
+
     try {
-      let file = posterFile;
-      let hasPropertyPhoto = true;
-      if (!file) {
-        const generated = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-        file = generated.file;
-        hasPropertyPhoto = generated.hasPropertyPhoto;
-        cachePromoPoster(file);
-      }
-      downloadPosterFile(file);
-      if (hasPropertyPhoto) {
-        toast.success('Promo poster downloaded');
-      } else {
-        toast.error('Poster downloaded with a photo placeholder because the cover photo could not be loaded.');
-      }
+      downloadPosterFile(posterFile);
+      toast.success('A4 promo poster downloaded');
       return true;
     } catch (error) {
       console.error('[Property share] Could not create promo image:', error);
@@ -540,38 +409,47 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   };
 
   const shareToWhatsApp = async () => {
-    if (!posterFile) {
-      toast.error('Generate the poster first, then share it to WhatsApp.');
+    if (!coverFile) {
+      toast.error(coverError || 'The cover photo is still being prepared. Please try again shortly.');
       return;
     }
 
     setSharing(true);
     try {
-      if (supportsPromoFileSharing(posterFile)) {
+      if (supportsPromoFileSharing(coverFile)) {
         try {
           await navigator.share({
-            files: [posterFile],
-            title: property?.title || 'MarketMix property poster',
+            files: [coverFile],
+            title: property?.title || 'MarketMix property cover photo',
             text: finalMessage,
           });
-          toast.success('Poster shared. Choose WhatsApp to send it.');
+          toast.success('Cover photo and listing text shared. Choose WhatsApp to send.');
           return;
         } catch (error) {
           if (error.name === 'AbortError') return;
-          console.warn('[Property share] Native poster sharing failed; using download and WhatsApp fallback:', error);
+          console.warn('[Property share] Native cover sharing failed; using download and WhatsApp fallback:', error);
         }
       }
 
-      downloadPosterFile(posterFile);
+      downloadPosterFile(coverFile);
       openWhatsAppWithMessage(finalMessage);
-      toast.success('A4 poster download started; WhatsApp opened with the listing text. Attach the poster before sending.');
+      toast.success('Cover photo downloaded; WhatsApp opened with the listing text. Attach the cover photo before sending.');
     } catch (error) {
       if (error.name === 'AbortError') return;
-      console.error('[Property share] Could not open WhatsApp or download poster:', error);
-      toast.error('Could not share the poster. Please download it and try WhatsApp again.');
+      console.error('[Property share] Could not open WhatsApp or prepare cover photo:', error);
+      toast.error(error.message || 'Could not prepare the cover photo for WhatsApp.');
     } finally {
       setSharing(false);
     }
+  };
+
+  const downloadCoverPhoto = () => {
+    if (!coverFile) {
+      toast.error(coverError || 'The cover photo is still being prepared. Please try again shortly.');
+      return;
+    }
+    downloadPosterFile(coverFile);
+    toast.success('Property cover photo downloaded');
   };
 
   return (
@@ -684,17 +562,25 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <button type="button" onClick={generatePromoPoster} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   <Sparkles className="w-3.5 h-3.5" /> {posterFile ? 'Regenerate poster' : 'Generate poster'}
                 </button>
-                <button type="button" onClick={downloadPromoImage} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                  <Download className="w-3.5 h-3.5" /> Download
+                <button type="button" onClick={downloadCoverPhoto} disabled={coverLoading || !coverFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60">
+                  <Download className="w-3.5 h-3.5" /> {coverLoading ? 'Preparing cover photo…' : 'Download cover photo'}
                 </button>
-                <button type="button" onClick={shareToWhatsApp} disabled={sharing || !posterFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                <button type="button" onClick={downloadPromoImage} disabled={!posterFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Download className="w-3.5 h-3.5" /> Download A4 poster
+                </button>
+                <button type="button" onClick={shareToWhatsApp} disabled={sharing || coverLoading || !coverFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                   <Share2 className="w-3.5 h-3.5" />
-                  {sharing ? 'Sharing A4 poster…' : 'Share A4 poster'}
+                  {sharing ? 'Sharing cover photo…' : 'Share cover photo'}
                 </button>
               </div>
             </div>
+            {coverError && (
+              <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-xs text-red-700">
+                {coverError}
+              </p>
+            )}
             <p className="mb-3 text-xs text-slate-600">
-              The generated A4 poster is the file shared—not the cover photo. On phones, choose WhatsApp in the share sheet to attach the poster with the listing text. On desktop, the poster downloads and WhatsApp opens with the text; attach the downloaded poster before sending.
+              Share cover photo sends the main property photo with the listing text. On phones, choose WhatsApp in the share sheet; on desktop, the cover photo downloads and WhatsApp opens with the text. Download cover photo saves the original cover; Download A4 poster saves the designed poster separately. Both images are prepared by the server, avoiding browser image CORS.
             </p>
 
             <div className="rounded-[24px] p-3 border border-slate-200" style={{ background: theme.gradient }}>

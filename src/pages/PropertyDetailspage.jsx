@@ -1,20 +1,18 @@
 // src/pages/PropertyDetailspage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Bed, Bath, Square, Heart, Share2,
-  Phone, Mail, MessageCircle, CheckCircle, X, ChevronLeft,
+  MessageCircle, CheckCircle, X, ChevronLeft,
   ChevronRight, Building, Calendar, Eye, Copy, AlertCircle,
-  Maximize2, Shield, Clock, Users, Navigation, ExternalLink, Lock,
+  Maximize2, Shield, Clock, Users, Navigation,
   Droplet, Zap, Wifi, Trash2, Car, BookOpen, Utensils, Store,
   Dumbbell, Cross, Church, Landmark, Route, Bus, Footprints,
   GraduationCap, Home, Sparkles, Play, Star, Waves, Sun, DollarSign,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useEntitlement } from '../hooks/useEntitlement';
 import {
   getPublicProperty,
-  getProtectedProperty,
   savePropertyForUser,
   removeSavedProperty,
   createInquiry,
@@ -58,6 +56,29 @@ const Row = ({ label, value }) => (
   </div>
 );
 
+const PrivateRow = ({ label, value }) => {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <div className="flex justify-between gap-3 py-1.5 border-b border-gray-50 last:border-0 text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-900 font-medium text-right max-w-[60%] break-words blur-sm select-none" aria-label="Contact seller for this information">
+        {value}
+      </span>
+    </div>
+  );
+};
+
+const ContactSellerButton = ({ onClick, className = '' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 font-semibold text-white hover:bg-emerald-700 ${className}`}
+  >
+    <MessageCircle className="h-4 w-4" />
+    Contact seller
+  </button>
+);
+
 const Chip = ({ children, tone = 'emerald' }) => (
   <span
     className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium mr-1.5 mb-1.5
@@ -83,12 +104,11 @@ const PropertyDetailspage = () => {
   const { currentUser } = useAuth();
 
   const [publicProperty, setPublicProperty] = useState(null);
-  const [protectedProperty, setProtectedProperty] = useState(null);
   const [loadingPublic, setLoadingPublic] = useState(true);
-  const [loadingProtected, setLoadingProtected] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index or null
   const [saved, setSaved] = useState(false);
   const [inquiryOpen, setInquiryOpen] = useState(false);
+  const inquiryFormRef = useRef(null);
   const [inquiryText, setInquiryText] = useState('');
   const [siteVisitOpen, setSiteVisitOpen] = useState(false);
   const [siteVisitForm, setSiteVisitForm] = useState({
@@ -100,7 +120,13 @@ const PropertyDetailspage = () => {
     notes: '',
   });
 
-  const { canView, loading: entitlementLoading } = useEntitlement(id);
+  useEffect(() => {
+    if (inquiryOpen) {
+      inquiryFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [inquiryOpen]);
+
+  const handleContactSeller = () => setInquiryOpen(true);
 
   const handleSaveToggle = async () => {
     if (!publicProperty) return;
@@ -159,7 +185,7 @@ const PropertyDetailspage = () => {
       });
       setInquiryText('');
       setInquiryOpen(false);
-      toast.success('Inquiry sent to the agent');
+      toast.success('Inquiry sent to the seller');
     } catch (error) {
       console.error('Inquiry error:', error);
       toast.error('Failed to send inquiry');
@@ -236,25 +262,7 @@ const PropertyDetailspage = () => {
     }
   }, [publicProperty]);
 
-  // Load protected when entitled
-  useEffect(() => {
-    if (!canView || protectedProperty || loadingProtected) return;
-    let cancelled = false;
-    const load = async () => {
-      setLoadingProtected(true);
-      const data = await getProtectedProperty(id);
-      if (cancelled) return;
-      if (data) setProtectedProperty(data);
-      else toast.error('Failed to load protected details');
-      setLoadingProtected(false);
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [canView, protectedProperty, loadingProtected, id]);
-
-  if (loadingPublic || entitlementLoading) {
+  if (loadingPublic) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600" />
@@ -416,7 +424,12 @@ const PropertyDetailspage = () => {
               )}
               <p className="text-sm text-gray-600 flex items-center gap-1 mt-2">
                 <MapPin className="w-4 h-4 text-emerald-600" />
-                {[approx.estate, approx.town, approx.county].filter(Boolean).join(', ') || p.location || 'Location not specified'}
+                <span className="blur-sm select-none" aria-label="Contact seller for location">
+                  {[approx.estate, approx.town, approx.county].filter(Boolean).join(', ') || p.location || 'Location not specified'}
+                </span>
+                <button type="button" onClick={handleContactSeller} className="ml-1 shrink-0 font-semibold text-emerald-700 underline underline-offset-2">
+                  Contact seller
+                </button>
               </p>
             </div>
             <div className="text-right">
@@ -587,12 +600,13 @@ const PropertyDetailspage = () => {
           {/* Management */}
           <Section title="Management" icon={Users} defaultOpen={false}>
             <Row label="Managed by" value={p.managerType} />
-            <Row label="Name" value={p.managerName} />
+            <PrivateRow label="Name" value={p.managerName} />
             <Row label="Availability" value={p.managementAvailability} />
             <Row label="Handles tenant problems" value={p.problemHandler} />
-            <Row label="On-site person" value={p.onSitePerson} />
-            <Row label="Emergency contact" value={p.emergencyContact} />
+            <PrivateRow label="On-site person" value={p.onSitePerson} />
+            <PrivateRow label="Emergency contact" value={p.emergencyContact} />
             <Row label="Typical response time" value={p.responseTime} />
+            <ContactSellerButton onClick={handleContactSeller} className="mt-3 w-full" />
           </Section>
 
           {/* Security */}
@@ -671,11 +685,12 @@ const PropertyDetailspage = () => {
 
           {/* Location & Transport */}
           <Section title="Location & Transport" icon={Navigation}>
-            <Row label="Address" value={p.location} />
-            <Row label="County" value={approx.county} />
-            <Row label="Town" value={approx.town} />
-            <Row label="Estate / Area" value={approx.estate} />
-            <Row label="Nearest road" value={approx.nearestRoad} />
+            <PrivateRow label="Address" value={p.location} />
+            <PrivateRow label="County" value={approx.county} />
+            <PrivateRow label="Town" value={approx.town} />
+            <PrivateRow label="Estate / Area" value={approx.estate} />
+            <PrivateRow label="Nearest road" value={approx.nearestRoad} />
+            <ContactSellerButton onClick={handleContactSeller} className="my-3 w-full" />
             <Row label="Road type" value={p.roadType} />
             <Row label="Road condition" value={p.roadCondition} />
             <Row label="Distance to main road" value={p.distanceToMainRoad} />
@@ -789,13 +804,7 @@ const PropertyDetailspage = () => {
               >
                 <Calendar className="w-4 h-4" /> Request site visit
               </button>
-              <button
-                type="button"
-                onClick={() => setInquiryOpen((prev) => !prev)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800"
-              >
-                <MessageCircle className="w-4 h-4" /> Send inquiry
-              </button>
+              <ContactSellerButton onClick={() => setInquiryOpen((prev) => !prev)} className="w-full bg-slate-900 hover:bg-slate-800" />
             </div>
 
             {siteVisitOpen && (
@@ -867,7 +876,7 @@ const PropertyDetailspage = () => {
             )}
 
             {inquiryOpen && (
-              <form onSubmit={handleInquirySubmit} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <form ref={inquiryFormRef} onSubmit={handleInquirySubmit} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div>
                   <label className="text-xs text-gray-600 block mb-1">Your message</label>
                   <textarea
@@ -884,62 +893,11 @@ const PropertyDetailspage = () => {
               </form>
             )}
 
-            <div className="mt-5">
-              {canView ? (
-                loadingProtected ? (
-                  <p className="text-xs text-gray-500 text-center py-4">
-                    Loading contact details…
-                  </p>
-                ) : protectedProperty ? (
-                  <div className="space-y-2">
-                    {protectedProperty.landlordContact?.managerPhone && (
-                      <a
-                        href={`tel:${protectedProperty.landlordContact.managerPhone}`}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
-                      >
-                        <Phone className="w-4 h-4" /> Call landlord
-                      </a>
-                    )}
-                    {protectedProperty.landlordContact?.managerWhatsApp && (
-                      <a
-                        href={`https://wa.me/${String(protectedProperty.landlordContact.managerWhatsApp).replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
-                      >
-                        <MessageCircle className="w-4 h-4" /> WhatsApp
-                      </a>
-                    )}
-                    {protectedProperty.exactLocation?.lat && (
-                      <a
-                        href={`https://www.google.com/maps?q=${protectedProperty.exactLocation.lat},${protectedProperty.exactLocation.lng}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
-                      >
-                        <Navigation className="w-4 h-4" /> Open in Google Maps
-                      </a>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500 text-center py-4">
-                    Contact details unavailable.
-                  </p>
-                )
-              ) : (
-                <div className="text-center">
-                  <Lock className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-700 font-medium mb-1">
-                    Contact details locked
-                  </p>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Unlock to see the landlord's phone, WhatsApp, and exact location.
-                  </p>
-                  <button className="w-full py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700">
-                    Unlock Property
-                  </button>
-                </div>
-              )}
+            <div className="mt-5 border-t border-gray-100 pt-4 text-center">
+              <p className="mb-3 text-sm text-gray-600">
+                Contact the seller for the exact location and landlord or caretaker details.
+              </p>
+              <ContactSellerButton onClick={handleContactSeller} className="w-full" />
             </div>
 
             <p className="text-[11px] text-gray-400 mt-4 leading-snug">
