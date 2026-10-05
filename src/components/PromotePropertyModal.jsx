@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucide-react';
 import QRCode from 'qrcode';
 import { resolvePropertyImage } from '../utils/propertyMapping';
+import { getYouTubeTourUrl } from '../services/shareService';
 import toast from 'react-hot-toast';
 
 const THEME_OPTIONS = {
@@ -199,132 +200,6 @@ const drawPosterPhoto = (context, image, x, y, width, height) => {
   context.restore();
 };
 
-const createPromoSticker = async ({ photos, headline, caption, highlights, features, nearby, property, contact, theme }) => {
-  const photoUrls = photos?.length ? photos : [resolvePropertyImage(property)].filter(Boolean);
-  const loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
-  if (!loadedPhotos.length) throw new Error('Could not load a property photo for the poster.');
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 2400;
-  const context = canvas.getContext('2d');
-  const brandColor = theme.accent;
-  const safeHeadline = sanitizeShareText(headline || property?.title || 'Property Listing', property);
-  const safeCaption = sanitizeShareText(caption, property);
-  const safeLocation = sanitizeShareText(getPublicLocation(property), property);
-  const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
-  const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
-  const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
-  const listingUrl = getPropertyUrl(property);
-  const qrDataUrl = listingUrl ? await QRCode.toDataURL(listingUrl, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) : '';
-  const qrImage = qrDataUrl ? await loadPosterImage(qrDataUrl) : null;
-
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = brandColor;
-  context.fillRect(0, 0, canvas.width, 96);
-  context.fillStyle = '#ffffff';
-  context.font = 'bold 28px sans-serif';
-  context.fillText('MARKETMIX REAL ESTATES', 56, 60);
-
-  const heroHeight = 500;
-  drawPosterPhoto(context, loadedPhotos[0], 0, 96, canvas.width, heroHeight);
-  let contentStart = 640;
-  if (loadedPhotos.length > 1) {
-    const thumbnails = loadedPhotos.slice(1, 5);
-    const gap = 8;
-    const thumbWidth = (canvas.width - gap * (thumbnails.length - 1)) / thumbnails.length;
-    thumbnails.forEach((image, index) => drawPosterPhoto(context, image, index * (thumbWidth + gap), 604, thumbWidth, 132));
-    contentStart = 790;
-  }
-
-  let y = contentStart;
-  context.fillStyle = brandColor;
-  context.font = 'bold 23px sans-serif';
-  y = drawWrappedText(context, `${property?.propertyType || property?.unitType || 'PROPERTY'}${property?.status === 'rent' ? '  ·  TO LET' : property?.status === 'sale' ? '  ·  FOR SALE' : ''}`, 58, y, 960, 32, 1) + 14;
-
-  context.fillStyle = '#0f172a';
-  context.font = 'bold 54px sans-serif';
-  y = drawWrappedText(context, safeHeadline, 58, y, 960, 62, 2) + 8;
-  context.fillStyle = '#475569';
-  context.font = '26px sans-serif';
-  y = drawWrappedText(context, safeCaption, 58, y, 960, 36, 2) + 16;
-
-  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
-  const priceText = `KSh ${Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}${frequency ? ` / ${frequency.toUpperCase()}` : ''}`;
-  context.fillStyle = '#ecfdf5';
-  context.fillRect(42, y, 996, 112);
-  context.fillStyle = brandColor;
-  context.font = 'bold 52px sans-serif';
-  drawWrappedText(context, priceText, 64, y + 70, 950, 56, 1);
-  y += 145;
-
-  context.fillStyle = '#334155';
-  context.font = 'bold 28px sans-serif';
-  y = drawWrappedText(context, `AREA  ·  ${safeLocation}`, 58, y, 960, 38, 1) + 26;
-
-  const availability = getAvailabilityLabel(property);
-  const deposit = getDepositLabel(property);
-  const detailItems = [
-    property?.bedrooms !== undefined && property?.bedrooms !== '' ? `${property.bedrooms} bedroom${Number(property.bedrooms) === 1 ? '' : 's'}` : '',
-    property?.bathrooms !== undefined && property?.bathrooms !== '' ? `${property.bathrooms} bathroom${Number(property.bathrooms) === 1 ? '' : 's'}` : '',
-    property?.area ? `Area: ${property.area}` : '',
-    availability,
-    deposit ? `Deposit: ${deposit}` : '',
-  ].filter(Boolean);
-  if (detailItems.length) {
-    context.fillStyle = '#334155';
-    context.font = '21px sans-serif';
-    y = drawWrappedText(context, detailItems.join('  ·  '), 58, y, 960, 30, 2) + 18;
-  }
-
-  const drawBulletSection = (title, items, limit) => {
-    const visibleItems = items.slice(0, limit);
-    if (!visibleItems.length) return;
-    context.fillStyle = '#0f172a';
-    context.font = 'bold 24px sans-serif';
-    context.fillText(title, 58, y);
-    y += 42;
-    context.fillStyle = '#334155';
-    context.font = '23px sans-serif';
-    visibleItems.forEach((point) => {
-      y = drawWrappedText(context, `•  ${point}`, 66, y, 940, 32, 1) + 6;
-    });
-    y += 8;
-  };
-  drawBulletSection("WHY YOU'LL LOVE IT", points, 5);
-  drawBulletSection('FEATURES', featurePoints, 4);
-  drawBulletSection('NEARBY', nearbyPoints, 4);
-
-  const footerY = Math.max(1660, y + 18);
-  context.fillStyle = brandColor;
-  context.fillRect(0, footerY, canvas.width, canvas.height - footerY);
-  context.fillStyle = '#ffffff';
-  context.font = 'bold 34px sans-serif';
-  context.fillText('BOOK A SITE VISIT', 58, footerY + 58);
-  context.font = '26px sans-serif';
-  context.fillText('MarketMix Real Estates', 58, footerY + 105);
-  if (contact?.phone) {
-    context.font = 'bold 24px sans-serif';
-    drawWrappedText(context, `Call / WhatsApp: ${contact.phone}`, 58, footerY + 150, 700, 32, 2);
-  } else if (contact?.email) {
-    context.font = '24px sans-serif';
-    drawWrappedText(context, contact.email, 58, footerY + 150, 700, 32, 1);
-  }
-  if (qrImage) {
-    context.fillStyle = '#ffffff';
-    context.fillRect(838, footerY + 28, 188, 188);
-    context.drawImage(qrImage, 852, footerY + 42, 160, 160);
-    context.fillStyle = '#ffffff';
-    context.font = 'bold 17px sans-serif';
-    context.fillText('SCAN FOR DETAILS', 848, footerY + 237);
-  }
-
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) throw new Error('Could not create promo image');
-  return new File([blob], 'marketmix-property-poster.png', { type: 'image/png' });
-};
-
 const supportsPromoFileSharing = (file) => {
   if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' ||
       typeof navigator.canShare !== 'function' || !file) {
@@ -338,12 +213,149 @@ const supportsPromoFileSharing = (file) => {
   }
 };
 
+const createPromoSticker = async ({ photos, headline, caption, highlights, features, nearby, property, contact, theme }) => {
+  const photoUrls = photos?.length ? photos : [resolvePropertyImage(property)].filter(Boolean);
+  const loadedPhotos = (await Promise.all(photoUrls.slice(0, 5).map(loadPosterImage))).filter(Boolean);
+  if (!loadedPhotos.length) throw new Error('Could not load a property photo for the poster.');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = Math.round(canvas.width * 297 / 210);
+  const context = canvas.getContext('2d');
+  const brandColor = theme.accent;
+  const safeHeadline = sanitizeShareText(headline || property?.title || 'Property Listing', property);
+  const safeCaption = sanitizeShareText(caption, property);
+  const safeLocation = sanitizeShareText(getPublicLocation(property), property);
+  const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
+  const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
+  const listingUrl = getPropertyUrl(property);
+  const qrDataUrl = listingUrl ? await QRCode.toDataURL(listingUrl, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) : '';
+  const qrImage = qrDataUrl ? await loadPosterImage(qrDataUrl) : null;
+  const footerHeight = 220;
+  const footerY = canvas.height - footerHeight;
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = brandColor;
+  context.fillRect(0, 0, canvas.width, 72);
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 25px sans-serif';
+  context.fillText('MARKETMIX REAL ESTATES', 56, 47);
+
+  const heroHeight = 300;
+  drawPosterPhoto(context, loadedPhotos[0], 0, 72, canvas.width, heroHeight);
+  let contentStart = 400;
+  if (loadedPhotos.length > 1) {
+    const thumbnails = loadedPhotos.slice(1, 5);
+    const gap = 8;
+    const thumbWidth = (canvas.width - gap * (thumbnails.length - 1)) / thumbnails.length;
+    thumbnails.forEach((image, index) => drawPosterPhoto(context, image, index * (thumbWidth + gap), 380, thumbWidth, 70));
+    contentStart = 465;
+  }
+
+  let y = contentStart;
+  context.fillStyle = brandColor;
+  context.font = 'bold 19px sans-serif';
+  y = drawWrappedText(context, `${property?.propertyType || property?.unitType || 'PROPERTY'}${property?.status === 'rent' ? '  ·  TO LET' : property?.status === 'sale' ? '  ·  FOR SALE' : ''}`, 58, y, 960, 25, 1) + 6;
+
+  context.fillStyle = '#0f172a';
+  context.font = 'bold 43px sans-serif';
+  y = drawWrappedText(context, safeHeadline, 58, y, 960, 49, 2) + 4;
+  context.fillStyle = '#475569';
+  context.font = '22px sans-serif';
+  y = drawWrappedText(context, safeCaption, 58, y, 960, 28, 2) + 10;
+
+  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
+  const priceText = `KSh ${Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}${frequency ? ` / ${frequency.toUpperCase()}` : ''}`;
+  context.fillStyle = '#ecfdf5';
+  context.fillRect(42, y, 996, 76);
+  context.fillStyle = brandColor;
+  context.font = 'bold 39px sans-serif';
+  drawWrappedText(context, priceText, 64, y + 50, 950, 44, 1);
+  y += 94;
+
+  context.fillStyle = '#334155';
+  context.font = 'bold 22px sans-serif';
+  y = drawWrappedText(context, `AREA  ·  ${safeLocation}`, 58, y, 960, 29, 1) + 10;
+
+  const availability = getAvailabilityLabel(property);
+  const deposit = getDepositLabel(property);
+  const detailItems = [
+    property?.bedrooms !== undefined && property?.bedrooms !== '' ? `${property.bedrooms} bedroom${Number(property.bedrooms) === 1 ? '' : 's'}` : '',
+    property?.bathrooms !== undefined && property?.bathrooms !== '' ? `${property.bathrooms} bathroom${Number(property.bathrooms) === 1 ? '' : 's'}` : '',
+    property?.area ? `Area: ${property.area}` : '',
+    availability,
+    deposit ? `Deposit: ${deposit}` : '',
+  ].filter(Boolean);
+  if (detailItems.length) {
+    context.fillStyle = '#334155';
+    context.font = '18px sans-serif';
+    y = drawWrappedText(context, detailItems.join('  ·  '), 58, y, 960, 24, 2) + 8;
+  }
+
+  const drawBulletSection = (title, items, limit) => {
+    const visibleItems = items.slice(0, limit);
+    if (!visibleItems.length) return;
+    context.fillStyle = '#0f172a';
+    context.font = 'bold 18px sans-serif';
+    context.fillText(title, 58, y + 18);
+    y += 27;
+    context.fillStyle = '#334155';
+    context.font = '17px sans-serif';
+    visibleItems.forEach((point) => {
+      y = drawWrappedText(context, `•  ${point}`, 66, y, 940, 22, 1) + 2;
+    });
+    y += 2;
+  };
+  drawBulletSection("WHY YOU'LL LOVE IT", points, 3);
+  drawBulletSection('FEATURES', featurePoints, 3);
+  drawBulletSection('NEARBY', nearbyPoints, 3);
+
+  context.fillStyle = brandColor;
+  context.fillRect(0, footerY, canvas.width, footerHeight);
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 27px sans-serif';
+  context.fillText('BOOK A SITE VISIT', 58, footerY + 45);
+  context.font = '21px sans-serif';
+  context.fillText('MarketMix Real Estates', 58, footerY + 80);
+  if (contact?.phone) {
+    context.font = 'bold 19px sans-serif';
+    drawWrappedText(context, `Call / WhatsApp: ${contact.phone}`, 58, footerY + 116, 700, 25, 2);
+  } else if (contact?.email) {
+    context.font = '19px sans-serif';
+    drawWrappedText(context, contact.email, 58, footerY + 116, 700, 25, 1);
+  }
+  if (qrImage) {
+    context.fillStyle = '#ffffff';
+    context.fillRect(858, footerY + 14, 168, 168);
+    context.drawImage(qrImage, 870, footerY + 26, 144, 144);
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 17px sans-serif';
+    context.fillText('SCAN FOR DETAILS', 860, footerY + 207);
+  }
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not create promo image');
+  return new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' });
+};
+
+const downloadPosterFile = (file) => {
+  const downloadUrl = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = file.name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+};
+
 const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, features, nearby, includeContact, userProfile, currentUser }) => {
   const title = sanitizeShareText(property?.title || 'Property Listing', property);
   const location = sanitizeShareText(getPublicLocation(property), property);
   const price = property?.price || property?.rentAmount || property?.rent || 0;
   const type = property?.propertyType || property?.unitType || 'Property';
   const url = getPropertyUrl(property);
+  const youtubeTourUrl = getYouTubeTourUrl(property);
   const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
   const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
   const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
@@ -383,6 +395,9 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
 
   if (url) {
     lines.push(`View property: ${url}`);
+  }
+  if (youtubeTourUrl) {
+    lines.push(`YouTube property tour: ${youtubeTourUrl}`);
   }
 
   lines.push('', 'BOOK A SITE VISIT');
@@ -471,12 +486,9 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const downloadPromoImage = async () => {
     try {
-      const file = await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
-      const objectUrl = cachePromoPoster(file);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = file.name;
-      link.click();
+      const file = posterFile || await createPromoSticker({ photos: posterPhotos, headline, caption, highlights, features, nearby, property, contact, theme });
+      if (!posterFile) cachePromoPoster(file);
+      downloadPosterFile(file);
       toast.success('Promo poster downloaded');
       return true;
     } catch (error) {
@@ -486,51 +498,40 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     }
   };
 
-  const shareToWhatsApp = () => {
+  const shareToWhatsApp = async () => {
     if (!posterFile) {
-      toast.error('Generate the poster first, then tap Share poster.');
+      toast.error('Generate the poster first, then share it to WhatsApp.');
       return;
     }
 
     setSharing(true);
-    if (supportsPromoFileSharing(posterFile)) {
-      let shareRequest;
-      try {
-        shareRequest = navigator.share({
+    try {
+      if (supportsPromoFileSharing(posterFile)) {
+        await navigator.share({
           files: [posterFile],
           title: property?.title || 'MarketMix property poster',
           text: finalMessage,
         });
-      } catch (error) {
-        shareRequest = Promise.reject(error);
+        toast.success('Poster shared');
+        return;
       }
 
-      Promise.resolve(shareRequest)
-        .then(() => toast.success('Promo poster shared'))
-        .catch((error) => {
-          if (error.name === 'AbortError') return;
-          console.warn('[Property share] Native file sharing failed; opening WhatsApp instead:', error);
-          const link = document.createElement('a');
-          link.href = posterPreviewUrl;
-          link.download = posterFile.name;
-          link.click();
-          window.location.assign(`https://wa.me/?text=${encodeURIComponent(finalMessage)}`);
-          toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
-        })
-        .finally(() => setSharing(false));
-      return;
+      downloadPosterFile(posterFile);
+      const whatsappLink = document.createElement('a');
+      whatsappLink.href = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
+      whatsappLink.target = '_blank';
+      whatsappLink.rel = 'noopener noreferrer';
+      document.body.appendChild(whatsappLink);
+      whatsappLink.click();
+      whatsappLink.remove();
+      toast.success('A4 poster downloaded; WhatsApp opened with the listing text. Attach the poster before sending.');
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      console.error('[Property share] Could not open WhatsApp or download poster:', error);
+      toast.error('Could not share the poster. Please download it and try WhatsApp again.');
+    } finally {
+      setSharing(false);
     }
-
-    const whatsappWindow = window.open('about:blank', '_blank');
-    const link = document.createElement('a');
-    link.href = posterPreviewUrl;
-    link.download = posterFile.name;
-    link.click();
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(finalMessage)}`;
-    if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
-    else window.location.assign(whatsappUrl);
-    toast.success('Poster downloaded; WhatsApp is ready to share the listing text');
-    setSharing(false);
   };
 
   return (
@@ -559,7 +560,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 <input
                   value={headline}
                   onChange={(e) => updatePosterContent(setHeadline, e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
 
@@ -569,7 +570,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                   value={caption}
                   onChange={(e) => updatePosterContent(setCaption, e.target.value)}
                   rows={4}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
 
@@ -580,7 +581,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                   onChange={(e) => updatePosterContent(setHighlights, e.target.value)}
                   rows={4}
                   placeholder={'Bedrooms: 3\nBathrooms: 2\nNear public transport'}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
 
@@ -591,7 +592,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                   onChange={(e) => updatePosterContent(setFeatures, e.target.value)}
                   rows={3}
                   placeholder="Private bathroom\nKitchen / cooking area\nParking available"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
 
@@ -602,7 +603,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                   onChange={(e) => updatePosterContent(setNearby, e.target.value)}
                   rows={3}
                   placeholder="Public transport\nShopping centre\nCampus / school"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </div>
 
@@ -648,15 +649,13 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                 </button>
                 <button type="button" onClick={shareToWhatsApp} disabled={sharing || !posterFile} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
                   <Share2 className="w-3.5 h-3.5" />
-                  {sharing ? 'Preparing share…' : 'Share poster'}
+                  {sharing ? 'Sharing A4 poster…' : 'Share A4 poster'}
                 </button>
               </div>
             </div>
-            {!posterFile && (
-              <p className="mb-3 text-xs text-slate-600">
-                On your phone, generate the poster first, then tap Share poster to open the share sheet.
-              </p>
-            )}
+            <p className="mb-3 text-xs text-slate-600">
+              The generated A4 poster is the file shared—not the cover photo. On phones, choose WhatsApp in the share sheet to attach the poster with the listing text. On desktop, the poster downloads and WhatsApp opens with the text; attach the downloaded poster before sending.
+            </p>
 
             <div className="rounded-[24px] p-3 border border-slate-200" style={{ background: theme.gradient }}>
               <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm">

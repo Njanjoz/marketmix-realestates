@@ -21,12 +21,23 @@ const getPropertyUrl = (property) => {
   return window.location.href;
 };
 
+export const getYouTubeTourUrl = (property) => {
+  const videoId = String(property?.youtubeVideoId || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    return `https://youtu.be/${videoId}`;
+  }
+
+  const youtubeUrl = String(property?.youtubeUrl || '').trim();
+  return /^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(youtubeUrl) ? youtubeUrl : '';
+};
+
 export const getPropertySharePayload = (property) => {
   const title = property?.title || 'MarketMix Property';
   const location = property?.location || property?.approximateLocation || 'Location available on request';
   const price = property?.rent || property?.price || property?.monthlyRent || 'Price available on request';
   const type = property?.propertyType || property?.type || 'Property';
   const url = getPropertyUrl(property);
+  const youtubeTourUrl = getYouTubeTourUrl(property);
 
   const media = Array.isArray(property?.media) ? property.media : [];
   const firstMediaString = media.find((item) => typeof item === 'string' && item);
@@ -50,6 +61,7 @@ export const getPropertySharePayload = (property) => {
     `Price: ${price}`,
     `Location: ${location}`,
     url ? `Link: ${url}` : '',
+    youtubeTourUrl ? `YouTube property tour: ${youtubeTourUrl}` : '',
     imageUrl ? `Image: ${imageUrl}` : '',
   ].filter(Boolean).join('\n');
 
