@@ -71,6 +71,8 @@ const Navbar = () => {
     { name: 'Buy', path: '/properties?status=sale', icon: <Gem className="w-4 h-4" /> },
     { name: 'Rent', path: '/properties?status=rent', icon: <Home className="w-4 h-4" /> },
     { name: 'Explore', path: '/explore', icon: <Compass className="w-4 h-4" /> },
+    { name: 'Roommates', path: '/roommates', icon: <User className="w-4 h-4" /> },
+    { name: 'Moving', path: '/transport', icon: <Key className="w-4 h-4" /> },
     { name: 'Luxury', path: '/luxury', icon: <Crown className="w-4 h-4" /> },
     { name: 'Agents', path: '/agents', icon: <User className="w-4 h-4" /> },
     { name: 'Contact', path: '/contact', icon: <Phone className="w-4 h-4" /> },
@@ -123,7 +125,12 @@ const Navbar = () => {
         icon: <LayoutDashboard className="w-4 h-4" />,
         badge: badge
       },
-      ...(userType === 'admin' ? [{ name: 'Moderate Property Ads', path: '/admin/properties', icon: <Building2 className="w-4 h-4" /> }] : []),
+      ...(userType === 'admin' ? [
+        { name: 'Moderate Property Ads', path: '/admin/properties', icon: <Building2 className="w-4 h-4" /> },
+        { name: 'Move-in Requests', path: '/admin/service-requests', icon: <Briefcase className="w-4 h-4" /> },
+        { name: 'Moving Requests', path: '/admin/transport-requests', icon: <Briefcase className="w-4 h-4" /> },
+        { name: 'Moving Package Posters', path: '/admin/moving-packages', icon: <Briefcase className="w-4 h-4" /> },
+      ] : []),
       ...baseLinks
     ];
   }, [userProfile?.userType, userProfile?.role]);
@@ -440,16 +447,16 @@ const Navbar = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMenuOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50"
+              className="fixed inset-0 z-[85] bg-black/30 backdrop-blur-sm"
             />
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25 }}
-              className="fixed right-0 top-0 h-full w-80 z-50 overflow-y-auto bg-white/20 backdrop-blur-xl"
+              className="fixed right-0 top-0 z-[90] h-[100dvh] max-h-[100dvh] w-80 max-w-[100vw] overscroll-contain overflow-y-auto bg-white/85 shadow-2xl backdrop-blur-xl"
             >
-              <div className="p-6">
+              <div className="p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
                 <div className="flex items-center justify-between mb-8">
                   <h2 className="text-xl font-bold text-gray-900">MarketMix</h2>
                   <button onClick={() => setIsMenuOpen(false)} className="p-2 rounded-lg hover:bg-white/20">

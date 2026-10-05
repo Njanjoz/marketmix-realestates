@@ -71,6 +71,8 @@ const SimplePropertyUpload = ({ onClose, onSuccess }) => {
       
       const propertyData = {
         ...formData,
+        listingType: formData.status,
+        status: 'active',
         price: parseInt(formData.price),
         bedrooms: parseInt(formData.bedrooms) || 0,
         bathrooms: parseInt(formData.bathrooms) || 0,

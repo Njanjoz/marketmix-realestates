@@ -20,7 +20,7 @@ export const formatPriceDetailed = (price) => {
   }).format(price);
 };
 
-export const getPropertyImage = (property, fallback = 'https://placehold.co/400x300') => {
+export const getPropertyImage = (property, fallback = '/images/property-hero.svg') => {
   return resolvePropertyImage(property) || fallback;
 };
 

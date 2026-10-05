@@ -1,0 +1,36 @@
+.leaflet-div-icon.marketmix-map-marker {
+  border: 0;
+  background: transparent;
+}
+
+.marketmix-map-marker__dot {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  color: white;
+  background: #18805d;
+  box-shadow: 0 4px 14px rgba(12, 32, 24, 0.35);
+  font: 800 11px/1 system-ui, sans-serif;
+}
+
+.marketmix-map-marker__dot--destination {
+  color: #17392d;
+  background: #f3bb84;
+}
+
+.marketmix-map-marker__dot--driver {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+  background: #14241e;
+  animation: marketmix-driver-pulse 1.8s ease-out infinite;
+}
+
+@keyframes marketmix-driver-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(20, 36, 30, 0.32), 0 4px 14px rgba(12, 32, 24, 0.35); }
+  75% { box-shadow: 0 0 0 15px rgba(20, 36, 30, 0), 0 4px 14px rgba(12, 32, 24, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(20, 36, 30, 0), 0 4px 14px rgba(12, 32, 24, 0.35); }
+}

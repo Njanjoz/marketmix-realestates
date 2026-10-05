@@ -50,7 +50,7 @@ const AgentsPage = () => {
             id: docSnap.id,
             name: profile.name || data.name || 'Agent',
             title: profile.title || data.title || 'Real Estate Agent',
-            photo: profile.photo || data.photo || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
+            photo: profile.photo || data.photo || '/images/profile-placeholder.svg',
             rating: Number(profile.rating ?? data.rating ?? 4.8),
             experience: Number(profile.experience ?? data.experience ?? 1),
             propertiesSold: Number(profile.propertiesSold ?? data.propertiesSold ?? 0),
@@ -156,6 +156,7 @@ const AgentsPage = () => {
                   src={agent.photo} 
                   alt={agent.name} 
                   className="w-full h-full object-cover"
+                  onError={(event) => { event.currentTarget.src = '/images/profile-placeholder.svg'; }}
                 />
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold flex items-center shadow-md">
                   <FaStar className="text-yellow-500 mr-1 w-3 h-3" />

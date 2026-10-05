@@ -40,6 +40,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
   const watchIdRef = useRef(null);
   const isManualOrSearchRef = useRef(false);
   const activeLocationRequestRef = useRef(false);
+  const hasAcceptedGoodFixRef = useRef(false);
+  const activeLoadingRef = useRef(false);
 
   // Clean up geolocation watch on unmount
   useEffect(() => {
@@ -115,6 +117,9 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
 
   const requestLocationName = (coordinateLocation) => {
     setLocation({ ...coordinateLocation, address: '' });
+    // Preserve the valid map point even when reverse lookup cannot supply a readable name.
+    // The user can still add an area or landmark in the follow-up prompt.
+    onLocationSelect?.({ ...coordinateLocation, address: '' });
     setPendingCoordinates(coordinateLocation);
     setPendingLocationName('');
     setMode('select');
@@ -165,6 +170,17 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     }
 
     setWarning(null);
+
+    const coordinateOnlyLocation = {
+      lat: latitude,
+      lng: longitude,
+      address: '',
+      gpsAccuracy: roundedAccuracy,
+      locationSource: 'device-gps',
+      locationAccuracyStatus: accuracyStatus,
+    };
+    setLocation(coordinateOnlyLocation);
+    onLocationSelect?.(coordinateOnlyLocation);
 
     try {
       const response = await fetch(
@@ -267,7 +283,6 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     }
 
     let bestPosition = null;
-    let hasAcceptedGoodFix = false;
 
     // 1. Use navigator.geolocation.watchPosition() with enableHighAccuracy: true, timeout: 60000, maximumAge: 0
     const watchId = navigator.geolocation.watchPosition(
@@ -283,14 +298,15 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         // Update live status with accuracy
         setStatusMessage(`Searching for a more accurate GPS location… (±${Math.round(accuracy)}m)`);
 
-        // If accuracy is good (<= 100m) and we haven't accepted yet
-        if (accuracy <= 100 && !hasAcceptedGoodFix) {
-          hasAcceptedGoodFix = true;
+        // Save a usable fix quickly (<= 250m)
+        if (accuracy <= 250 && !hasAcceptedGoodFixRef.current) {
+          hasAcceptedGoodFixRef.current = true;
           if (watchIdRef.current !== null) {
             navigator.geolocation.clearWatch(watchIdRef.current);
             watchIdRef.current = null;
-            console.log("GPS watcher cleared (target accuracy reached)");
+            console.log("GPS watcher cleared (usable accuracy reached)");
           }
+          activeLoadingRef.current = false;
           processAcceptedPosition(latitude, longitude, accuracy);
         }
       },
@@ -301,11 +317,15 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
           console.log("GPS permission denied");
           setError("GPS permission denied. Please enable location permissions in your browser settings.");
           setLoading(false);
+          activeLoadingRef.current = false;
+          activeLocationRequestRef.current = false;
           toast.error("GPS permission denied");
         } else if (err.code === 2) {
           console.log("GPS position unavailable");
           setError("GPS position unavailable. Please search for your location or enter manually.");
           setLoading(false);
+          activeLoadingRef.current = false;
+          activeLocationRequestRef.current = false;
           toast.error("GPS position unavailable");
         } else if (err.code === 3) {
           console.log("GPS timeout");
@@ -317,9 +337,11 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
               navigator.geolocation.clearWatch(watchIdRef.current);
               watchIdRef.current = null;
             }
+            activeLoadingRef.current = false;
             processAcceptedPosition(latitude, longitude, accuracy);
           } else {
             setLoading(false);
+            activeLoadingRef.current = false;
             activeLocationRequestRef.current = false;
             setTimeoutOccurred(true);
             setError("GPS is taking longer than expected. Make sure Location is enabled and try moving outdoors.");
@@ -336,21 +358,31 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     );
 
     watchIdRef.current = watchId;
+    activeLoadingRef.current = true;
+    hasAcceptedGoodFixRef.current = false;
 
-    // Additional acquisition window safety timer (e.g. 15s to accept best position if watch doesn't get <=100m immediately)
+    // Additional acquisition window safety timer (10s to accept best position)
     setTimeout(() => {
-      if (loading && !hasAcceptedGoodFix) {
+      if (activeLoadingRef.current && !hasAcceptedGoodFixRef.current) {
         if (bestPosition) {
+          hasAcceptedGoodFixRef.current = true;
           if (watchIdRef.current !== null) {
             navigator.geolocation.clearWatch(watchIdRef.current);
             watchIdRef.current = null;
             console.log("GPS watcher cleared (safety timer accepted best fix)");
           }
+          activeLoadingRef.current = false;
           const { latitude, longitude, accuracy } = bestPosition.coords;
           processAcceptedPosition(latitude, longitude, accuracy);
+        } else {
+          activeLoadingRef.current = false;
+          setLoading(false);
+          activeLocationRequestRef.current = false;
+          setTimeoutOccurred(true);
+          setError("GPS is taking longer than expected. Make sure Location is enabled and try moving outdoors.");
         }
       }
-    }, 15000);
+    }, 10000);
   };
 
   const cancelLoading = () => {

@@ -399,7 +399,7 @@ export default function SellerDashboard() {
                   
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <img 
-                      src={resolvePropertyImage(listing) || 'https://placehold.co/120x80'} 
+                      src={resolvePropertyImage(listing) || '/images/property-hero.svg'}
                       alt={listing.title}
                       style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 12 }}
                     />

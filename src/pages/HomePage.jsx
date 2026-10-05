@@ -11,6 +11,9 @@ import {
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { resolvePropertyImage } from '../utils/propertyMapping';
+import { getListingType } from '../utils/listingType';
+import MovingIllustration from '../components/moving/MovingIllustration';
+import '../components/moving/LiquidGlass.css';
 
 const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,7 +25,7 @@ const HomePage = () => {
     hero: {
       title: 'Discover Timeless Properties in Kenya',
       subtitle: 'Premium real estate with uncompromising standards.',
-      backgroundImage: 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1920',
+      backgroundImage: '/images/property-hero.svg',
       searchPlaceholder: 'Search properties by location or type...'
     },
     stats: [
@@ -66,6 +69,10 @@ const HomePage = () => {
   const getPropertyImage = (property) => {
     return resolvePropertyImage(property) || null;
   };
+
+  const homeHeroImage = String(homepageSettings.hero.backgroundImage || '').includes('photo-1613977257363-707ba9348227')
+    ? '/images/property-hero.svg'
+    : homepageSettings.hero.backgroundImage || '/images/property-hero.svg';
 
   // Load homepage settings from Firestore
   const loadHomepageSettings = async () => {
@@ -184,11 +191,11 @@ const HomePage = () => {
       <section className="relative min-h-[90vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={getPropertyImage(heroProperties[0]) || homepageSettings.hero.backgroundImage}
+            src={getPropertyImage(heroProperties[0]) || homeHeroImage}
             alt="Luxury Property"
             className="w-full h-full object-cover"
             onError={(e) => {
-              e.target.src = 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1920';
+              e.target.src = '/images/property-hero.svg';
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/40"></div>
@@ -350,6 +357,33 @@ const HomePage = () => {
         </div>
       </section>
 
+      <section className="relative overflow-hidden bg-[#f2f6f3] py-16 sm:py-20">
+        <div className="pointer-events-none absolute -right-20 top-0 h-80 w-80 rounded-full bg-emerald-100 blur-3xl" />
+        <div className="container relative mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8 max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[.2em] text-emerald-800">MarketMix home services</p>
+            <h2 className="mt-2 text-3xl font-serif font-light text-gray-950 sm:text-4xl">More than just finding a home</h2>
+            <p className="mt-3 text-gray-600">Build your next chapter with people and services that make a place feel like home.</p>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Link to="/roommates" className="mmx-glass-card group relative overflow-hidden rounded-[2rem] border p-5 sm:p-7">
+              <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-sky-100/70 blur-2xl transition group-hover:scale-125" />
+              <div className="relative grid items-center gap-3 sm:grid-cols-[1fr_48%]">
+                <div className="order-2 sm:order-1"><span className="inline-flex rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em] text-emerald-900">Share a place</span><h3 className="mt-3 text-2xl font-bold text-gray-950">Find a Roommate</h3><p className="mt-2 max-w-sm text-sm leading-6 text-gray-600">Looking for someone to share a place with? Find compatible roommates based on area, budget and living preferences.</p><span className="mmx-liquid-primary mt-5 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white">Find a roommate <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" /></span></div>
+                <MovingIllustration kind="roommates" className="order-1 w-full drop-shadow-[0_15px_22px_rgba(35,70,55,.13)] sm:order-2" />
+              </div>
+            </Link>
+            <Link to="/transport" className="mmx-glass-card group relative overflow-hidden rounded-[2rem] border p-5 sm:p-7">
+              <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-emerald-100/80 blur-2xl transition group-hover:scale-125" />
+              <div className="relative grid items-center gap-3 sm:grid-cols-[1fr_48%]">
+                <div className="order-2 sm:order-1"><span className="inline-flex rounded-full bg-sky-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em] text-sky-900">Move into your next home</span><h3 className="mt-3 text-2xl font-bold text-gray-950">Move Your Things</h3><p className="mt-2 max-w-sm text-sm leading-6 text-gray-600">Found your new place? Get help moving your belongings there.</p><span className="mmx-liquid-primary mt-5 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white">Get Moving Help <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1" /></span></div>
+                <MovingIllustration className="order-1 w-full drop-shadow-[0_15px_22px_rgba(35,70,55,.13)] sm:order-2" />
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Featured Properties (Assigned by Admin) */}
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -391,12 +425,12 @@ const HomePage = () => {
                 >
                   <div className="relative h-64 overflow-hidden">
                     <img
-                      src={getPropertyImage(property) || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800'}
+                      src={getPropertyImage(property) || '/images/property-hero.svg'}
                       alt={property.title}
                       className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
                     />
-                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-medium ${property.status === 'rent' ? 'bg-gray-900' : 'bg-black'} text-white tracking-wide`}>
-                      {property.status === 'rent' ? 'FOR RENT' : 'FOR SALE'}
+                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-medium ${getListingType(property) === 'rent' ? 'bg-gray-900' : 'bg-black'} text-white tracking-wide`}>
+                      {getListingType(property) === 'rent' ? 'FOR RENT' : getListingType(property) === 'sale' ? 'FOR SALE' : 'LISTING TYPE UNAVAILABLE'}
                     </div>
                     {property.featured && (
                       <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full flex items-center gap-1">
@@ -428,7 +462,7 @@ const HomePage = () => {
                       <div>
                         <div className="text-2xl font-serif font-light text-gray-900">
                           KES {property.price?.toLocaleString()}
-                          {property.status === 'rent' && <span className="text-sm">/mo</span>}
+                          {getListingType(property) === 'rent' && <span className="text-sm">/mo</span>}
                         </div>
                       </div>
                       <Link
@@ -459,7 +493,12 @@ const HomePage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {trendingProperties.map((property, index) => (
                 <div key={property.id} className="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200 p-6">
-                  <img src={getPropertyImage(property) || 'https://placehold.co/400x200'} alt="" className="w-full h-48 object-cover rounded-lg mb-4" />
+                  <img
+                    src={getPropertyImage(property) || '/images/property-hero.svg'}
+                    alt={property.title || 'Property listing'}
+                    className="w-full h-48 object-cover rounded-lg mb-4"
+                    onError={(event) => { event.currentTarget.src = '/images/property-hero.svg'; }}
+                  />
                   <h3 className="text-lg font-serif font-semibold">{property.title}</h3>
                   <div className="flex justify-between items-center mt-4">
                     <span className="text-xl font-serif font-bold text-gray-900">KES {property.price?.toLocaleString()}</span>

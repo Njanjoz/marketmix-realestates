@@ -10,6 +10,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import PropertyCard from '../components/PropertyCard.jsx';
 import PropertyFilter from '../components/PropertyFilter.jsx';
 import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { getListingType } from '../utils/listingType';
 import toast from 'react-hot-toast';
 
 // Glassmorphism styles
@@ -228,6 +229,7 @@ const NearMeButton = styled.button`
 const PropertiesPage = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedStatus = ['sale', 'rent'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all';
   
   const [allProperties, setAllProperties] = useState([]);
   const [displayProperties, setDisplayProperties] = useState([]);
@@ -248,9 +250,13 @@ const PropertiesPage = () => {
     maxPrice: '',
     bedrooms: 'any',
     propertyType: 'all',
-    status: 'all'
+    status: requestedStatus
   });
   const itemsPerPage = 12;
+
+  useEffect(() => {
+    setFilters((current) => current.status === requestedStatus ? current : { ...current, status: requestedStatus });
+  }, [requestedStatus]);
 
   // Calculate distance between two coordinates (Haversine formula)
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -312,7 +318,7 @@ const PropertiesPage = () => {
       filtered = filtered.filter(prop => prop.propertyType === filters.propertyType);
     }
     if (filters.status !== 'all') {
-      filtered = filtered.filter(prop => prop.status === filters.status);
+      filtered = filtered.filter(prop => getListingType(prop) === filters.status);
     }
     
     setDisplayProperties(filtered);
@@ -469,8 +475,9 @@ const PropertiesPage = () => {
     newParams.set('view', viewMode);
     newParams.set('sort', sortBy);
     newParams.set('page', currentPage.toString());
+    if (filters.status !== 'all') newParams.set('status', filters.status);
     setSearchParams(newParams, { replace: true });
-  }, [viewMode, sortBy, currentPage, setSearchParams]);
+  }, [viewMode, sortBy, currentPage, filters.status, setSearchParams]);
 
   return (
     <PageWrapper>

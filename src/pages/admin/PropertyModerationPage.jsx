@@ -7,8 +7,29 @@ import { resolvePropertyImage } from '../../utils/propertyMapping';
 
 const STATUS_FILTERS = ['pending', 'approved', 'rejected', 'all'];
 
+const getPropertyImageUrls = (property) => {
+  const candidates = [property?.coverImage, property?.publicMedia, property?.media, property?.images, property?.gallery, property?.photos];
+  const urls = [];
+  const addUrl = (image) => {
+    const url = typeof image === 'string'
+      ? image
+      : image?.remoteUrl || image?.url || image?.src || image?.localPreviewUrl || image?.preview;
+    const trimmedUrl = typeof url === 'string' ? url.trim() : '';
+    if (/^https?:\/\//i.test(trimmedUrl) && !urls.includes(trimmedUrl)) urls.push(trimmedUrl);
+  };
+
+  candidates.forEach((candidate) => {
+    if (Array.isArray(candidate)) candidate.forEach(addUrl);
+    else addUrl(candidate);
+  });
+
+  return urls;
+};
+
 const PropertyModerationPage = () => {
   const [properties, setProperties] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,9 +50,36 @@ const PropertyModerationPage = () => {
     }
   }, []);
 
+  const loadReports = useCallback(async () => {
+    setLoadingReports(true);
+    try {
+      const snapshot = await getDocs(collection(db, 'propertyReports'));
+      const nextReports = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      nextReports.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setReports(nextReports);
+    } catch (error) {
+      console.error('Could not load property reports:', error);
+      toast.error('Could not load listing reports.');
+    } finally {
+      setLoadingReports(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadProperties();
-  }, [loadProperties]);
+    loadReports();
+  }, [loadProperties, loadReports]);
+
+  const markReportReviewed = async (report) => {
+    try {
+      await updateDoc(doc(db, 'propertyReports', report.id), { status: 'reviewed' });
+      setReports((current) => current.map((item) => item.id === report.id ? { ...item, status: 'reviewed' } : item));
+      toast.success('Report marked as reviewed.');
+    } catch (error) {
+      console.error('Could not update property report:', error);
+      toast.error('Could not update this report.');
+    }
+  };
 
   const visibleProperties = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -125,6 +173,7 @@ const PropertyModerationPage = () => {
   };
 
   const updateDraft = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  const editingPhotoUrls = editing ? getPropertyImageUrls(editing) : [];
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
@@ -139,6 +188,19 @@ const PropertyModerationPage = () => {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </header>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div><h2 className="font-semibold text-slate-900">Listing reports</h2><p className="mt-1 text-xs text-slate-500">Review issues reported from the Explore property cards.</p></div>
+            <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">{reports.filter((report) => report.status === 'new').length} new</span>
+          </div>
+          {loadingReports ? <p className="mt-3 text-sm text-slate-500">Loading reports…</p> : reports.length === 0 ? <p className="mt-3 text-sm text-slate-500">No listing reports.</p> : <div className="mt-3 divide-y divide-slate-100">
+            {reports.map((report) => <article key={report.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+              <div className="min-w-0"><h3 className="text-sm font-semibold text-slate-900">{report.propertyTitle || 'Property listing'} <span className="ml-1 text-xs font-normal capitalize text-slate-500">· {report.status}</span></h3><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{report.reason}</p><p className="mt-1 text-xs text-slate-500">Property ID: {report.propertyId}</p></div>
+              {report.status === 'new' && <button type="button" onClick={() => markReportReviewed(report)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Mark reviewed</button>}
+            </article>)}
+          </div>}
+        </section>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
@@ -200,11 +262,49 @@ const PropertyModerationPage = () => {
             </div>
 
             <label className="block text-sm font-medium text-slate-700">Headline<input required value={draft.title} onChange={(event) => updateDraft('title', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+            <section className="space-y-3 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-3 sm:p-4">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wide text-emerald-900">Main cover photo</h3>
+                <p className="mt-1 text-xs text-emerald-800">This large image appears first on the listing, property cards, and promotions.</p>
+              </div>
+              <div className="relative aspect-[16/9] max-h-[26rem] overflow-hidden rounded-xl bg-white shadow-sm">
+                {draft.coverImage ? (
+                  <img src={draft.coverImage} alt={`${draft.title || 'Property'} cover photo preview`} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-500">Select a photo to preview the cover</div>
+                )}
+                {draft.coverImage && <span className="absolute left-3 top-3 rounded-full bg-emerald-700 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white shadow">Selected cover</span>}
+              </div>
+              {editingPhotoUrls.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {editingPhotoUrls.map((imageUrl, index) => {
+                    const selected = draft.coverImage === imageUrl;
+                    return (
+                      <button
+                        key={`${imageUrl}-${index}`}
+                        type="button"
+                        onClick={() => updateDraft('coverImage', imageUrl)}
+                        aria-pressed={selected}
+                        className={`overflow-hidden rounded-lg border-2 bg-white text-left transition ${selected ? 'border-emerald-600 ring-2 ring-emerald-200' : 'border-white hover:border-emerald-300'}`}
+                      >
+                        <img src={imageUrl} alt={`Property photo ${index + 1}`} className="aspect-[4/3] w-full object-cover" />
+                        <span className={`block px-2 py-1.5 text-xs font-semibold ${selected ? 'text-emerald-800' : 'text-slate-600'}`}>
+                          {selected ? 'Selected cover' : 'Use as cover'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <label className="block text-sm font-medium text-slate-700">
+                Or paste a cover photo URL
+                <input type="url" value={draft.coverImage} onChange={(event) => updateDraft('coverImage', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+              </label>
+            </section>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm font-medium text-slate-700">Neighborhood / area<input required value={draft.location} onChange={(event) => updateDraft('location', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <label className="text-sm font-medium text-slate-700">Price<input required type="number" min="0" value={draft.price} onChange={(event) => updateDraft('price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <label className="text-sm font-medium text-slate-700">Property type<input value={draft.propertyType} onChange={(event) => updateDraft('propertyType', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
-              <label className="text-sm font-medium text-slate-700">Cover photo URL<input type="url" value={draft.coverImage} onChange={(event) => updateDraft('coverImage', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <label className="text-sm font-medium text-slate-700">Bedrooms<input type="number" min="0" value={draft.bedrooms} onChange={(event) => updateDraft('bedrooms', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <label className="text-sm font-medium text-slate-700">Bathrooms<input type="number" min="0" value={draft.bathrooms} onChange={(event) => updateDraft('bathrooms', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
               <label className="text-sm font-medium text-slate-700 sm:col-span-2">Area<input value={draft.area} onChange={(event) => updateDraft('area', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>

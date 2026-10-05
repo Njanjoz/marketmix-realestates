@@ -8,7 +8,7 @@ import {
   LAND_LIKE,
 } from '../constants/propertyTaxonomy';
 
-const StepBasicDetails = ({ data, update }) => {
+const StepBasicDetails = ({ data, update, errors = {} }) => {
   const isLand = LAND_LIKE.has(data.propertyType);
 
   return (
@@ -27,6 +27,15 @@ const StepBasicDetails = ({ data, update }) => {
             value={data.title}
             onChange={(v) => update({ title: v })}
             placeholder="e.g., Spacious 2 Bedroom Apartment Near Campus"
+          />
+        </Field>
+
+        <Field label="Listing type" required error={errors.listingType} hint="This controls whether the property appears under Buy or Rent.">
+          <Select
+            value={data.listingType || ''}
+            onChange={(v) => update({ listingType: v })}
+            options={[{ value: 'sale', label: 'For sale' }, { value: 'rent', label: 'For rent' }]}
+            placeholder="Choose sale or rent"
           />
         </Field>
 

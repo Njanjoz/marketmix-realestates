@@ -234,7 +234,7 @@ const Dashboard = () => {
   
   // Mock implementations for useAuth hooks
   const useAuth = () => ({
-    userProfile: { displayName: "Jane Doe", email: "jane.doe@example.com", phone: "+254 7XX XXX XXX", userType: "Buyer", profileImage: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" },
+    userProfile: { displayName: "Jane Doe", email: "jane.doe@example.com", phone: "+254 7XX XXX XXX", userType: "Buyer", profileImage: "/images/profile-placeholder.svg" },
     currentUser: true, // Mock: assuming user is logged in
     logout: async () => console.log("Logging out...") // Mock logout
   });
@@ -248,14 +248,14 @@ const Dashboard = () => {
       title: "Modern 3-Bedroom Apartment",
       location: "Kilimani, Nairobi",
       price: 85000,
-      image: "https://images.unsplash.com/photo-1613490493576-7fde63acd811"
+      image: "/images/property-hero.svg"
     },
     {
       id: 2,
       title: "Luxury Villa in Karen",
       location: "Karen, Nairobi",
       price: 45000000,
-      image: "https://images.unsplash.com/photo-1613977257363-707ba9348227"
+      image: "/images/property-hero.svg"
     }
   ];
 
@@ -342,7 +342,7 @@ const Dashboard = () => {
           {/* Left Column - Sidebar Navigation */}
           <Sidebar>
             <ProfileCard>
-              <img src={userProfile.profileImage} alt={userProfile.displayName} />
+              <img src={userProfile.profileImage} alt={userProfile.displayName} onError={(event) => { event.currentTarget.src = '/images/profile-placeholder.svg'; }} />
               <h3 className="text-lg font-bold text-gray-900">{userProfile.displayName}</h3>
               <p className="text-sm text-gray-500">{userProfile.userType} Account</p>
               <PrimaryLink onClick={() => setActiveTab('settings')}>

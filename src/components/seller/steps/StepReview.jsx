@@ -23,7 +23,8 @@ const StepReview = ({ data }) => {
   const validImages = (data.images || []).filter((i) => i.status === 'uploaded' || i.remoteUrl || i.url || i.localPreviewUrl || i.file);
 
   const checks = [
-    { label: 'Rent', ok: !!data.rentAmount },
+    { label: 'Listing type', ok: ['sale', 'rent'].includes(data.listingType) },
+    { label: 'Price', ok: !!data.rentAmount },
     { label: 'Deposit', ok: !!data.depositType },
     { label: 'Utilities', ok: !!data.waterSource && !!data.electricityType },
     { label: 'Location', ok: !!data.coordinates },
@@ -63,6 +64,7 @@ const StepReview = ({ data }) => {
       </div>
 
       <Section title="Property">
+        <Row label="Listing type" value={data.listingType === 'sale' ? 'For sale' : data.listingType === 'rent' ? 'For rent' : ''} />
         <Row label="Property type" value={data.propertyType} />
         <Row label="Unit type" value={data.unitType} />
         <Row label="Room type" value={data.roomType} />

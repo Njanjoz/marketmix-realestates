@@ -1,6 +1,6 @@
 // src/App.jsx - COMPLETE WITH ADMIN DASHBOARD
-import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PropertyProvider } from './context/PropertyContext';
 import { SearchProvider } from './context/SearchContext';
@@ -10,6 +10,8 @@ import { WifiOff, RotateCcw } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/LoadingSpinner';
 import Navbar from './components/Navbar';
+import MobileBottomNav from './components/MobileBottomNav';
+import RouteSEO from './components/RouteSEO';
 import Footer from './components/Footer';
 import { getNetworkStatus, subscribeToNetwork } from './services/networkService';
 
@@ -27,6 +29,8 @@ const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const PropertyDetailsPage = lazy(() => import('./pages/PropertyDetailspage'));
 const LuxuryPage = lazy(() => import('./pages/LuxuryPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
+const TransportPage = lazy(() => import('./pages/TransportPage'));
+const TransportDriverPage = lazy(() => import('./pages/TransportDriverPage'));
 
 // Dashboard Router
 const DashboardRouter = lazy(() => import('./components/dashboards/DashboardRouter'));
@@ -34,6 +38,22 @@ const DashboardRouter = lazy(() => import('./components/dashboards/DashboardRout
 // Admin Dashboard
 const AdminDashboard = lazy(() => import('./components/dashboards/AdminDashboard'));
 const PropertyModerationPage = lazy(() => import('./pages/admin/PropertyModerationPage'));
+const AdminServiceRequestsPage = lazy(() => import('./pages/admin/ServiceRequestsPage'));
+const AdminTransportRequestsPage = lazy(() => import('./pages/admin/TransportRequestsPage'));
+const MovingPackagesPage = lazy(() => import('./pages/admin/MovingPackagesPage'));
+
+function ScrollToTop() {
+  const location = useLocation();
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const previousBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+    window.scrollTo(0, 0);
+    const frame = window.requestAnimationFrame(() => { root.style.scrollBehavior = previousBehavior; });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.search]);
+  return null;
+}
 
 // User Pages
 const ProfilePage = lazy(() => import('./pages/user/ProfilePage'));
@@ -66,11 +86,13 @@ function App() {
 
   return (
     <Router>
+      <ScrollToTop />
+      <RouteSEO />
       <AuthProvider>
         <PropertyProvider>
           <SearchProvider>
             <StyledComponentsProvider>
-              <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+              <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
                 <Toaster position="top-right" />
                 {network.online === false && (
                   <div className="fixed inset-x-0 top-0 z-50 bg-red-600 text-white shadow-md">
@@ -106,6 +128,12 @@ function App() {
                       <Route path="/property/:id" element={<PropertyDetailsPage />} />
                       <Route path="/luxury" element={<LuxuryPage />} />
                       <Route path="/explore" element={<ExplorePage />} />
+                      <Route path="/roommates" element={<ExplorePage />} />
+                      <Route path="/transport" element={<TransportPage />} />
+                      <Route path="/transport/driver" element={
+                        <ProtectedRoute><TransportDriverPage /></ProtectedRoute>
+                      } />
+                      <Route path="/move-in" element={<Navigate to="/transport" replace />} />
                       
                       {/* User Dashboard */}
                       <Route path="/dashboard" element={
@@ -125,6 +153,17 @@ function App() {
                         <ProtectedRoute allowedRoles={['admin']}>
                           <PropertyModerationPage />
                         </ProtectedRoute>
+                      } />
+                      <Route path="/admin/service-requests" element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                          <AdminServiceRequestsPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/admin/transport-requests" element={
+                        <ProtectedRoute allowedRoles={['admin']}><AdminTransportRequestsPage /></ProtectedRoute>
+                      } />
+                      <Route path="/admin/moving-packages" element={
+                        <ProtectedRoute allowedRoles={['admin']}><MovingPackagesPage /></ProtectedRoute>
                       } />
 
                       {/* User Profile Routes */}
@@ -166,6 +205,7 @@ function App() {
                 </main>
                 
                 <Footer />
+                <MobileBottomNav />
               </div>
             </StyledComponentsProvider>
           </SearchProvider>

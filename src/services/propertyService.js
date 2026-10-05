@@ -15,7 +15,7 @@ import {
 } from "firebase/firestore";
 
 export const getPropertyImage = (property) => {
-  return resolvePropertyImage(property) || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800';
+  return resolvePropertyImage(property) || '/images/property-hero.svg';
 };
 
 /**

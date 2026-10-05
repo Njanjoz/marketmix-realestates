@@ -4,9 +4,11 @@ import { Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
 import { getPropertyImage } from '../services/propertyService';
 import { shareProperty } from '../services/shareService';
 import toast from 'react-hot-toast';
+import { getListingType } from '../utils/listingType';
 
 const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
   const [saved, setSaved] = useState(false);
+  const listingType = getListingType(property);
 
   useEffect(() => {
     try {
@@ -64,15 +66,16 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
         <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 flex flex-col md:flex-row">
           <div className="relative md:w-72 h-56 overflow-hidden">
             <img 
-              src={getPropertyImage(property)} 
+              src={getPropertyImage(property) || '/images/property-hero.svg'}
               alt={property.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              onError={(event) => { event.currentTarget.src = '/images/property-hero.svg'; }}
             />
             <div className="absolute top-3 left-3 flex flex-col gap-1">
               <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${
-                property.status === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+                    listingType === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
               }`}>
-                {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
+                {listingType === 'sale' ? 'FOR SALE' : listingType === 'rent' ? 'FOR RENT' : 'LISTING TYPE UNAVAILABLE'}
               </span>
               {property.availabilityStatus && (
                 <span className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white/90 text-gray-800">
@@ -115,7 +118,7 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
             <div className="flex justify-between items-center">
               <div className="text-2xl font-bold text-emerald-600">
                 {formatPrice(property.price)}
-                {property.status === 'rent' && <span className="text-sm font-normal">/month</span>}
+                {listingType === 'rent' && <span className="text-sm font-normal">/month</span>}
               </div>
               <div className="flex items-center gap-3 text-gray-400">
                 <span className="flex items-center gap-1 text-xs"><Eye className="w-3 h-3" /> {property.views || 0}</span>
@@ -132,15 +135,16 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
       <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
         <div className="relative h-56 overflow-hidden">
           <img 
-            src={getPropertyImage(property)} 
+            src={getPropertyImage(property) || '/images/property-hero.svg'}
             alt={property.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={(event) => { event.currentTarget.src = '/images/property-hero.svg'; }}
           />
           <div className="absolute top-3 left-3">
             <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${
-              property.status === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+              listingType === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
             }`}>
-              {property.status === 'sale' ? 'FOR SALE' : 'FOR RENT'}
+              {listingType === 'sale' ? 'FOR SALE' : listingType === 'rent' ? 'FOR RENT' : 'LISTING TYPE UNAVAILABLE'}
             </span>
           </div>
           {distance && (
@@ -191,7 +195,7 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
           <div className="flex justify-between items-center pt-2 border-t border-gray-100">
             <div className="text-xl font-bold text-emerald-600">
               {formatPrice(property.price)}
-              {property.status === 'rent' && <span className="text-xs font-normal">/mo</span>}
+              {listingType === 'rent' && <span className="text-xs font-normal">/mo</span>}
             </div>
             <div className="flex items-center gap-2 text-gray-400 text-xs">
               <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {property.views || 0}</span>

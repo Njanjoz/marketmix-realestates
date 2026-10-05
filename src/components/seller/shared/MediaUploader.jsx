@@ -1,5 +1,6 @@
 // src/components/seller/shared/MediaUploader.jsx
 import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Upload, X, Loader, CheckCircle, AlertCircle, Star, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { resizeImage, uploadFileToR2 } from '../../../utils/cloudflareUpload';
@@ -8,10 +9,16 @@ const MAX_IMAGES = 20;
 
 // ─── helpers ─────────────────────────────────────────────
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const getImageUrl = (img) => {
+  if (!img) return null;
+  return img.remoteUrl || img.url || img.localPreviewUrl || img.preview || (img.file instanceof File ? URL.createObjectURL(img.file) : null);
+};
+
 const getImageName = (img) => {
   if (img.file?.name || img.name) return img.file?.name || img.name;
   try {
-    return decodeURIComponent(new URL(img.remoteUrl).pathname.split('/').filter(Boolean).pop()) || 'Property photo';
+    const targetUrl = getImageUrl(img);
+    return targetUrl ? decodeURIComponent(new URL(targetUrl).pathname.split('/').filter(Boolean).pop()) || 'Property photo' : 'Property photo';
   } catch {
     return 'Property photo';
   }
@@ -19,7 +26,7 @@ const getImageName = (img) => {
 
 // ─── Image Card Component ──────────────────────────────
 const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRemove, isCover, catLabel }) => {
-  const src = img.remoteUrl;
+  const src = img.remoteUrl || img.url || img.localPreviewUrl || img.preview || (img.file ? URL.createObjectURL(img.file) : null);
   const imageName = getImageName(img);
 
   return (
@@ -41,11 +48,13 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
       )}
 
       {img.status === 'uploading' && (
-        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white text-xs gap-1">
-          <Loader className="w-5 h-5 animate-spin" />
-          <span>{img.phase === 'processing' ? 'Preparing image…' : `Uploading ${img.progress || 0}%`}</span>
+        <>
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-slate-800 shadow">
+            <Loader className="h-3 w-3" />
+            {img.phase === 'processing' ? 'Preparing' : `Uploading ${img.progress || 0}%`}
+          </span>
           <div
-            className="w-3/4 h-1.5 bg-white/30 rounded-full overflow-hidden mt-1"
+            className="absolute inset-x-0 bottom-0 h-1.5 overflow-hidden bg-black/20"
             role="progressbar"
             aria-label={`Uploading ${img.file?.name || 'image'}`}
             aria-valuemin={0}
@@ -54,7 +63,7 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
           >
             <div className="h-full bg-emerald-400 transition-[width]" style={{ width: img.phase === 'processing' ? '12%' : `${img.progress || 0}%` }} />
           </div>
-        </div>
+        </>
       )}
       {img.status === 'uploaded' && (
         <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-emerald-500 bg-white rounded-full shadow" />
@@ -63,10 +72,10 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
         <button
           type="button"
           onClick={onRetry}
-          className="absolute inset-0 bg-red-500/80 flex flex-col items-center justify-center text-white text-xs gap-1 font-medium"
+          className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-red-700 px-2 py-1 text-[10px] font-semibold text-white shadow"
         >
-          <AlertCircle className="w-4 h-4" />
-          Retry Upload
+          <AlertCircle className="h-3 w-3" />
+          Retry upload
         </button>
       )}
 
@@ -84,7 +93,7 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
         {catLabel}
       </span>
 
-      <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition flex items-center justify-center gap-2">
+      <div className="absolute inset-x-2 bottom-10 flex items-center justify-center gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
         {!isCover && (
           <button
             type="button"
@@ -118,6 +127,8 @@ const MediaUploader = ({ categories, images, setImages }) => {
   const inputRef = useRef(null);
   const [activeCategory, setActiveCategory] = useState(categories[0].id);
   const [viewMode, setViewMode] = useState('category');
+  const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
+  const [previewCoverId, setPreviewCoverId] = useState(null);
 
   const addImageFromUrl = () => {
     const trimmedUrl = photoUrl.trim();
@@ -203,7 +214,7 @@ const MediaUploader = ({ categories, images, setImages }) => {
     const newImgs = selectedFiles.map((file) => ({
       id: uid(),
       file,
-      localPreviewUrl: null,
+      localPreviewUrl: URL.createObjectURL(file),
       remoteUrl: null,
       r2Key: null,
       status: 'uploading',
@@ -232,12 +243,11 @@ const MediaUploader = ({ categories, images, setImages }) => {
   const setCover = (id) => {
     setImages((prev) => {
       const idx = prev.findIndex((i) => i.id === id);
-      if (idx <= 0) return prev;
+      if (idx < 0) return prev;
       const copy = [...prev];
       const [item] = copy.splice(idx, 1);
       return [item, ...copy];
     });
-    toast.success('Set as property cover photo');
   };
 
   const move = (fromId, toId) => {
@@ -255,6 +265,11 @@ const MediaUploader = ({ categories, images, setImages }) => {
 
   const activeCategoryObj = categories.find((c) => c.id === activeCategory) || categories[0];
   const coverId = images[0]?.id; // true global cover
+  const coverImage = images[0];
+  const coverPreviewUrl = getImageUrl(coverImage);
+  const selectedPreviewImage = images.find((image) => String(image.id) === String(previewCoverId)) || images[0];
+  const selectedPreviewUrl = getImageUrl(selectedPreviewImage);
+  const isNewCoverSelection = Boolean(selectedPreviewImage && String(selectedPreviewImage.id) !== String(coverImage?.id));
 
   return (
     <div className="space-y-4">
@@ -289,6 +304,153 @@ const MediaUploader = ({ categories, images, setImages }) => {
           </button>
         </div>
       </div>
+
+      {coverImage && (
+        <section className="grid gap-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-3 sm:p-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)]">
+          <div className="relative aspect-[16/9] min-h-48 overflow-hidden rounded-xl bg-white shadow-sm sm:min-h-64 transition-all duration-500 ease-in-out">
+            {coverPreviewUrl ? (
+              <img src={coverPreviewUrl} alt="Selected property cover photo" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-gray-500">Cover photo is uploading</div>
+            )}
+            <span className="absolute left-3 top-3 rounded-full bg-emerald-700 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white shadow">
+              Property cover photo
+            </span>
+          </div>
+          <div className="flex flex-col justify-center px-1 py-2 sm:px-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Shown first across MarketMix</span>
+            <h3 className="mt-1 text-lg font-bold text-emerald-950">{getImageName(coverImage)}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-emerald-900/80">
+              This large image is used as the listing cover on property cards, details, and promotion posters.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-emerald-800">Choose Set cover on another photo or:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewCoverId(coverImage?.id || images[0]?.id);
+                  setIsCoverModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
+              >
+                <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
+                Change cover photo
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Cover Change Modal */}
+      {isCoverModalOpen && typeof document !== 'undefined' && createPortal((
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm transition-opacity duration-300" role="dialog" aria-modal="true" aria-labelledby="cover-photo-dialog-title">
+          <div className="my-auto max-h-[90vh] w-full max-w-3xl space-y-6 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div>
+                <h3 id="cover-photo-dialog-title" className="text-lg font-bold text-gray-900">Change Property Cover Photo</h3>
+                <p className="text-xs text-gray-500">Click any uploaded image below to select and preview it as the new cover.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCoverModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 1. All Uploaded Images Grid (User sees all images to select) */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                1. Select an image ({images.length} uploaded)
+              </span>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 max-h-56 overflow-y-auto p-2 border rounded-xl bg-gray-50">
+                {images.map((img) => {
+                  const imgUrl = img.remoteUrl || img.url || img.localPreviewUrl || img.preview;
+                  const isSelected = previewCoverId != null && img.id != null && String(img.id) === String(previewCoverId);
+                  return (
+                    <button
+                      key={`cover-select-${img.id}`}
+                      type="button"
+                      onClick={() => {
+                        console.info("Selected cover image ID:", img.id);
+                        setPreviewCoverId(img.id);
+                      }}
+                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                        isSelected
+                          ? 'border-emerald-600 ring-2 ring-emerald-300 shadow-md bg-emerald-50'
+                          : 'border-gray-200 hover:border-emerald-400 bg-white'
+                      }`}
+                    >
+                      {imgUrl ? (
+                        <img src={imgUrl} alt="Thumbnail" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">Loading</div>
+                      )}
+                      {isSelected && (
+                        <span className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md">
+                          <CheckCircle className="h-4 w-4 text-emerald-700" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Live preview of the selected cover photo */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                2. Live Preview (New Cover Photo)
+              </span>
+              <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl bg-gray-100 border-2 border-emerald-500 shadow-md">
+                {selectedPreviewUrl ? (
+                  <img src={selectedPreviewUrl} alt="Preview selected cover photo" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-gray-400">No image selected</div>
+                )}
+                <span className="absolute left-3 top-3 rounded-full bg-emerald-600 px-3.5 py-1 text-xs font-bold text-white shadow-md">
+                  New Cover Preview ⭐
+                </span>
+              </div>
+            </div>
+
+            {isNewCoverSelection && (
+              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                <strong>Use {getImageName(selectedPreviewImage)} as the new cover photo?</strong>
+                <p className="mt-1 text-xs text-emerald-800">It will appear first on the listing and its promotion poster.</p>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => setIsCoverModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isNewCoverSelection && selectedPreviewImage?.id != null) {
+                    setCover(selectedPreviewImage.id);
+                    toast.success('New cover photo applied successfully!');
+                    setIsCoverModalOpen(false);
+                  } else {
+                    toast.error('Choose a different photo before changing the cover.');
+                  }
+                }}
+                disabled={!isNewCoverSelection}
+                className="px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Use as new cover photo
+              </button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
 
       {/* Category chips */}
       <div className="flex flex-wrap gap-1.5 pb-2 border-b border-gray-100">

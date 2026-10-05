@@ -1,5 +1,6 @@
 // src/components/seller/SellerPropertyEdit.jsx
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import {
@@ -34,7 +35,7 @@ const normalizeImageEntries = (images = []) => {
   if (!Array.isArray(images)) return [];
 
   return images
-    .map((image) => {
+    .map((image, index) => {
       if (!image) return null;
 
       if (typeof image === 'string') {
@@ -53,6 +54,7 @@ const normalizeImageEntries = (images = []) => {
       const remoteUrl = image.remoteUrl || image.url || image.src || image.localPreviewUrl || null;
       return {
         ...image,
+        id: image.id ?? image.imageId ?? `saved-image-${index}-${Math.random().toString(36).slice(2, 9)}`,
         url: image.url ?? remoteUrl,
         remoteUrl: image.remoteUrl ?? remoteUrl,
         category: image.category || 'other',
@@ -94,6 +96,7 @@ const hydrateImages = (property) => {
 };
 
 const initialData = {
+  listingType: '',
   propertyType: 'house',
   unitType: 'Entire property',
   roomType: '',
@@ -250,6 +253,7 @@ const validateStep = (stepId, data) => {
       if (!data.rentalModel || data.rentalModel.length === 0) data.rentalModel = ['Monthly'];
       break;
     case 'basicDetails':
+      if (!['sale', 'rent'].includes(data.listingType)) errors.listingType = 'Choose whether the property is for sale or rent.';
       if (!data.propertyName) data.propertyName = data.title || 'Property';
       if (!data.title) data.title = data.propertyName || 'Property Listing';
       if (!data.description) data.description = 'Property description';
@@ -305,6 +309,9 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
     return cleanUndefined({
       ...initialData,
       ...p,
+      listingType: ['sale', 'rent'].includes(String(p.listingType || '').toLowerCase())
+        ? String(p.listingType).toLowerCase()
+        : ['sale', 'rent'].includes(String(p.status || '').toLowerCase()) ? String(p.status).toLowerCase() : '',
       ...mgmt,
       propertyType: p.propertyType || 'house',
       unitType: p.unitType || 'Entire property',
@@ -587,7 +594,8 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
         bathrooms: Number(data.bathrooms) || 0,
         area: 0,
         images: publicMedia,
-        status: data.status || 'active',
+        listingType: data.listingType || property.listingType || '',
+        status: 'active',
         approvalStatus: 'pending',
         previousApprovalStatus: existing.approvalStatus || property.approvalStatus,
         verificationStatus: 'pending',
@@ -638,7 +646,7 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
     switch (currentStep.id) {
       case 'propertyType': return <StepPropertyType data={data} update={update} />;
       case 'unitRoom': return <StepUnitRoom data={data} update={update} />;
-      case 'basicDetails': return <StepBasicDetails data={data} update={update} />;
+      case 'basicDetails': return <StepBasicDetails data={data} update={update} errors={errors} />;
       case 'studentInfo': return <StepStudentInfo data={data} update={update} />;
       case 'roomOccupancy': return <StepRoomOccupancy data={data} update={update} />;
       case 'rentCosts': return <StepRentCosts data={data} update={update} />;
@@ -658,8 +666,8 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
   };
 
   if (!isOwner) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
         <div className="bg-white rounded-xl max-w-md w-full p-6">
           <div className="flex items-center gap-2 text-red-600 mb-2">
             <AlertCircle className="w-5 h-5" />
@@ -670,13 +678,14 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
             Close
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl w-full max-w-3xl my-4 flex flex-col max-h-[95vh]">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-2 sm:p-4">
+      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col rounded-xl bg-white sm:my-4 sm:max-h-[95vh]">
         <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Edit Property Wizard</h2>
@@ -691,7 +700,7 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
 
         <WizardProgress steps={visibleSteps} currentIndex={stepIndex} onJump={jumpTo} />
 
-        <div ref={bodyRef} className="p-5 overflow-y-auto flex-1">
+        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto p-5">
           {Object.keys(errors).length > 0 && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
@@ -705,7 +714,7 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
           {renderStepContent()}
         </div>
 
-        <div className="border-t border-gray-200 px-5 py-3 flex justify-between items-center gap-3">
+        <div className="shrink-0 border-t border-gray-200 bg-white px-5 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] flex justify-between items-center gap-3">
           <button
             type="button"
             onClick={goBack}
@@ -738,7 +747,8 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

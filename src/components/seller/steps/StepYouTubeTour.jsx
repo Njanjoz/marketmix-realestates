@@ -55,7 +55,7 @@ const waitForVideoUpload = async (jobId, onStatus) => {
 };
 
 const extractYouTubeId = (url) => {
-  if (!url) return null;
+  if (typeof url !== 'string' || !url.trim()) return null;
 
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtube\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/,
@@ -70,9 +70,25 @@ const extractYouTubeId = (url) => {
   return null;
 };
 
+const getSavedYouTubeUrl = (data = {}) => {
+  const savedUrl = typeof data.youtubeUrl === 'string' ? data.youtubeUrl.trim() : '';
+  if (savedUrl) return savedUrl;
+
+  const savedVideoId = typeof data.youtubeVideoId === 'string' ? data.youtubeVideoId.trim() : '';
+  return /^[A-Za-z0-9_-]{11}$/.test(savedVideoId) ? `https://youtu.be/${savedVideoId}` : '';
+};
+
+const getSavedYouTubeVideoId = (data = {}) => {
+  const videoIdFromUrl = extractYouTubeId(data.youtubeUrl);
+  if (videoIdFromUrl) return videoIdFromUrl;
+
+  const savedVideoId = typeof data.youtubeVideoId === 'string' ? data.youtubeVideoId.trim() : '';
+  return /^[A-Za-z0-9_-]{11}$/.test(savedVideoId) ? savedVideoId : '';
+};
+
 const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
-  const [url, setUrl] = useState(data.youtubeUrl || '');
-  const [videoId, setVideoId] = useState(data.youtubeVideoId || '');
+  const [url, setUrl] = useState(() => getSavedYouTubeUrl(data));
+  const [videoId, setVideoId] = useState(() => getSavedYouTubeVideoId(data));
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -100,23 +116,33 @@ const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
   }, []);
 
   useEffect(() => {
-    if (!url) {
-      setVideoId(null);
+    const savedUrl = getSavedYouTubeUrl(data);
+    const savedId = getSavedYouTubeVideoId(data);
+    setUrl(savedUrl);
+    setVideoId(savedId);
+    setError('');
+  }, [data.youtubeUrl, data.youtubeVideoId]);
+
+  const handleUrlChange = (nextUrl) => {
+    setUrl(nextUrl);
+    if (!nextUrl.trim()) {
+      setVideoId('');
       setError('');
       update({ youtubeUrl: '', youtubeVideoId: '' });
       return;
     }
-    const id = extractYouTubeId(url);
+
+    const id = extractYouTubeId(nextUrl);
     if (id) {
       setVideoId(id);
       setError('');
-      update({ youtubeUrl: url, youtubeVideoId: id });
+      update({ youtubeUrl: nextUrl, youtubeVideoId: id });
     } else {
-      setVideoId(null);
-      setError('Invalid YouTube URL. Supported: youtube.com/watch?v=…, youtu.be/…, youtube.com/embed/…');
+      // Keep the saved video preview visible until a replacement URL is valid.
+      setVideoId(getSavedYouTubeVideoId(data));
+      setError('Invalid YouTube URL. Supported YouTube watch, Shorts, embed, and youtu.be links.');
     }
-  }, [url]); // eslint-disable-line
-
+  };
   const handleVideoFile = async (file) => {
     if (!file) return;
     if (!file.type.startsWith('video/')) {
@@ -291,7 +317,7 @@ const StepYouTubeTour = ({ data = {}, update = () => {} }) => {
         >
           <TextInput
             value={url}
-            onChange={setUrl}
+            onChange={handleUrlChange}
             placeholder="https://www.youtube.com/watch?v=..."
           />
         </Field>

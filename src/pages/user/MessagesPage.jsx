@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   addDoc,
@@ -21,6 +21,8 @@ import { getPublicProperty } from '../../services/propertyService';
 import {
   getConversationMessages,
   getConversationRef,
+  getRoommateConversationMessages,
+  getRoommateConversationRef,
   openPropertyConversation,
 } from '../../services/messagingService';
 
@@ -35,7 +37,8 @@ const MessagesPage = () => {
   const requestedConversationId = searchParams.get('conversationId') || '';
   const requestedPropertyId = searchParams.get('propertyId') || '';
   const requestedUserId = searchParams.get('userId') || '';
-  const [conversations, setConversations] = useState([]);
+  const [propertyConversations, setPropertyConversations] = useState([]);
+  const [roommateConversations, setRoommateConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(requestedConversationId);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
@@ -43,30 +46,57 @@ const MessagesPage = () => {
   const [startingConversation, setStartingConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const endOfMessagesRef = useRef(null);
+  const conversations = useMemo(() => [...propertyConversations, ...roommateConversations].sort((a, b) => {
+    const timeA = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0;
+    const timeB = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0;
+    return timeB - timeA;
+  }), [propertyConversations, roommateConversations]);
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
+  const isRoommateConversation = activeConversation?.conversationType === 'roommate' || activeConversationId.startsWith('roommate_');
 
   useEffect(() => {
-    if (!currentUser?.uid) return undefined;
+    if (!currentUser?.uid) {
+      setPropertyConversations([]);
+      setRoommateConversations([]);
+      setLoading(false);
+      return undefined;
+    }
     const conversationsQuery = query(
       collection(db, 'conversations'),
       where('participantIds', 'array-contains', currentUser.uid)
     );
-    return onSnapshot(conversationsQuery, (snapshot) => {
-      const nextConversations = snapshot.docs.map((conversationDoc) => ({
+    const roommateQuery = query(
+      collection(db, 'roommateConversations'),
+      where('participantIds', 'array-contains', currentUser.uid)
+    );
+    let subscriptionsLoaded = 0;
+    const markLoaded = () => {
+      subscriptionsLoaded += 1;
+      if (subscriptionsLoaded >= 2) setLoading(false);
+    };
+    const unsubscribeProperties = onSnapshot(conversationsQuery, (snapshot) => {
+      setPropertyConversations(snapshot.docs.map((conversationDoc) => ({
         id: conversationDoc.id,
         ...conversationDoc.data(),
-      }));
-      nextConversations.sort((a, b) => {
-        const timeA = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0;
-        const timeB = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0;
-        return timeB - timeA;
-      });
-      setConversations(nextConversations);
-      setLoading(false);
+      })));
+      markLoaded();
     }, (error) => {
       console.error('Error loading conversations:', error);
       toast.error('Could not load your conversations');
-      setLoading(false);
+      markLoaded();
     });
+    const unsubscribeRoommates = onSnapshot(roommateQuery, (snapshot) => {
+      setRoommateConversations(snapshot.docs.map((conversationDoc) => ({
+        id: conversationDoc.id,
+        ...conversationDoc.data(),
+      })));
+      markLoaded();
+    }, (error) => {
+      console.error('Error loading roommate conversations:', error);
+      toast.error('Could not load roommate conversations');
+      markLoaded();
+    });
+    return () => { unsubscribeProperties(); unsubscribeRoommates(); };
   }, [currentUser]);
 
   useEffect(() => {
@@ -122,21 +152,23 @@ const MessagesPage = () => {
       setMessages([]);
       return undefined;
     }
+    const messagesCollection = isRoommateConversation
+      ? getRoommateConversationMessages(activeConversationId)
+      : getConversationMessages(activeConversationId);
     return onSnapshot(
-      query(getConversationMessages(activeConversationId), orderBy('createdAt', 'asc')),
+      query(messagesCollection, orderBy('createdAt', 'asc')),
       (snapshot) => setMessages(snapshot.docs.map((messageDoc) => ({ id: messageDoc.id, ...messageDoc.data() }))),
       (error) => {
         console.error('Error loading messages:', error);
         toast.error('Could not load these messages');
       }
     );
-  }, [activeConversationId, currentUser]);
+  }, [activeConversationId, currentUser, isRoommateConversation]);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
   const otherParticipantId = activeConversation?.participantIds?.find((uid) => uid !== currentUser?.uid);
   const otherParticipantName = activeConversation?.participantNames?.[otherParticipantId] || 'MarketMix member';
 
@@ -147,13 +179,19 @@ const MessagesPage = () => {
 
     setSending(true);
     try {
-      await addDoc(getConversationMessages(activeConversationId), {
+      const messagesCollection = isRoommateConversation
+        ? getRoommateConversationMessages(activeConversationId)
+        : getConversationMessages(activeConversationId);
+      const conversationRef = isRoommateConversation
+        ? getRoommateConversationRef(activeConversationId)
+        : getConversationRef(activeConversationId);
+      await addDoc(messagesCollection, {
         senderId: currentUser.uid,
         senderName: 'MarketMix member',
         text,
         createdAt: serverTimestamp(),
       });
-      await updateDoc(getConversationRef(activeConversationId), {
+      await updateDoc(conversationRef, {
         lastMessage: text.slice(0, 200),
         updatedAt: serverTimestamp(),
       });
@@ -172,17 +210,17 @@ const MessagesPage = () => {
   };
 
   return (
-    <DashboardLayout title="Messages" subtitle="Chat privately about properties">
+    <DashboardLayout title="Messages" subtitle="Chat privately about properties and roommate matches">
       <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)]">
         <aside className={`${activeConversationId ? 'hidden md:block' : 'block'} border-b border-slate-200 md:border-b-0 md:border-r`}>
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="font-semibold text-slate-900">Conversations</h2>
-            <p className="mt-1 text-xs text-slate-500">Property questions and seller replies</p>
+            <p className="mt-1 text-xs text-slate-500">Private property and roommate conversations</p>
           </div>
           {loading ? (
             <div className="flex justify-center p-8"><Loader className="h-5 w-5 animate-spin text-emerald-600" /></div>
           ) : conversations.length === 0 ? (
-            <div className="px-5 py-8 text-center text-sm text-slate-500">No messages yet. Start a conversation from a property page.</div>
+              <div className="px-5 py-8 text-center text-sm text-slate-500">No messages yet. Start from a property page or accept a roommate connection.</div>
           ) : (
             <div className="max-h-[620px] overflow-y-auto p-2">
               {conversations.map((conversation) => {
@@ -197,7 +235,7 @@ const MessagesPage = () => {
                     <span className="block truncate text-sm font-semibold text-slate-900">
                       {conversation.participantNames?.[otherId] || 'MarketMix member'}
                     </span>
-                    <span className="mt-1 block truncate text-xs text-slate-500">{conversation.propertyTitle || 'Property listing'}</span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">{conversation.title || conversation.propertyTitle || 'Property listing'}</span>
                     {conversation.lastMessage && <span className="mt-1 block truncate text-xs text-slate-400">{conversation.lastMessage}</span>}
                   </button>
                 );
@@ -217,12 +255,12 @@ const MessagesPage = () => {
                 </button>
                 <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-100 text-emerald-700"><MessageCircle className="h-5 w-5" /></div>
                 <div className="min-w-0">
-                  <h2 className="truncate font-semibold text-slate-900">{activeConversation?.propertyTitle || otherParticipantName}</h2>
+                  <h2 className="truncate font-semibold text-slate-900">{activeConversation?.title || activeConversation?.propertyTitle || otherParticipantName}</h2>
                   <p className="truncate text-xs text-slate-500">Chat with {otherParticipantName}</p>
                 </div>
               </header>
               <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
-                {messages.length === 0 && <p className="m-auto max-w-sm text-center text-sm text-slate-500">Say hello and ask about availability, pricing, or a viewing.</p>}
+                {messages.length === 0 && <p className="m-auto max-w-sm text-center text-sm text-slate-500">Say hello and start a private conversation.</p>}
                 {messages.map((message) => {
                   const mine = message.senderId === currentUser?.uid;
                   return (
@@ -253,8 +291,8 @@ const MessagesPage = () => {
           ) : (
             <div className="m-auto max-w-sm px-6 text-center">
               <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-700"><MessageCircle className="h-6 w-6" /></div>
-              <h2 className="font-semibold text-slate-900">Your property conversations</h2>
-              <p className="mt-2 text-sm text-slate-500">Choose a conversation or message the seller from a property page.</p>
+              <h2 className="font-semibold text-slate-900">Your conversations</h2>
+              <p className="mt-2 text-sm text-slate-500">Choose a conversation or start one from a property or roommate profile.</p>
             </div>
           )}
         </section>

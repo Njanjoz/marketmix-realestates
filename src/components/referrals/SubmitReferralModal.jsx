@@ -35,8 +35,8 @@ export default function SubmitReferralModal({ currentUser, userProfile, onClose,
           propertyType: formData.propertyType,
           price: Number(formData.price) || 0,
           description: formData.description || 'Referred property',
-          images: formData.imageUrl ? [formData.imageUrl] : ['https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200'],
-          coverImage: formData.imageUrl || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200',
+          images: formData.imageUrl ? [formData.imageUrl] : ['/images/property-hero.svg'],
+          coverImage: formData.imageUrl || '/images/property-hero.svg',
         },
       });
 
@@ -128,7 +128,7 @@ export default function SubmitReferralModal({ currentUser, userProfile, onClose,
               type="url"
               value={formData.imageUrl}
               onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-              placeholder="https://images.unsplash.com/..."
+              placeholder="Paste a property image URL"
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
           </div>

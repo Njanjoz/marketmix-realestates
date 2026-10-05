@@ -33,6 +33,115 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid in data.participantIds;
     }
 
+    function isRoommateProfileOwner(profileId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/roommateProfileOwners/$(profileId)) &&
+        get(/databases/$(database)/documents/roommateProfileOwners/$(profileId)).data.ownerId == request.auth.uid;
+    }
+
+    function validRoommateProfile() {
+      return request.resource.data.keys().hasOnly([
+          'displayName', 'preferredArea', 'county', 'subCounty', 'ward', 'budgetMin', 'budgetMax', 'moveInDate',
+          'propertyType', 'lifestyle', 'smoking', 'pets', 'furnished', 'workStudy',
+          'roommateCount', 'seekingType', 'active', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.displayName is string &&
+        request.resource.data.displayName.size() > 0 &&
+        request.resource.data.displayName.size() <= 40 &&
+        request.resource.data.preferredArea is string &&
+        request.resource.data.preferredArea.size() > 0 &&
+        request.resource.data.preferredArea.size() <= 120 &&
+        request.resource.data.county is string && request.resource.data.county.size() > 0 && request.resource.data.county.size() <= 80 &&
+        request.resource.data.subCounty is string && request.resource.data.subCounty.size() <= 100 &&
+        request.resource.data.ward is string && request.resource.data.ward.size() <= 100 &&
+        request.resource.data.budgetMin is number &&
+        request.resource.data.budgetMax is number &&
+        request.resource.data.budgetMin >= 0 &&
+        request.resource.data.budgetMax >= request.resource.data.budgetMin &&
+        request.resource.data.budgetMax <= 10000000 &&
+        request.resource.data.moveInDate is string &&
+        request.resource.data.moveInDate.size() <= 20 &&
+        request.resource.data.propertyType is string &&
+        request.resource.data.propertyType.size() <= 32 &&
+        request.resource.data.lifestyle is list &&
+        request.resource.data.lifestyle.size() <= 6 &&
+        request.resource.data.smoking in ['No preference', 'Non-smoking home', 'Smoking outdoors only'] &&
+        request.resource.data.pets in ['No preference', 'Pets welcome', 'No pets'] &&
+        request.resource.data.furnished in ['Either', 'Furnished', 'Unfurnished'] &&
+        request.resource.data.workStudy in ['Prefer not to say', 'Student', 'Working', 'Working from home', 'Other'] &&
+        request.resource.data.roommateCount is number &&
+        request.resource.data.roommateCount >= 1 &&
+        request.resource.data.roommateCount <= 10 &&
+        request.resource.data.seekingType in ['share_existing', 'find_property', 'either'] &&
+        request.resource.data.active is bool &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    function validTransportPoint(point) {
+      return point is map &&
+        point.keys().hasOnly(['lat', 'lng']) &&
+        point.lat is number && point.lng is number &&
+        point.lat >= -90 && point.lat <= 90 &&
+        point.lng >= -180 && point.lng <= 180;
+    }
+
+    function validMovingPackage() {
+      return request.resource.data.keys().hasOnly([
+          'title', 'summary', 'suitableFor', 'vehicleId', 'vehicleLabel', 'priceLabel',
+          'includes', 'itemIds', 'coverImage', 'active', 'displayOrder', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 80 &&
+        request.resource.data.summary is string && request.resource.data.summary.size() > 0 && request.resource.data.summary.size() <= 240 &&
+        request.resource.data.suitableFor is string && request.resource.data.suitableFor.size() > 0 && request.resource.data.suitableFor.size() <= 180 &&
+        request.resource.data.vehicleId in ['motorbike', 'tuk', 'pickup', 'lorry'] &&
+        request.resource.data.vehicleLabel is string && request.resource.data.vehicleLabel.size() <= 40 &&
+        request.resource.data.priceLabel is string && request.resource.data.priceLabel.size() <= 60 &&
+        request.resource.data.includes is list && request.resource.data.includes.size() <= 12 &&
+        request.resource.data.itemIds is list && request.resource.data.itemIds.size() <= 11 &&
+        request.resource.data.coverImage is string && request.resource.data.coverImage.size() <= 2000 &&
+        request.resource.data.active is bool &&
+        request.resource.data.displayOrder is number && request.resource.data.displayOrder >= 0 && request.resource.data.displayOrder <= 10000 &&
+        request.resource.data.createdAt is timestamp && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validTransportRequest() {
+      return request.resource.data.keys().hasOnly([
+          'userId', 'userName', 'userEmail', 'propertyId', 'destinationTitle',
+          'pickupLabel', 'pickupCounty', 'pickupSubCounty', 'pickupWard', 'pickupArea', 'pickupCoordinates',
+          'destinationLabel', 'destinationCounty', 'destinationSubCounty', 'destinationWard', 'destinationArea', 'destinationCoordinates', 'destinationPrecision',
+          'items', 'itemCount', 'vehicleId', 'vehicleLabel', 'packageId', 'packageTitle',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.userName is string && request.resource.data.userName.size() <= 120 &&
+        request.resource.data.userEmail is string && request.resource.data.userEmail.size() <= 256 &&
+        request.resource.data.propertyId is string && request.resource.data.propertyId.size() <= 128 &&
+        request.resource.data.destinationTitle is string && request.resource.data.destinationTitle.size() <= 160 &&
+        request.resource.data.pickupLabel is string && request.resource.data.pickupLabel.size() > 0 && request.resource.data.pickupLabel.size() <= 200 &&
+        request.resource.data.pickupCounty is string && request.resource.data.pickupCounty.size() > 0 && request.resource.data.pickupCounty.size() <= 80 &&
+        request.resource.data.pickupSubCounty is string && request.resource.data.pickupSubCounty.size() <= 100 &&
+        request.resource.data.pickupWard is string && request.resource.data.pickupWard.size() <= 100 &&
+        request.resource.data.pickupArea is string && request.resource.data.pickupArea.size() <= 120 &&
+        request.resource.data.destinationLabel is string && request.resource.data.destinationLabel.size() > 0 && request.resource.data.destinationLabel.size() <= 200 &&
+        request.resource.data.destinationCounty is string && request.resource.data.destinationCounty.size() > 0 && request.resource.data.destinationCounty.size() <= 80 &&
+        request.resource.data.destinationSubCounty is string && request.resource.data.destinationSubCounty.size() <= 100 &&
+        request.resource.data.destinationWard is string && request.resource.data.destinationWard.size() <= 100 &&
+        request.resource.data.destinationArea is string && request.resource.data.destinationArea.size() <= 120 &&
+        validTransportPoint(request.resource.data.pickupCoordinates) &&
+        validTransportPoint(request.resource.data.destinationCoordinates) &&
+        request.resource.data.destinationPrecision in ['approximate-area', 'customer-pin'] &&
+        request.resource.data.items is map && request.resource.data.items.keys().size() > 0 &&
+        request.resource.data.items.keys().hasOnly(['bed', 'mattress', 'sofa', 'table', 'chair', 'wardrobe', 'fridge', 'tv', 'washer', 'box', 'other']) &&
+        request.resource.data.itemCount is number && request.resource.data.itemCount >= 1 && request.resource.data.itemCount <= 200 &&
+        request.resource.data.vehicleId in ['motorbike', 'tuk', 'pickup', 'lorry'] &&
+        request.resource.data.vehicleLabel is string && request.resource.data.vehicleLabel.size() <= 40 &&
+        request.resource.data.packageId is string && request.resource.data.packageId.size() <= 128 &&
+        request.resource.data.packageTitle is string && request.resource.data.packageTitle.size() <= 80 &&
+        request.resource.data.status == 'REQUESTED' &&
+        request.resource.data.createdAt is timestamp && request.resource.data.updatedAt is timestamp;
+    }
+
     // Users Collection
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
@@ -82,6 +191,239 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'viewerName', 'viewerEmail', 'lastViewedAt'
         ]);
+      allow delete: if false;
+    }
+
+    // Saved listings are private to the account that saved them.
+    match /savedProperties/{savedId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.propertyId is string &&
+        request.resource.data.title is string &&
+        request.resource.data.keys().hasOnly(['userId', 'propertyId', 'title', 'createdAt']);
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.propertyId == resource.data.propertyId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Public roommate cards contain only opt-in profile details. Account ownership
+    // is stored separately so profile reads never expose an account UID or contact data.
+    match /roommateProfileLinks/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.profileId is string &&
+        request.resource.data.keys().hasOnly(['profileId', 'createdAt']) &&
+        request.resource.data.createdAt is timestamp &&
+        getAfter(/databases/$(database)/documents/roommateProfiles/$(request.resource.data.profileId)).data.active == true &&
+        getAfter(/databases/$(database)/documents/roommateProfileOwners/$(request.resource.data.profileId)).data.ownerId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /roommateProfileOwners/{profileId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        !exists(/databases/$(database)/documents/roommateProfileLinks/$(request.auth.uid)) &&
+        request.resource.data.keys().hasOnly(['ownerId', 'createdAt']) &&
+        request.resource.data.createdAt is timestamp &&
+        getAfter(/databases/$(database)/documents/roommateProfiles/$(profileId)).data.active == true &&
+        getAfter(/databases/$(database)/documents/roommateProfileLinks/$(request.auth.uid)).data.profileId == profileId;
+      allow update, delete: if false;
+    }
+
+    match /roommateProfiles/{profileId} {
+      allow read: if resource.data.active == true || isRoommateProfileOwner(profileId) || isAdmin();
+      allow create: if isAuthenticated() &&
+        getAfter(/databases/$(database)/documents/roommateProfileOwners/$(profileId)).data.ownerId == request.auth.uid &&
+        validRoommateProfile();
+      allow update: if isRoommateProfileOwner(profileId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'preferredArea', 'county', 'subCounty', 'ward', 'budgetMin', 'budgetMax', 'moveInDate',
+          'propertyType', 'lifestyle', 'smoking', 'pets', 'furnished', 'workStudy',
+          'roommateCount', 'seekingType', 'active', 'updatedAt'
+        ]) &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        validRoommateProfile();
+      allow delete: if false;
+    }
+
+    // Connection requests expose neither party's email or phone number.
+    match /roommateConnections/{connectionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.fromUserId == request.auth.uid ||
+        isRoommateProfileOwner(resource.data.targetProfileId)
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.fromUserId == request.auth.uid &&
+        request.resource.data.fromProfileId is string &&
+        isRoommateProfileOwner(request.resource.data.fromProfileId) &&
+        get(/databases/$(database)/documents/roommateProfiles/$(request.resource.data.fromProfileId)).data.active == true &&
+        request.resource.data.targetProfileId is string &&
+        request.resource.data.targetProfileId != request.resource.data.fromProfileId &&
+        get(/databases/$(database)/documents/roommateProfiles/$(request.resource.data.targetProfileId)).data.active == true &&
+        get(/databases/$(database)/documents/roommateProfileOwners/$(request.resource.data.targetProfileId)).data.ownerId != request.auth.uid &&
+        request.resource.data.fromName is string &&
+        request.resource.data.fromName.size() <= 40 &&
+        request.resource.data.fromName == get(/databases/$(database)/documents/roommateProfiles/$(request.resource.data.fromProfileId)).data.displayName &&
+        request.resource.data.targetName is string &&
+        request.resource.data.targetName.size() <= 40 &&
+        request.resource.data.targetName == get(/databases/$(database)/documents/roommateProfiles/$(request.resource.data.targetProfileId)).data.displayName &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.keys().hasOnly([
+          'fromUserId', 'fromProfileId', 'fromName', 'targetProfileId', 'targetName',
+          'status', 'createdAt', 'updatedAt'
+        ]);
+      allow update: if isRoommateProfileOwner(resource.data.targetProfileId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'targetUserId', 'updatedAt']) &&
+        request.resource.data.status in ['accepted', 'rejected'] &&
+        (request.resource.data.status != 'accepted' || request.resource.data.targetUserId == request.auth.uid) &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    // A private chat can be opened only after the profile owner accepts a request.
+    match /roommateConversations/{conversationId} {
+      allow read: if isConversationMember(resource.data);
+      allow create: if isAuthenticated() &&
+        request.resource.data.conversationType == 'roommate' &&
+        request.resource.data.connectionId is string &&
+        get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.status == 'accepted' &&
+        request.resource.data.participantIds is list &&
+        request.resource.data.participantIds.size() == 2 &&
+        request.auth.uid in request.resource.data.participantIds &&
+        get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.fromUserId in request.resource.data.participantIds &&
+        get(/databases/$(database)/documents/roommateProfileOwners/$(get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.targetProfileId)).data.ownerId in request.resource.data.participantIds &&
+        request.resource.data.roommateProfileIds[ get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.fromUserId ] == get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.fromProfileId &&
+        request.resource.data.roommateProfileIds[ get(/databases/$(database)/documents/roommateProfileOwners/$(get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.targetProfileId)).data.ownerId ] == get(/databases/$(database)/documents/roommateConnections/$(request.resource.data.connectionId)).data.targetProfileId &&
+        request.resource.data.participantNames is map &&
+        request.resource.data.keys().hasOnly([
+          'conversationType', 'connectionId', 'title', 'participantIds',
+          'participantNames', 'roommateProfileIds', 'updatedAt'
+        ]);
+      allow update: if isConversationMember(resource.data) &&
+        request.resource.data.participantIds == resource.data.participantIds &&
+        request.resource.data.connectionId == resource.data.connectionId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantNames', 'lastMessage', 'updatedAt']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isConversationMember(
+          get(/databases/$(database)/documents/roommateConversations/$(conversationId)).data
+        );
+        allow create: if isConversationMember(
+          get(/databases/$(database)/documents/roommateConversations/$(conversationId)).data
+        ) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 4000 &&
+          request.resource.data.keys().hasOnly(['senderId', 'senderName', 'text', 'createdAt']);
+        allow update, delete: if false;
+      }
+    }
+
+    match /propertyReports/{reportId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.reporterId == request.auth.uid &&
+        request.resource.data.propertyId is string &&
+        request.resource.data.propertyTitle is string &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() > 0 &&
+        request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.status == 'new' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.keys().hasOnly(['reporterId', 'propertyId', 'propertyTitle', 'reason', 'status', 'createdAt']);
+      allow read: if isAuthenticated() && (resource.data.reporterId == request.auth.uid || isAdmin());
+      allow update: if (isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.status in ['new', 'reviewed', 'resolved'];
+      allow delete: if false;
+    }
+
+    // Public active package cards contain no request-specific information.
+    match /movingPackages/{packageId} {
+      allow read: if resource.data.active == true || isAdmin();
+      allow create: if isAdmin() && validMovingPackage();
+      allow update: if isAdmin() &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'summary', 'suitableFor', 'vehicleId', 'vehicleLabel', 'priceLabel',
+          'includes', 'itemIds', 'coverImage', 'active', 'displayOrder', 'updatedAt'
+        ]) && validMovingPackage();
+      allow delete: if isAdmin();
+    }
+
+    // Trip pins and live driver coordinates are private to the request owner,
+    // the currently assigned driver account, and MarketMix administrators.
+    match /transportRequests/{requestId} {
+      allow create: if isAuthenticated() && validTransportRequest();
+      allow read: if isAuthenticated() && (
+        isAdmin() || resource.data.userId == request.auth.uid || resource.data.driverUserId == request.auth.uid
+      );
+      allow update: if (isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'quotedPrice', 'driverUserId', 'driverName', 'driverPhone',
+          'vehicleLabel', 'etaMinutes', 'updatedAt'
+        ]) &&
+        request.resource.data.status in ['REQUESTED', 'QUOTED', 'ACCEPTED', 'DRIVER_ASSIGNED', 'PICKUP_READY', 'ON_THE_WAY', 'LOADING', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'] &&
+        (request.resource.data.quotedPrice == null || (request.resource.data.quotedPrice is number && request.resource.data.quotedPrice >= 0 && request.resource.data.quotedPrice <= 100000000)) &&
+        request.resource.data.driverUserId is string && request.resource.data.driverUserId.size() <= 128 &&
+        request.resource.data.driverName is string && request.resource.data.driverName.size() <= 120 &&
+        request.resource.data.driverPhone is string && request.resource.data.driverPhone.size() <= 32 &&
+        request.resource.data.vehicleLabel is string && request.resource.data.vehicleLabel.size() <= 40 &&
+        (request.resource.data.etaMinutes == null || (request.resource.data.etaMinutes is number && request.resource.data.etaMinutes >= 0 && request.resource.data.etaMinutes <= 10080)) &&
+        request.resource.data.updatedAt is timestamp) ||
+        (isAuthenticated() && resource.data.driverUserId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverLocation', 'driverLocationUpdatedAt', 'status', 'updatedAt']) &&
+          (!('driverLocation' in request.resource.data) || validTransportPoint(request.resource.data.driverLocation)) &&
+          (!('driverLocationUpdatedAt' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.driverLocationUpdatedAt is timestamp) &&
+          (!('status' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.status in ['PICKUP_READY', 'ON_THE_WAY', 'LOADING', 'IN_TRANSIT', 'DELIVERED']) &&
+          request.resource.data.updatedAt is timestamp);
+      allow delete: if false;
+    }
+
+    // Private move-in and roommate requests are visible only to their owner and admins.
+    match /serviceRequests/{requestId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.requestType in ['moving', 'roommate'] &&
+        request.resource.data.packageId is string &&
+        request.resource.data.area is string &&
+        request.resource.data.area.size() > 0 &&
+        request.resource.data.area.size() <= 160 &&
+        request.resource.data.preferredDate is string &&
+        request.resource.data.preferredDate.size() <= 20 &&
+        request.resource.data.budget is string &&
+        request.resource.data.budget.size() <= 40 &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 1200 &&
+        request.resource.data.userName is string &&
+        request.resource.data.userName.size() <= 120 &&
+        request.resource.data.userEmail is string &&
+        request.resource.data.userEmail.size() <= 256 &&
+        request.resource.data.propertyId is string &&
+        request.resource.data.status == 'new' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'userName', 'userEmail', 'requestType', 'packageId',
+          'area', 'preferredDate', 'budget', 'details', 'propertyId',
+          'status', 'createdAt', 'updatedAt'
+        ]);
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']) &&
+        request.resource.data.status in ['new', 'contacted', 'matched', 'completed', 'closed'] &&
+        request.resource.data.adminNote is string &&
+        request.resource.data.adminNote.size() <= 1000 &&
+        request.resource.data.updatedAt is timestamp;
       allow delete: if false;
     }
 

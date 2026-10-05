@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucide-react';
 import { resolvePropertyImage } from '../utils/propertyMapping';
+import { getListingType } from '../utils/listingType';
 import { getYouTubeTourUrl } from '../services/shareService';
 import { generatePromoPoster as requestPromoPoster, getPromoCoverImage } from '../services/posterService';
 import toast from 'react-hot-toast';
@@ -236,7 +237,7 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
   const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
   const safeHeadline = sanitizeShareText(headline || title, property);
   const safeCaption = sanitizeShareText(caption || `A great ${type.toLowerCase()} available for viewing.`, property);
-  const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
+  const frequency = property?.paymentFrequency || (getListingType(property) === 'rent' ? 'Monthly' : '');
   const availability = getAvailabilityLabel(property);
   const deposit = getDepositLabel(property);
 
@@ -289,7 +290,7 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
 
 export default function PromotePropertyModal({ property, currentUser, userProfile, onClose }) {
   const photos = useMemo(() => getPropertyPhotos(property), [property]);
-  const posterPhotos = photos.length ? photos : ['https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200'];
+  const posterPhotos = photos.length ? photos : ['/images/property-hero.svg'];
   const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
   const imageUrl = posterPhotos[heroPhotoIndex] || posterPhotos[0];
   const role = userProfile?.role || 'user';
@@ -388,13 +389,13 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
   const createPoster = () => requestPromoPoster({
     photos: posterPhotos,
-    headline,
-    caption,
-    highlights: highlights.split(/\r?\n/).filter(Boolean).slice(0, 5),
-    features: features.split(/\r?\n/).filter(Boolean).slice(0, 4),
-    nearby: nearby.split(/\r?\n/).filter(Boolean).slice(0, 4),
+    headline: sanitizeShareText(headline, property),
+    caption: sanitizeShareText(caption, property),
+    highlights: highlights.split(/\r?\n/).filter(Boolean).slice(0, 5).map((item) => sanitizeShareText(item, property)).filter(Boolean),
+    features: features.split(/\r?\n/).filter(Boolean).slice(0, 4).map((item) => sanitizeShareText(item, property)).filter(Boolean),
+    nearby: nearby.split(/\r?\n/).filter(Boolean).slice(0, 4).map((item) => sanitizeShareText(item, property)).filter(Boolean),
     property: {
-      title: property?.title,
+      title: sanitizeShareText(property?.title, property),
       propertyType: property?.propertyType,
       unitType: property?.unitType,
       status: property?.status,
@@ -739,7 +740,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
                   <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-xl font-bold text-emerald-900">
                     KSh {Number(property?.price || property?.rentAmount || property?.rent || 0).toLocaleString()}
-                    {(property?.paymentFrequency || property?.status === 'rent') && <span className="ml-1 text-xs font-semibold">/ {(property?.paymentFrequency || 'Monthly').toUpperCase()}</span>}
+                    {(property?.paymentFrequency || getListingType(property) === 'rent') && <span className="ml-1 text-xs font-semibold">/ {(property?.paymentFrequency || 'Monthly').toUpperCase()}</span>}
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-600">

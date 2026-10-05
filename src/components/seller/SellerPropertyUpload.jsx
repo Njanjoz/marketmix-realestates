@@ -1,5 +1,6 @@
 // src/components/seller/SellerPropertyUpload.jsx
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -15,6 +16,17 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
   const [uploadedImages, setUploadedImages] = useState([]);
   const [urlInput, setUrlInput] = useState('');
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
+  const [previewCoverId, setPreviewCoverId] = useState(null);
+  
+  const getImageUrl = (img) => {
+    if (!img) return null;
+    return img.url || img.preview || img.remoteUrl || img.localPreviewUrl || (img.file instanceof File ? URL.createObjectURL(img.file) : null);
+  };
+
+  const coverImage = uploadedImages.find((img) => img.status === 'uploaded' && getImageUrl(img)) || uploadedImages[0];
+  const previewCoverImage = uploadedImages.find((img) => String(img.id) === String(previewCoverId)) || coverImage;
+  const isNewCoverSelection = Boolean(previewCoverImage && String(previewCoverImage.id) !== String(coverImage?.id));
   
   const [formData, setFormData] = useState({
     title: '',
@@ -38,7 +50,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     const newImages = files.map(file => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       file,
-      preview: null,
+      preview: URL.createObjectURL(file),
       status: 'uploading',
       phase: 'processing',
       progress: 0,
@@ -94,12 +106,11 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
   const setCover = (id) => {
     setUploadedImages(prev => {
       const idx = prev.findIndex(i => i.id === id);
-      if (idx <= 0) return prev;
+      if (idx < 0) return prev;
       const copy = [...prev];
       const [item] = copy.splice(idx, 1);
       return [item, ...copy];
     });
-    toast.success('Set as property cover photo');
   };
 
   const addImageFromUrl = () => {
@@ -154,6 +165,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
 
       const propertyData = {
         ...formData,
+        listingType: formData.status,
         price: parseInt(formData.price),
         bedrooms: parseInt(formData.bedrooms) || 0,
         bathrooms: parseInt(formData.bathrooms) || 0,
@@ -169,6 +181,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         status: 'active',
+        listingStatus: 'active',
         availabilityStatus: 'available',
         approvalStatus: 'pending',
         verificationStatus: 'pending',
@@ -192,8 +205,8 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  return createPortal((
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-900">List New Property</h2>
@@ -243,14 +256,165 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                 </button>
               </div>
             </div>
-            
+
+            {coverImage && (
+              <div className="mt-4 grid gap-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-3 sm:p-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)]">
+                <div className="relative aspect-[16/9] min-h-48 overflow-hidden rounded-xl bg-white shadow-sm sm:min-h-64 transition-all duration-500 ease-in-out">
+                  {coverImage.url || coverImage.preview ? (
+                    <img src={coverImage.url || coverImage.preview} alt="Selected property cover photo" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-gray-500">Cover photo is uploading</div>
+                  )}
+                  <span className="absolute left-3 top-3 rounded-full bg-emerald-700 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white shadow">
+                    Property cover photo
+                  </span>
+                </div>
+                <div className="flex flex-col justify-center px-1 py-2 sm:px-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Shown first across MarketMix</span>
+                  <h3 className="mt-1 text-lg font-bold text-emerald-950">{coverImage.file?.name || 'Selected cover photo'}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-emerald-900/80">
+                    This large image is used on property cards, details, and promotion posters.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-emerald-800">Choose Set cover or:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewCoverId(coverImage?.id);
+                        setIsCoverModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
+                      Change cover photo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Cover Change Modal */}
+            {isCoverModalOpen && typeof document !== 'undefined' && createPortal((
+              <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-cover-photo-dialog-title">
+                <div className="my-auto max-h-[90vh] w-full max-w-3xl space-y-6 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                  <div className="flex items-center justify-between border-b pb-4">
+                    <div>
+                      <h3 id="upload-cover-photo-dialog-title" className="text-lg font-bold text-gray-900">Change Property Cover Photo</h3>
+                      <p className="text-xs text-gray-500">Click any uploaded image below to select and preview it as the new cover.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsCoverModalOpen(false)}
+                      className="p-1 rounded-lg hover:bg-gray-100 text-gray-500"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* 1. All Uploaded Images Grid (User sees all images to select) */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                      1. Select an image ({uploadedImages.length} uploaded)
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 max-h-56 overflow-y-auto p-2 border rounded-xl bg-gray-50">
+                      {uploadedImages.map((img) => {
+                        const imgUrl = img.url || img.preview;
+                        const isSelected = previewCoverId != null && img.id != null && String(img.id) === String(previewCoverId);
+                        return (
+                          <button
+                            key={`cover-select-${img.id}`}
+                            type="button"
+                            onClick={() => {
+                              console.info("Selected cover image ID:", img.id);
+                              setPreviewCoverId(img.id);
+                            }}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                              isSelected
+                                ? 'border-emerald-600 ring-2 ring-emerald-300 shadow-md bg-emerald-50'
+                                : 'border-gray-200 hover:border-emerald-400 bg-white'
+                            }`}
+                          >
+                            {imgUrl ? (
+                              <img src={imgUrl} alt="Thumbnail" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">Loading</div>
+                            )}
+                            {isSelected && (
+                              <span className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md">
+                                <CheckCircle className="h-4 w-4 text-emerald-700" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. Live preview of the selected cover photo */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                      2. Live Preview (New Cover Photo)
+                    </span>
+                    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl bg-gray-100 border-2 border-emerald-500 shadow-md">
+                      {getImageUrl(previewCoverImage) ? (
+                        <img
+                          src={getImageUrl(previewCoverImage)}
+                          alt="Preview selected cover photo"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-gray-400">No image selected</div>
+                      )}
+                      <span className="absolute left-3 top-3 rounded-full bg-emerald-600 px-3.5 py-1 text-xs font-bold text-white shadow-md">
+                        New Cover Preview ⭐
+                      </span>
+                    </div>
+                  </div>
+
+                  {isNewCoverSelection && (
+                    <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                      <strong>Use {previewCoverImage.file?.name || 'this photo'} as the new cover photo?</strong>
+                      <p className="mt-1 text-xs text-emerald-800">This photo will appear first on the property listing.</p>
+                    </div>
+                  )}
+
+                  {/* Modal Actions */}
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => setIsCoverModalOpen(false)}
+                      className="px-4 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isNewCoverSelection && previewCoverImage?.id != null) {
+                          setCover(previewCoverImage.id);
+                          toast.success('New cover photo applied successfully!');
+                          setIsCoverModalOpen(false);
+                        } else {
+                          toast.error('Choose a different photo before changing the cover.');
+                        }
+                      }}
+                      disabled={!isNewCoverSelection}
+                      className="px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Use as new cover photo
+                    </button>
+                  </div>
+                </div>
+              </div>
+              ), document.body)}
+
             {uploadedImages.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-gray-700 mb-2">
                   Images ({uploadedImages.filter(i => i.status === 'uploaded').length}/{uploadedImages.length})
                 </p>
                 <div className="grid grid-cols-3 gap-2">
-                  {uploadedImages.map((img, idx) => (
+                  {uploadedImages.map((img) => (
                     <div key={img.id} className="relative group">
                       {img.url || img.preview ? (
                         <img src={img.url || img.preview} alt="Property" className="w-full h-24 object-cover rounded-lg" />
@@ -258,13 +422,12 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                         <div className="w-full h-24 rounded-lg bg-gray-100" />
                       )}
                       {img.status === 'uploading' && (
-                        <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-2 px-3">
-                          <Loader className="w-5 h-5 text-white animate-spin" />
-                          <span className="text-[10px] text-white">
-                            {img.phase === 'processing' ? 'Preparing image…' : `Uploading ${img.progress}%`}
+                        <>
+                          <span className="absolute right-1 top-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-semibold text-slate-800 shadow">
+                            {img.phase === 'processing' ? 'Preparing' : `Uploading ${img.progress}%`}
                           </span>
                           <div
-                            className="w-full h-1.5 bg-white/30 rounded-full overflow-hidden"
+                            className="absolute inset-x-0 bottom-0 h-1.5 overflow-hidden bg-black/20"
                             role="progressbar"
                             aria-label={`Uploading ${img.file?.name || 'image'}`}
                             aria-valuemin={0}
@@ -273,11 +436,11 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                           >
                             <div className="h-full bg-emerald-400 transition-[width]" style={{ width: img.phase === 'processing' ? '12%' : `${img.progress}%` }} />
                           </div>
-                        </div>
+                        </>
                       )}
                       {img.status === 'error' && (
-                        <div className="absolute inset-0 bg-red-500/70 rounded-lg flex items-center justify-center" title={img.error || 'Cloudflare upload failed'}>
-                          <AlertCircle className="w-5 h-5 text-white" />
+                        <div className="absolute right-1 top-1 rounded-full bg-red-700 p-1 shadow" title={img.error || 'Cloudflare upload failed'}>
+                          <AlertCircle className="h-3 w-3 text-white" />
                         </div>
                       )}
                       {img.status === 'uploaded' && (
@@ -285,7 +448,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                           <CheckCircle className="w-4 h-4 text-green-500" />
                         </div>
                       )}
-                      {idx === 0 && img.status === 'uploaded' ? (
+                      {img.id === coverImage?.id && img.status === 'uploaded' ? (
                         <span className="absolute bottom-1 left-1 bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
                           Cover ⭐
                         </span>
@@ -293,11 +456,12 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                         <button
                           type="button"
                           onClick={() => setCover(img.id)}
-                          className="absolute bottom-1 left-1 p-1 bg-white rounded-full shadow hover:bg-emerald-50 text-yellow-600"
+                          className="absolute bottom-1 left-1 inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-yellow-700 shadow hover:bg-emerald-50"
                           title="Set as property cover photo"
                           aria-label="Set as property cover photo"
                         >
                           <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-500" />
+                          <span className="text-[10px] font-semibold">Set cover</span>
                         </button>
                       )}
                       <button
@@ -435,7 +599,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
         </form>
       </div>
     </div>
-  );
+  ), document.body);
 };
 
 export default SellerPropertyUpload;

@@ -21,6 +21,9 @@ import {
 import toast from 'react-hot-toast';
 import { shareProperty } from '../services/shareService';
 import { recordPropertyView } from '../services/propertyViewService';
+import { getListingTypeLabel } from '../utils/listingType';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { PageSEO } from '../components/RouteSEO';
 
 // ─── tiny helpers ────────────────────────────────────────
 const KSh = (n) => `KSh ${(Number(n) || 0).toLocaleString()}`;
@@ -343,6 +346,13 @@ const PropertyDetailspage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
+      <PageSEO
+        title={`${p.title || 'Property'} in ${getPublicPropertyLocation(p)} | MarketMix`}
+        description={`${p.previewDescription || p.description || `Explore this ${getListingTypeLabel(p).toLowerCase()} listing`} in ${getPublicPropertyLocation(p)} on MarketMix Real Estates.`}
+        image={cover?.startsWith('http') ? cover : undefined}
+        path={`/property/${p.id || id}`}
+        type="article"
+      />
       {/* ─── Hero / Gallery ─────────────────────────── */}
       <section className="mx-auto max-w-7xl px-4 pt-5 sm:pt-7" aria-label="Property photos">
         <div className="relative overflow-hidden rounded-2xl bg-slate-950 shadow-lg ring-1 ring-black/5">
@@ -361,7 +371,7 @@ const PropertyDetailspage = () => {
                   fetchPriority="high"
                   onError={(e) => {
                     e.target.onerror = null;
-                    e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200';
+                    e.target.src = '/images/property-hero.svg';
                   }}
                 />
                 <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-5 pb-5 pt-14 text-left text-sm font-medium text-white">
@@ -391,7 +401,7 @@ const PropertyDetailspage = () => {
                       className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
                       onError={(e) => {
                         e.target.onerror = null;
-                        e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600';
+                        e.target.src = '/images/property-hero.svg';
                       }}
                     />
                   </button>
@@ -417,7 +427,7 @@ const PropertyDetailspage = () => {
                     className="h-full w-full object-contain"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=200';
+                      e.target.src = '/images/property-hero.svg';
                     }}
                   />
                 </button>
@@ -810,7 +820,7 @@ const PropertyDetailspage = () => {
                           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                           onError={(e) => {
                             e.target.onerror = null;
-                            e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400';
+                            e.target.src = '/images/property-hero.svg';
                           }}
                         />
                       </button>
@@ -950,6 +960,11 @@ const PropertyDetailspage = () => {
             )}
 
             <div className="mt-5 border-t border-gray-100 pt-4 text-center">
+              <p className="mb-3 text-sm font-semibold text-gray-700">Making this place your next home?</p>
+              <div className="mb-4 grid gap-2">
+                <button type="button" onClick={() => navigate(`/transport?propertyId=${encodeURIComponent(p.id || id)}`)} className="w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-900">Moving to this property? Arrange transport</button>
+                <button type="button" onClick={() => navigate(`/roommates?propertyId=${encodeURIComponent(p.id || id)}`)} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 transition hover:bg-emerald-100">Looking for a roommate? Find someone to share this property</button>
+              </div>
               <p className="mb-3 text-sm text-gray-600">
                 Contact the seller for the exact location and landlord or caretaker details.
               </p>

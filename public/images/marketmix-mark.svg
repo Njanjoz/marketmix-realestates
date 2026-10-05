@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MarketMix Real Estates">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b8eed4"/>
+      <stop offset="1" stop-color="#287a5c"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="20" fill="#14251f"/>
+  <path d="M12 30 32 13l20 17v20a3 3 0 0 1-3 3H15a3 3 0 0 1-3-3V30Z" fill="url(#g)"/>
+  <path d="M27 53V36h10v17M21 31h22" fill="none" stroke="#14251f" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+</svg>

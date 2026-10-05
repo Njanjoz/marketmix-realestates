@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, MapPin, DollarSign, Home, Filter, X } from 'lucide-react';
 
 const PropertyFilter = ({ filters, onFilterChange }) => {
@@ -10,6 +10,17 @@ const PropertyFilter = ({ filters, onFilterChange }) => {
     propertyType: filters?.type || 'all',
     status: filters?.status || 'all'
   });
+
+  useEffect(() => {
+    setLocalFilters({
+      location: filters?.location || '',
+      minPrice: filters?.minPrice || '',
+      maxPrice: filters?.maxPrice || '',
+      bedrooms: filters?.bedrooms || 'any',
+      propertyType: filters?.propertyType || 'all',
+      status: filters?.status || 'all',
+    });
+  }, [filters]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -23,7 +34,7 @@ const PropertyFilter = ({ filters, onFilterChange }) => {
       minPrice: localFilters.minPrice ? parseInt(localFilters.minPrice) : null,
       maxPrice: localFilters.maxPrice ? parseInt(localFilters.maxPrice) : null,
       bedrooms: localFilters.bedrooms !== 'any' ? parseInt(localFilters.bedrooms) : null,
-      type: localFilters.propertyType,
+      propertyType: localFilters.propertyType,
       status: localFilters.status
     });
   };
@@ -42,7 +53,7 @@ const PropertyFilter = ({ filters, onFilterChange }) => {
       minPrice: null,
       maxPrice: null,
       bedrooms: null,
-      type: 'all',
+      propertyType: 'all',
       status: 'all'
     });
   };

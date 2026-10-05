@@ -36,3 +36,9 @@ export const getConversationMessages = (conversationId) =>
   collection(db, 'conversations', conversationId, 'messages');
 
 export const getConversationRef = (conversationId) => doc(db, 'conversations', conversationId);
+
+export const getRoommateConversationMessages = (conversationId) =>
+  collection(db, 'roommateConversations', conversationId, 'messages');
+
+export const getRoommateConversationRef = (conversationId) =>
+  doc(db, 'roommateConversations', conversationId);

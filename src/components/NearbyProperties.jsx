@@ -128,7 +128,7 @@ const NearbyProperties = () => {
               >
                 <div className="flex gap-3">
                   <img 
-                    src={getPropertyImage(property, 'https://placehold.co/80x60')} 
+                    src={getPropertyImage(property, '/images/property-hero.svg')}
                     alt={property.title}
                     className="w-20 h-16 object-cover rounded-lg"
                   />
