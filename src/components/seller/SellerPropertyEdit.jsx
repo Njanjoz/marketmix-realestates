@@ -322,21 +322,19 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const bodyRef = useRef(null);
 
+  const propertyType = data.propertyType;
+  const suitableFor = data.suitableFor;
+
   const visibleSteps = useMemo(
     () => WIZARD_STEPS.filter((s) => isStepVisible(s.id, data)),
-    [data]
+    [propertyType, suitableFor]
   );
 
   const currentStep = visibleSteps[Math.min(stepIndex, Math.max(visibleSteps.length - 1, 0))] || visibleSteps[0];
 
   useEffect(() => {
-    if (visibleSteps.length === 0) return;
-    if (stepIndex >= visibleSteps.length) {
-      setStepIndex(visibleSteps.length - 1);
-      return;
-    }
     bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [stepIndex, visibleSteps]);
+  }, [stepIndex]);
 
   const update = useCallback((patch) => {
     setData((prev) => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));

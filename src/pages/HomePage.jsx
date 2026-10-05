@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 
 const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -397,7 +398,7 @@ const HomePage = () => {
                     <h3 className="text-xl font-serif font-light mb-2 text-gray-900">{property.title}</h3>
                     <div className="flex items-center text-gray-600 mb-4">
                       <MapPin className="w-4 h-4 mr-2" />
-                      <span className="text-sm">{property.location}</span>
+                      <span className="text-sm">{getPublicPropertyLocation(property)}</span>
                     </div>
 
                     <div className="flex justify-between border-t border-b border-gray-100 py-4 mb-4">
@@ -452,7 +453,7 @@ const HomePage = () => {
                 <div key={property.id} className="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200 p-6">
                   <img src={getPropertyImage(property) || 'https://placehold.co/400x200'} alt="" className="w-full h-48 object-cover rounded-lg mb-4" />
                   <h3 className="text-lg font-serif font-semibold">{property.title}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{property.location}</p>
+                  <p className="text-sm text-gray-600 mt-1">{getPublicPropertyLocation(property)}</p>
                   <div className="flex justify-between items-center mt-4">
                     <span className="text-xl font-serif font-bold text-gray-900">KES {property.price?.toLocaleString()}</span>
                     <Link to={`/property/${property.id}`} className="px-4 py-2 bg-black text-white text-sm rounded-lg">View</Link>

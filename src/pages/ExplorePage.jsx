@@ -10,7 +10,30 @@ import {
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { resolvePropertyImage } from '../utils/propertyMapping';
+import { getPublicPropertyLocation, resolvePropertyImage } from '../utils/propertyMapping';
+
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getNearbyProperties = (properties, location, radiusKm) => properties
+  .map(property => {
+    const coordinates = property.coordinates;
+    const hasCoordinates = coordinates?.lat != null && coordinates?.lng != null &&
+      Number.isFinite(Number(coordinates.lat)) && Number.isFinite(Number(coordinates.lng));
+    const distance = hasCoordinates
+      ? calculateDistance(location.lat, location.lng, Number(coordinates.lat), Number(coordinates.lng))
+      : null;
+    return { ...property, distance };
+  })
+  .filter(property => property.distance !== null && property.distance <= radiusKm)
+  .sort((a, b) => a.distance - b.distance);
 
 const ExplorePage = () => {
   const [allProperties, setAllProperties] = useState([]);
@@ -19,6 +42,7 @@ const ExplorePage = () => {
   const [findingNearby, setFindingNearby] = useState(false);
   const [nearMeActive, setNearMeActive] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [nearbyRadiusKm, setNearbyRadiusKm] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState('grid'); // grid or list
@@ -60,18 +84,6 @@ const ExplorePage = () => {
     if (km < 3) return "Nearby";
     if (km < 5) return "Short drive";
     return "Within area";
-  };
-
-  // Calculate distance
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
   };
 
   // Load properties
@@ -133,6 +145,11 @@ const ExplorePage = () => {
     if (!nearMeActive) applyFilters();
   }, [allProperties, filters, searchTerm, nearMeActive]);
 
+  useEffect(() => {
+    if (!nearMeActive || !userLocation) return;
+    setDisplayProperties(getNearbyProperties(allProperties, userLocation, nearbyRadiusKm));
+  }, [allProperties, nearMeActive, userLocation, nearbyRadiusKm]);
+
   // Find near me
   const findNearMe = () => {
     setFindingNearby(true);
@@ -147,17 +164,7 @@ const ExplorePage = () => {
         const { latitude, longitude } = position.coords;
         setUserLocation({ lat: latitude, lng: longitude });
         
-        const nearby = allProperties
-          .map(property => {
-            let distance = null;
-            if (property.coordinates?.lat) {
-              distance = calculateDistance(latitude, longitude, property.coordinates.lat, property.coordinates.lng);
-            }
-            return { ...property, distance };
-          })
-          .filter(p => p.distance !== null && p.distance <= 10)
-          .sort((a, b) => a.distance - b.distance);
-        
+        const nearby = getNearbyProperties(allProperties, { lat: latitude, lng: longitude }, nearbyRadiusKm);
         setDisplayProperties(nearby);
         setNearMeActive(true);
         toast.success(`Found ${nearby.length} properties near you!`);
@@ -199,9 +206,10 @@ const ExplorePage = () => {
 
   const openGoogleMaps = (property, e) => {
     if (e) e.preventDefault();
-    let query = property.location;
-    if (property.coordinates?.lat) {
-      query = `${property.coordinates.lat},${property.coordinates.lng}`;
+    const query = getPublicPropertyLocation(property);
+    if (query === 'Location shared on request') {
+      toast('The seller shares the property area on request.');
+      return;
     }
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
   };
@@ -247,6 +255,7 @@ const ExplorePage = () => {
           boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
           marginBottom: '2rem',
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           gap: '0.5rem'
         }}>
@@ -259,6 +268,7 @@ const ExplorePage = () => {
             onKeyPress={(e) => e.key === 'Enter' && applyFilters()}
             style={{
               flex: 1,
+              minWidth: '140px',
               padding: '1rem 0.5rem',
               border: 'none',
               outline: 'none',
@@ -303,6 +313,24 @@ const ExplorePage = () => {
             {findingNearby ? <Loader size={16} className="animate-spin" /> : <Target size={16} />}
             {nearMeActive ? "Show All" : "Near Me"}
           </button>
+          {nearMeActive && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.7rem', background: '#f3f4f6', borderRadius: '40px', color: '#374151', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+              Within
+              <select
+                aria-label="Nearby search radius"
+                value={nearbyRadiusKm}
+                onChange={(e) => setNearbyRadiusKm(Number(e.target.value))}
+                style={{ border: 'none', outline: 'none', background: 'transparent', color: '#2d3e2b', fontWeight: 600, cursor: 'pointer' }}
+              >
+                <option value={0.5}>500 m</option>
+                <option value={1}>1 km</option>
+                <option value={2}>2 km</option>
+                <option value={5}>5 km</option>
+                <option value={10}>10 km</option>
+                <option value={25}>25 km</option>
+              </select>
+            </label>
+          )}
           {/* View Toggle */}
           <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '40px', padding: '0.25rem' }}>
             <button
@@ -419,8 +447,11 @@ const ExplorePage = () => {
         {/* Results Count */}
         <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-            Found <strong style={{ color: '#2d3e2b' }}>{displayProperties.length}</strong> properties
-            {nearMeActive && <span style={{ marginLeft: '0.5rem', background: '#fef3c7', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.7rem' }}>📍 Near You</span>}
+            {nearMeActive ? (
+              <>Showing <strong style={{ color: '#2d3e2b' }}>{displayProperties.length}</strong> properties within <strong style={{ color: '#2d3e2b' }}>{nearbyRadiusKm < 1 ? `${nearbyRadiusKm * 1000} m` : `${nearbyRadiusKm} km`}</strong>, sorted by straight-line distance.</>
+            ) : (
+              <>Found <strong style={{ color: '#2d3e2b' }}>{displayProperties.length}</strong> properties</>
+            )}
           </p>
         </div>
 
@@ -554,7 +585,7 @@ const ExplorePage = () => {
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.5rem', color: '#6b7280', fontSize: '0.7rem' }}>
                       <MapPin size={12} />
-                      {property.location}
+                      {getPublicPropertyLocation(property)}
                     </div>
                     
                     <div style={{ 
@@ -631,7 +662,7 @@ const ExplorePage = () => {
                   <div style={{ flex: 1 }}>
                     <h3 style={{ fontWeight: '600', color: '#2d3e2b', marginBottom: '0.25rem' }}>{property.title}</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                      <MapPin size={12} /> {property.location}
+                      <MapPin size={12} /> {getPublicPropertyLocation(property)}
                       {property.distance && <span>• {formatDistance(property.distance)} away</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: '#6b7280' }}>

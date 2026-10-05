@@ -30,6 +30,19 @@ export const PROTECTED_FIELDS = [
   'youtubeVideoId', 'youtubeUrl'
 ];
 
+export const getPublicPropertyLocation = (property) => {
+  if (!property) return 'Location shared on request';
+
+  const approximate = property.approxLocation || property.approximateLocation;
+  if (typeof approximate === 'string' && approximate.trim()) return approximate.trim();
+
+  const parts = [approximate?.estate, approximate?.town, approximate?.county]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .map((part) => part.trim());
+
+  return parts.join(', ') || property.publicLocation || 'Location shared on request';
+};
+
 const isPersistableImageUrl = (value) => {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();

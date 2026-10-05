@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MapPin, Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
 import { getPropertyImage } from '../services/propertyService';
 import { shareProperty } from '../services/shareService';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import toast from 'react-hot-toast';
 
 const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
@@ -99,7 +100,7 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
                 </h3>
                 <div className="flex items-center text-gray-500 text-sm mb-3">
                   <MapPin className="w-4 h-4 mr-1" />
-                  {property.location}
+                  {getPublicPropertyLocation(property)}
                 </div>
               </div>
               <button
@@ -189,7 +190,7 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
           </h3>
           <div className="flex items-center text-gray-500 text-sm mb-3">
             <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
-            <span className="truncate">{property.location}</span>
+            <span className="truncate">{getPublicPropertyLocation(property)}</span>
           </div>
           <div className="flex justify-between items-center mb-3 text-gray-600 text-sm">
             <span className="flex items-center gap-1"><Bed className="w-4 h-4" /> {property.bedrooms || 0}</span>

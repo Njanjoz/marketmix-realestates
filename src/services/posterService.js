@@ -91,7 +91,7 @@ const exportCanvasBlob = async (canvas, mimeType = 'image/jpeg', quality = 0.9) 
   });
 };
 
-export const getPromoCoverImage = async (photos = []) => {
+export const getPromoCoverImage = async (photos = [], propertyTitle = 'Property') => {
   const photoUrl = Array.isArray(photos) ? photos.find(p => typeof p === 'string' && p.trim()) : null;
   const canvas = document.createElement('canvas');
   canvas.width = 1200;
@@ -132,8 +132,10 @@ export const getPromoCoverImage = async (photos = []) => {
   ctx.fillText('Verified Property Listing · Tap to view details', 60, canvas.height - 50);
 
   const blob = await exportCanvasBlob(canvas, 'image/jpeg', 0.9);
+  const safeTitle = propertyTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+  
   return {
-    file: new File([blob], 'marketmix-property-cover.jpg', { type: 'image/jpeg' }),
+    file: new File([blob], `MarketMix_${safeTitle}_Cover.jpg`, { type: 'image/jpeg' }),
     hasPropertyPhoto: !!img,
   };
 };
@@ -276,8 +278,11 @@ export const generatePromoPoster = async (posterData = {}) => {
   }
 
   const blob = await exportCanvasBlob(canvas, 'image/png', 0.95);
+  const propertyTitle = posterData.property?.title || posterData.headline || 'Property';
+  const safeTitle = propertyTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+
   return {
-    file: new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' }),
+    file: new File([blob], `MarketMix_${safeTitle}_Poster.png`, { type: 'image/png' }),
     hasPropertyPhoto: !!img,
   };
 };

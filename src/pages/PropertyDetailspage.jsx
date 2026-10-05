@@ -7,7 +7,7 @@ import {
   ChevronRight, Building, Calendar, Eye, Copy, AlertCircle,
   Maximize2, Shield, Clock, Users, Navigation,
   Droplet, Zap, Wifi, Trash2, Car, BookOpen, Utensils, Store,
-  Dumbbell, Cross, Church, Landmark, Route, Bus, Footprints,
+  Dumbbell, Cross, Church, Landmark, Route, Bus, Footprints, Lock,
   GraduationCap, Home, Sparkles, Play, Star, Waves, Sun, DollarSign,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,7 @@ import {
 } from '../services/propertyService';
 import toast from 'react-hot-toast';
 import { shareProperty } from '../services/shareService';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 
 // ─── tiny helpers ────────────────────────────────────────
 const KSh = (n) => `KSh ${(Number(n) || 0).toLocaleString()}`;
@@ -27,7 +28,7 @@ const yesNo = (v) => (v === true ? 'Yes' : v === false ? 'No' : '—');
 const val = (v, fallback = '—') =>
   v === undefined || v === null || v === '' ? fallback : v;
 
-const Section = ({ title, icon: Icon, children, defaultOpen = true }) => {
+const Section = ({ title, icon: Icon, children, defaultOpen = false }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 mb-4">
@@ -38,7 +39,7 @@ const Section = ({ title, icon: Icon, children, defaultOpen = true }) => {
       >
         <div className="flex items-center gap-2">
           {Icon && <Icon className="w-5 h-5 text-emerald-600" />}
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-base font-bold text-gray-900">{title}</h2>
         </div>
         <ChevronRight
           className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -314,81 +315,77 @@ const PropertyDetailspage = () => {
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       {/* ─── Hero / Gallery ─────────────────────────── */}
-      <div className="relative bg-gray-100">
-        {cover ? (
-          <img
-            src={cover}
-            alt={p.title}
-            className="w-full h-[320px] sm:h-[420px] object-cover"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800';
-            }}
-          />
-        ) : (
-          <div className="w-full h-[320px] bg-gray-200 flex items-center justify-center text-gray-400">
-            No image available
+      <section className="mx-auto max-w-7xl px-4 pt-5 sm:pt-7" aria-label="Property photos">
+        <div className="relative overflow-hidden rounded-2xl bg-slate-950 shadow-lg ring-1 ring-black/5">
+          <div className={`grid ${media.length > 1 ? 'md:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]' : ''} min-h-[280px] sm:min-h-[380px] md:h-[500px]`}>
+            {cover ? (
+              <button
+                type="button"
+                onClick={() => setLightbox(0)}
+                className="group relative flex aspect-[4/3] min-h-[280px] items-center justify-center overflow-hidden bg-slate-950 sm:aspect-[16/9] sm:min-h-[380px] md:aspect-auto md:min-h-0"
+                aria-label="Open main property photo"
+              >
+                <img
+                  src={cover}
+                  alt={p.title || 'Property photo'}
+                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
+                  fetchPriority="high"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200';
+                  }}
+                />
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-5 pb-5 pt-14 text-left text-sm font-medium text-white">
+                  {p.title}
+                </span>
+              </button>
+            ) : (
+              <div className="flex min-h-[280px] items-center justify-center bg-slate-100 text-sm text-slate-500 sm:min-h-[380px] md:min-h-0">
+                No property photos available
+              </div>
+            )}
+
+            {media.length > 1 && (
+              <div className={`hidden min-h-0 ${media.length > 2 ? 'grid-rows-2' : 'grid-rows-1'} gap-1.5 bg-slate-950 p-1.5 md:grid`}>
+                {media.slice(1, 3).map((m, i) => (
+                  <button
+                    key={`${m.url}-${i}`}
+                    type="button"
+                    onClick={() => setLightbox(i + 1)}
+                    className="group relative min-h-0 overflow-hidden bg-slate-900"
+                    aria-label={`Open property photo ${i + 2}`}
+                  >
+                    <img
+                      src={m.url}
+                      alt={`${p.title || 'Property'} photo ${i + 2}`}
+                      loading="lazy"
+                      className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600';
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-full p-2 shadow"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-
-        <div className="absolute top-4 right-4 flex gap-2">
-          <button className="bg-white/90 backdrop-blur rounded-full p-2 shadow">
-            <Heart className="w-5 h-5" />
-          </button>
-          <button
-            className="bg-white/90 backdrop-blur rounded-full p-2 shadow"
-            onClick={async () => {
-              try {
-                const result = await shareProperty(p);
-                if (result?.source === 'clipboard') {
-                  toast.success('Property details copied');
-                } else if (result?.source === 'whatsapp') {
-                  toast.success('WhatsApp share opened');
-                } else if (result?.shared) {
-                  toast.success('Property shared');
-                } else {
-                  toast.success('Share link ready');
-                }
-              } catch (error) {
-                console.error('Share property error:', error);
-                toast.error('Could not share property');
-              }
-            }}
-          >
-            <Share2 className="w-5 h-5" />
-          </button>
-        </div>
-
-        {media.length > 1 && (
-          <button
-            onClick={() => setLightbox(0)}
-            className="absolute bottom-4 right-4 bg-white/90 backdrop-blur rounded-full px-3 py-2 shadow flex items-center gap-1.5 text-sm font-medium"
-          >
-            <Maximize2 className="w-4 h-4" /> View all {media.length} photos
-          </button>
-        )}
-
-        {/* Thumbnails strip */}
-        {media.length > 1 && (
-          <div className="absolute bottom-0 left-0 right-0 overflow-x-auto bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-8">
-            <div className="flex gap-2">
+          {media.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto border-t border-white/10 bg-slate-950 p-2 md:hidden">
               {media.slice(0, 8).map((m, i) => (
                 <button
-                  key={i}
+                  key={`${m.url}-mobile-${i}`}
+                  type="button"
                   onClick={() => setLightbox(i)}
-                  className="shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-white/70"
+                  aria-label={`Open property photo ${i + 1}`}
+                  className={`h-16 w-20 shrink-0 overflow-hidden rounded-md border-2 bg-slate-900 ${i === 0 ? 'border-emerald-400' : 'border-white/15'}`}
                 >
                   <img
                     src={m.url}
                     alt=""
-                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    className="h-full w-full object-contain"
                     onError={(e) => {
                       e.target.onerror = null;
                       e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=200';
@@ -397,12 +394,67 @@ const PropertyDetailspage = () => {
                 </button>
               ))}
             </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+            className="absolute left-4 top-4 rounded-full bg-white/95 p-2.5 text-slate-800 shadow-lg backdrop-blur transition hover:bg-white"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+
+          <div className="absolute right-4 top-4 flex gap-2">
+            <button
+              type="button"
+              onClick={handleSaveToggle}
+              aria-label={saved ? 'Remove from saved properties' : 'Save property'}
+              className={`rounded-full p-2.5 shadow-lg backdrop-blur transition ${saved ? 'bg-rose-600 text-white' : 'bg-white/95 text-slate-800 hover:bg-white'}`}
+            >
+              <Heart className={`h-5 w-5 ${saved ? 'fill-current' : ''}`} />
+            </button>
+            <button
+              type="button"
+              aria-label="Share property"
+              className="rounded-full bg-white/95 p-2.5 text-slate-800 shadow-lg backdrop-blur transition hover:bg-white"
+              onClick={async () => {
+                try {
+                  const result = await shareProperty(p);
+                  if (result?.source === 'clipboard') {
+                    toast.success('Property details copied');
+                  } else if (result?.source === 'whatsapp') {
+                    toast.success('WhatsApp share opened');
+                  } else if (result?.shared) {
+                    toast.success('Property shared');
+                  } else {
+                    toast.success('Share link ready');
+                  }
+                } catch (error) {
+                  console.error('Share property error:', error);
+                  toast.error('Could not share property');
+                }
+              }}
+            >
+              <Share2 className="h-5 w-5" />
+            </button>
           </div>
-        )}
-      </div>
+
+          {media.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setLightbox(0)}
+              className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-lg bg-white/95 px-3.5 py-2.5 text-sm font-semibold text-slate-900 shadow-lg backdrop-blur transition hover:bg-white"
+            >
+              <Maximize2 className="h-4 w-4" />
+              <span>{media.length} photos</span>
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* ─── Title + key facts ──────────────────────── */}
-      <div className="container mx-auto px-4 -mt-8 relative">
+      <div className="container relative mx-auto mt-5 px-4">
         <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex-1 min-w-[240px]">
@@ -424,9 +476,7 @@ const PropertyDetailspage = () => {
               )}
               <p className="text-sm text-gray-600 flex items-center gap-1 mt-2">
                 <MapPin className="w-4 h-4 text-emerald-600" />
-                <span className="blur-sm select-none" aria-label="Contact seller for location">
-                  {[approx.estate, approx.town, approx.county].filter(Boolean).join(', ') || p.location || 'Location not specified'}
-                </span>
+                <span>{getPublicPropertyLocation(p)}</span>
                 <button type="button" onClick={handleContactSeller} className="ml-1 shrink-0 font-semibold text-emerald-700 underline underline-offset-2">
                   Contact seller
                 </button>
@@ -757,12 +807,13 @@ const PropertyDetailspage = () => {
                       <button
                         key={i}
                         onClick={() => setLightbox(media.indexOf(m))}
-                        className="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100"
+                        className="group aspect-[4/3] overflow-hidden rounded-xl border border-gray-200 bg-slate-950 shadow-sm transition hover:shadow-md"
                       >
                         <img
                           src={m.url}
-                          alt=""
-                          className="w-full h-full object-cover"
+                          alt={`${p.title || 'Property'} ${cat.replace(/_/g, ' ')} photo`}
+                          loading="lazy"
+                          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                           onError={(e) => {
                             e.target.onerror = null;
                             e.target.src = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400';

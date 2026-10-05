@@ -350,7 +350,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     setCoverError('');
     setCoverFile(null);
 
-    getPromoCoverImage([imageUrl])
+    getPromoCoverImage([imageUrl], property?.title || 'Property')
       .then(({ file }) => {
         if (!cancelled) setCoverFile(file);
       })

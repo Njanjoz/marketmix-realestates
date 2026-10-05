@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { X, Upload, MapPin, DollarSign, Bed, Bath, Square, Loader, CheckCircle, AlertCircle, Crosshair } from 'lucide-react';
+import { X, Upload, MapPin, DollarSign, Bed, Bath, Square, Loader, CheckCircle, AlertCircle, Crosshair, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LocationPicker from '../LocationPicker';
 import { resizeImage, uploadFileToR2, sanitizeImageEntries } from '../../utils/cloudflareUpload';
@@ -89,6 +89,17 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
       if (img?.preview) URL.revokeObjectURL(img.preview);
       return prev.filter(i => i.id !== id);
     });
+  };
+
+  const setCover = (id) => {
+    setUploadedImages(prev => {
+      const idx = prev.findIndex(i => i.id === id);
+      if (idx <= 0) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(idx, 1);
+      return [item, ...copy];
+    });
+    toast.success('Set as property cover photo');
   };
 
   const addImageFromUrl = () => {
@@ -271,13 +282,24 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                           <CheckCircle className="w-4 h-4 text-green-500" />
                         </div>
                       )}
-                      {idx === 0 && img.status === 'uploaded' && (
-                        <div className="absolute bottom-1 left-1 bg-emerald-600 text-white text-xs px-1 rounded">Cover</div>
+                      {idx === 0 && img.status === 'uploaded' ? (
+                        <span className="absolute bottom-1 left-1 bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+                          Cover ⭐
+                        </span>
+                      ) : img.status === 'uploaded' && (
+                        <button
+                          type="button"
+                          onClick={() => setCover(img.id)}
+                          className="absolute bottom-1 left-1 p-1 bg-white rounded-full shadow hover:bg-emerald-50 text-yellow-600"
+                          title="Set as property cover photo"
+                        >
+                          <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-500" />
+                        </button>
                       )}
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
-                        className="absolute top-1 left-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100"
+                        className="absolute top-1 left-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
                       >
                         <X className="w-3 h-3" />
                       </button>

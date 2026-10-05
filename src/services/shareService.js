@@ -1,4 +1,5 @@
 import { isCapacitor } from '../utils/platform';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 
 const getPropertyUrl = (property) => {
   if (property?.url || property?.propertyUrl) {
@@ -33,7 +34,7 @@ export const getYouTubeTourUrl = (property) => {
 
 export const getPropertySharePayload = (property) => {
   const title = property?.title || 'MarketMix Property';
-  const location = property?.location || property?.approximateLocation || 'Location available on request';
+  const location = getPublicPropertyLocation(property);
   const price = property?.rent || property?.price || property?.monthlyRent || 'Price available on request';
   const type = property?.propertyType || property?.type || 'Property';
   const url = getPropertyUrl(property);

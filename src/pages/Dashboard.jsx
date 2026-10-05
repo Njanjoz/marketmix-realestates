@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext'; // Assuming context exists
 import { FaHome, FaHeart, FaBell, FaCog, FaSignOutAlt, FaUser, FaEnvelope, FaPhone, FaEdit, FaChartLine, FaHistory, FaCheckCircle, FaTimesCircle, FaMapMarkerAlt, FaBed, FaDollarSign } from 'react-icons/fa';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 
 // --- COLOR AND STYLE CONSTANTS ---
 const PRIMARY_BLUE = '#0284c7'; 
@@ -460,7 +461,7 @@ const Dashboard = () => {
                         <div className="content">
                             <h4 className="text-lg">{property.title}</h4>
                             <p>
-                                <FaMapMarkerAlt /> {property.location}
+                                <FaMapMarkerAlt /> {getPublicPropertyLocation(property)}
                             </p>
                             <p className="text-xl font-bold text-primary-600">
                                 <FaDollarSign size={14} className="inline mr-1" />
