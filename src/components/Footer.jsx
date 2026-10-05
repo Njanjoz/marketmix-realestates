@@ -3,23 +3,22 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { Facebook, Twitter, Instagram, Linkedin, Mail, Phone, MapPin, Home } from 'lucide-react';
+import './moving/LiquidGlass.css';
 
 // --- COLOR AND STYLE CONSTANTS ---
 // Defining these locally until a central theme file is implemented
-const PRIMARY_COLOR = '#0284c7';      // primary-600
-const PRIMARY_DARK = '#0369a1';       // primary-700
-const GRAY_900 = '#111827';          // gray-900
-const GRAY_950 = '#030712';          // gray-950
-const GRAY_400 = '#9ca3af';          // gray-400
-const GRAY_500 = '#6b7280';          // gray-500
+const PRIMARY_COLOR = '#16845e';
+const PRIMARY_DARK = '#115b43';
+const GRAY_400 = '#475c53';
+const GRAY_500 = '#64746c';
 const WHITE = '#ffffff';
 
 // --- STYLED COMPONENTS DEFINITIONS ---
 
 const FooterWrapper = styled.footer`
-  /* bg-gradient-to-b from-gray-900 to-gray-950 */
-  background: linear-gradient(to bottom, ${GRAY_900}, ${GRAY_950});
-  color: ${WHITE};
+  position: relative;
+  border-top: 1px solid rgba(255, 255, 255, 0.78);
+  color: #17382d;
 `;
 
 const FooterSection = styled.div`
@@ -51,7 +50,7 @@ const MainTitle = styled.h3`
   font-size: 1.5rem; /* text-2xl */
   font-weight: 700; /* font-bold */
   /* bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent */
-  background-image: linear-gradient(to right, ${WHITE}, #d1d5db);
+  background-image: linear-gradient(to right, #174b37, #16845e 60%, #247990);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -60,7 +59,7 @@ const MainTitle = styled.h3`
 
 const Subtitle = styled.p`
   font-size: 0.75rem; /* text-xs */
-  color: ${GRAY_400};
+  color: #64746c;
   letter-spacing: 0.05em; /* tracking-wider */
 `;
 
@@ -68,7 +67,7 @@ const SocialLink = styled.a`
   color: ${GRAY_500};
   transition: color 150ms;
   &:hover {
-    color: ${WHITE};
+    color: ${PRIMARY_DARK};
   }
 `;
 
@@ -76,7 +75,7 @@ const FooterLink = styled(Link)`
   color: ${GRAY_400};
   transition: color 150ms;
   &:hover {
-    color: ${WHITE};
+    color: ${PRIMARY_DARK};
   }
 `;
 
@@ -103,13 +102,13 @@ const NewsletterInput = styled.input`
   padding: 0.75rem 1rem; /* p-3 */
   border-top-left-radius: 0.5rem;
   border-bottom-left-radius: 0.5rem;
-  background-color: ${GRAY_900};
-  color: ${WHITE};
-  border: 1px solid ${GRAY_900};
+  background: rgba(255, 255, 255, 0.62);
+  color: #17382d;
+  border: 1px solid rgba(255, 255, 255, 0.86);
   transition: border-color 150ms;
 
   &::placeholder {
-    color: ${GRAY_500};
+    color: #64746c;
   }
   
   &:focus {
@@ -137,13 +136,13 @@ const NewsletterButton = styled.button`
 `;
 
 const BottomBar = styled.div`
-  border-top: 1px solid #374151; /* border-t border-gray-800 */
+  border-top: 1px solid rgba(255, 255, 255, 0.72);
   margin-top: 3rem; /* mt-12 */
   padding-top: 2rem; /* pt-8 */
 `;
 
 const BottomBarText = styled.p`
-  color: ${GRAY_500};
+  color: #64746c;
   font-size: 0.875rem; /* text-sm */
 `;
 
@@ -167,12 +166,12 @@ const Footer = () => {
   ];
 
   return (
-    <FooterWrapper>
+    <FooterWrapper className="mmx-liquid-canvas">
       {/* Main Footer */}
       <FooterSection>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           {/* Company Info */}
-          <div className="space-y-4">
+          <div className="mmx-glass-surface rounded-3xl p-5 sm:p-6 space-y-4">
             <CompanyLogoContainer>
               <LogoIcon>
                 <Home className="w-6 h-6 text-white" />
@@ -185,29 +184,29 @@ const Footer = () => {
               </div>
             </CompanyLogoContainer>
             
-            <p className="text-sm text-gray-400 max-w-xs">
+            <p className="text-sm text-slate-600 max-w-xs">
               Your trusted partner in finding the perfect property. Dedicated to excellence in real estate.
             </p>
             
             <div className="flex space-x-4 pt-2">
-              <SocialLink href="https://facebook.com" target="_blank" aria-label="Facebook">
+              <SocialLink href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
                 <Facebook className="w-6 h-6" />
               </SocialLink>
-              <SocialLink href="https://twitter.com" target="_blank" aria-label="Twitter">
+              <SocialLink href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Twitter">
                 <Twitter className="w-6 h-6" />
               </SocialLink>
-              <SocialLink href="https://instagram.com" target="_blank" aria-label="Instagram">
+              <SocialLink href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
                 <Instagram className="w-6 h-6" />
               </SocialLink>
-              <SocialLink href="https://linkedin.com" target="_blank" aria-label="LinkedIn">
+              <SocialLink href="https://linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn">
                 <Linkedin className="w-6 h-6" />
               </SocialLink>
             </div>
           </div>
 
           {/* Quick Links */}
-          <div>
-            <h4 className="text-lg font-bold mb-5">Quick Links</h4>
+          <div className="mmx-glass-surface rounded-3xl p-5 sm:p-6">
+            <h4 className="text-lg font-bold mb-5 text-slate-900">Quick Links</h4>
             <div className="space-y-3">
               {navLinks.map((link) => (
                 <div key={link.name}>
@@ -220,16 +219,16 @@ const Footer = () => {
           </div>
           
           {/* Contact Info & Resources */}
-          <div>
-            <h4 className="text-lg font-bold mb-5">Contact & Resources</h4>
+          <div className="mmx-glass-surface rounded-3xl p-5 sm:p-6">
+            <h4 className="text-lg font-bold mb-5 text-slate-900">Contact & Resources</h4>
             <div className="space-y-4">
-              <ContactItem>
+              <ContactItem as="a" href="tel:0115988107">
                 <Phone className="w-5 h-5" />
-                +254 700 000 000
+                0115988107
               </ContactItem>
-              <ContactItem>
+              <ContactItem as="a" href="mailto:marketmixkenya@gmail.com">
                 <Mail className="w-5 h-5" />
-                info@marketmix.co.ke
+                marketmixkenya@gmail.com
               </ContactItem>
               <ContactItem>
                 <MapPin className="w-5 h-5" />
@@ -248,9 +247,9 @@ const Footer = () => {
           </div>
 
           {/* Newsletter */}
-          <div>
-            <h4 className="text-lg font-bold mb-5">Stay Updated</h4>
-            <p className="text-sm text-gray-400">
+          <div className="mmx-glass-surface rounded-3xl p-5 sm:p-6">
+            <h4 className="text-lg font-bold mb-5 text-slate-900">Stay Updated</h4>
+            <p className="text-sm text-slate-600">
               Subscribe to our newsletter for the latest market insights.
             </p>
             <NewsletterForm>
@@ -262,7 +261,7 @@ const Footer = () => {
                 <Mail className="w-5 h-5" />
               </NewsletterButton>
             </NewsletterForm>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-slate-500 mt-2">
               Get weekly property updates and exclusive deals
             </p>
           </div>
@@ -272,7 +271,7 @@ const Footer = () => {
         <BottomBar>
           <div className="flex flex-col md:flex-row justify-between items-center">
             <BottomBarText>
-              © {currentYear} MarketMix Real Estates. All rights reserved.
+              &#169; {currentYear} MarketMix Real Estates. All rights reserved.
             </BottomBarText>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <FooterLink to="/privacy">

@@ -21,6 +21,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ContactPage = lazy(() => import('./pages/ContactPage'));
+const MortgageCalculator = lazy(() => import('./components/MortgageCalculator'));
 const AgentsPage = lazy(() => import('./pages/AgentsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -123,6 +124,7 @@ function App() {
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/about" element={<AboutPage />} />
                       <Route path="/contact" element={<ContactPage />} />
+                      <Route path="/mortgage" element={<MortgageCalculator />} />
                       <Route path="/agents" element={<AgentsPage />} />
                       <Route path="/properties" element={<PropertiesPage />} />
                       <Route path="/property/:id" element={<PropertyDetailsPage />} />

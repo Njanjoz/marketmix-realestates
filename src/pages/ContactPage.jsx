@@ -195,13 +195,13 @@ const ContactPage = () => {
     {
       icon: <FaPhone />,
       title: "Phone",
-      details: ["+254 700 000 000", "+254 711 000 000"],
+      details: ["0115988107"],
       description: "Mon-Fri from 8am to 6pm"
     },
     {
       icon: <FaEnvelope />,
       title: "Email",
-      details: ["info@marketmix.co.ke", "support@marketmix.co.ke"],
+      details: ["marketmixkenya@gmail.com"],
       description: "We'll respond within 24 hours"
     },
     {

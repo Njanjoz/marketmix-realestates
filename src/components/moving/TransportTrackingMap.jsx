@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import './TransportTrackingMap.css';
 import { MapPin } from 'lucide-react';
 import { getPoint } from '../../services/transportService';
+import { PanControls } from './CoordinateMapPicker';
 
 const markerIcon = (kind) => L.divIcon({
   className: 'marketmix-map-marker',
@@ -99,23 +100,25 @@ const TransportTrackingMap = ({ pickupLocation, destinationLocation, driverLocat
   }, [origin?.lat, origin?.lng, destination?.lat, destination?.lng]);
 
   const points = useMemo(() => [pickup, destination, driver].filter(Boolean), [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, driver?.lat, driver?.lng]);
+  const routePoints = useMemo(() => [pickup, destination].filter(Boolean), [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng]);
   if (!points.length) {
     return <div className={`flex min-h-64 items-center justify-center rounded-3xl border border-white/50 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 text-center ${className}`}><div><div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white shadow"><MapPin className="mx-auto h-5 w-5 text-emerald-800"/></div><p className="font-semibold text-slate-800">Map pin waiting for locations</p><p className="mt-1 max-w-sm text-sm text-slate-500">Add a pickup pin and select a property with map coordinates to see the live trip.</p></div></div>;
   }
 
   return <div className={`overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_20px_60px_rgba(25,50,43,.13)] ${className}`}>
-    <div className="relative h-64 sm:h-80">
+    <div className="relative h-64 touch-none sm:h-80">
       <MapContainer center={[points[0].lat, points[0].lng]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url={TILE_URL} />
         {pickup && <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon} />}
         {destination && <Marker position={[destination.lat, destination.lng]} icon={destinationIcon} />}
         {driver && <AnimatedDriverMarker point={driver} />}
         {route.length > 1 && <Polyline positions={route.map((point) => [point.lat, point.lng])} pathOptions={{ color: '#28745d', weight: 5, opacity: 0.86, dashArray: driver ? undefined : '8 9' }} />}
-        <FitBounds points={points} />
+        <FitBounds points={routePoints} />
+        <PanControls />
       </MapContainer>
       <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur">{driver ? 'Live driver location' : 'Trip route'}</div>
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-600"><span>{routeStatus || (driver ? 'Driver location sharing' : 'Route preview')}</span><span>Map © OpenStreetMap · Route by OSRM</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-600"><span>{routeStatus || (driver ? 'Driver location sharing' : 'Route preview')}</span><span>Drag or use the arrows to pan</span><span>Map &#169; OpenStreetMap - Route by OSRM</span></div>
   </div>;
 };
 

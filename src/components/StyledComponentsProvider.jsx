@@ -9,7 +9,7 @@ const validHTMLAttributes = new Set([
   'onMouseLeave', 'onMouseDown', 'onMouseUp', 'style', 'disabled', 'type',
   'value', 'placeholder', 'checked', 'selected', 'defaultValue', 'defaultChecked',
   'role', 'tabIndex', 'title', 'alt', 'src', 'width', 'height', 'htmlFor',
-  'name', 'method', 'action', 'encType', 'accept', 'acceptCharset', 'multiple',
+  'name', 'to', 'method', 'action', 'encType', 'accept', 'acceptCharset', 'multiple',
   'pattern', 'required', 'step', 'min', 'max', 'minLength', 'maxLength',
   'autoComplete', 'autoFocus', 'readOnly', 'spellCheck', 'draggable',
   'download', 'media', 'sandbox', 'scoped', 'shape', 'size', 'span', 'start',

@@ -52,7 +52,7 @@ const HomePage = () => {
     },
     contactInfo: {
       email: 'info@realestate.com',
-      phone: '+254 700 000 000',
+      phone: '0115988107',
       address: 'Nairobi, Kenya'
     },
     socialLinks: {

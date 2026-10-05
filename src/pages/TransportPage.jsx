@@ -264,7 +264,8 @@ const TransportPage = () => {
       const areaFilled = await fillAreaFromCoordinates('pickup', point);
       const accuracy = `GPS accuracy ${String.fromCharCode(177)}${Math.round(result.accuracy)} m`;
       if (areaFilled) toast.success(`Pickup pin saved (${accuracy}) and area fields filled in.`);
-      else toast.success(`Pickup pin saved (${accuracy}). Fill in the county and local area if they are still blank.`);
+      else if (areaFilled === false) toast.success(`Pickup pin saved (${accuracy}). Fill in the county and local area if they are still blank.`);
+      else toast.success(`Pickup pin saved (${accuracy}).`);
     } catch (error) {
       console.error('Could not read device location:', error);
       toast.error('Allow location access, or enter your pickup area manually.');

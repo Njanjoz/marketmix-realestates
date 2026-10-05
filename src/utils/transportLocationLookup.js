@@ -4,7 +4,7 @@ const nominatimCache = new Map();
 let nominatimQueue = Promise.resolve();
 let lastNominatimRequestAt = 0;
 
-const fetchNominatimJson = async (url, cacheKey) => {
+export const requestNominatimJson = async (url, cacheKey) => {
   if (nominatimCache.has(cacheKey)) return nominatimCache.get(cacheKey);
   const request = nominatimQueue.then(async () => {
     const wait = Math.max(0, 1100 - (Date.now() - lastNominatimRequestAt));
@@ -96,7 +96,7 @@ export const reverseGeocodeKenyaPoint = async ({ lat, lng }) => {
     'accept-language': 'en',
   });
   const cacheKey = `reverse:${Number(lat).toFixed(5)}:${Number(lng).toFixed(5)}`;
-  const result = await fetchNominatimJson(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, cacheKey);
+  const result = await requestNominatimJson(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, cacheKey);
   return {
     label: result.name || result.address?.neighbourhood || result.address?.suburb || result.address?.town || result.address?.city || '',
     area: parseKenyaLocationAddress(result.address || {}, result.name || ''),
@@ -113,7 +113,7 @@ export const searchKenyaLocations = async (query) => {
     'accept-language': 'en',
   });
   const cacheKey = `search:${query.trim().toLocaleLowerCase()}`;
-  const results = await fetchNominatimJson(`https://nominatim.openstreetmap.org/search?${params.toString()}`, cacheKey);
+  const results = await requestNominatimJson(`https://nominatim.openstreetmap.org/search?${params.toString()}`, cacheKey);
   return results.map((result) => ({
     label: result.name || result.display_name?.split(',').slice(0, 2).join(',').trim() || 'Selected location',
     displayName: result.display_name || result.name || 'Selected location',

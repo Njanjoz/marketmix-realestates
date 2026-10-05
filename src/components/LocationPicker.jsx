@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { search as searchKenyaBoundaries } from 'osm-kenya-boundaries';
 import { getCurrentLocation } from '../services/locationService';
 import { isCapacitor } from '../utils/platform';
+import { requestNominatimJson } from '../utils/transportLocationLookup';
 
 const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Property Location" }) => {
   const [location, setLocation] = useState(initialLocation || { 
@@ -405,11 +406,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     try {
       const boundaryMatches = searchKenyaBoundaries(searchQuery) || [];
       
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery + ', Kenya')}&addressdetails=1&limit=6`,
-        { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
-      );
-      const nominatimData = await res.json();
+      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery + ', Kenya')}&addressdetails=1&limit=6`;
+      const nominatimData = await requestNominatimJson(searchUrl, `search:${searchQuery.trim().toLocaleLowerCase()}`);
 
       const combinedResults = [];
       
@@ -459,11 +457,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(displayName)}&addressdetails=1&limit=1`,
-          { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
-        );
-        const data = await res.json();
+        const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(displayName)}&addressdetails=1&limit=1`;
+        const data = await requestNominatimJson(searchUrl, `search:${displayName.trim().toLocaleLowerCase()}`);
         if (data && data.length > 0) {
           lat = parseFloat(data[0].lat);
           lon = parseFloat(data[0].lon);
@@ -482,11 +477,10 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
 
     let reverseData = null;
     try {
-      const response = await fetch(
+      reverseData = await requestNominatimJson(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
-        { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
+        `reverse:${Number(lat).toFixed(5)}:${Number(lon).toFixed(5)}`
       );
-      if (response.ok) reverseData = await response.json();
     } catch (err) {
       console.warn('Could not resolve a readable name for searched coordinates:', err);
     }
