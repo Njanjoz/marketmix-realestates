@@ -1,4 +1,4 @@
-// src/services/posterService.js - Bulletproof Client-Side Canvas Poster & Cover Generator for Mobile & Vercel
+// src/services/posterService.js - Pure Client-Side Canvas Poster & Cover Generator with Robust Multi-Tier Image Loading
 
 import QRCode from 'qrcode';
 
@@ -10,23 +10,48 @@ const THEMES = {
   sunset: { bg: '#fff1f2', badge: '#f43f5e', accent: '#be123c', text: '#881337', headerBg: '#9f1239' },
 };
 
-const loadImage = (url) => new Promise((resolve) => {
-  if (!url || typeof url !== 'string') {
-    resolve(null);
-    return;
+const loadImage = async (url) => {
+  if (!url || typeof url !== 'string') return null;
+
+  // Strategy 1: Standard load with anonymous CORS
+  const img1 = await new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+  if (img1) return img1;
+
+  // Strategy 2: Fetch as blob to bypass CORS header restrictions
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const img2 = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(null);
+        };
+        img.src = objectUrl;
+      });
+      if (img2) return img2;
+    }
+  } catch (err) {
+    console.warn('[Poster] Blob fetch image loading fallback caught:', err);
   }
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => resolve(img);
-  img.onerror = () => {
-    // Retry without crossOrigin
-    const imgFallback = new Image();
-    imgFallback.onload = () => resolve(imgFallback);
-    imgFallback.onerror = () => resolve(null);
-    imgFallback.src = url;
-  };
-  img.src = url;
-});
+
+  // Strategy 3: Direct fallback without CORS
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+};
 
 const exportCanvasBlob = async (canvas, mimeType = 'image/jpeg', quality = 0.9) => {
   return new Promise((resolve) => {
@@ -78,7 +103,6 @@ export const getPromoCoverImage = async (photos = []) => {
   canvas.height = 900;
   const ctx = canvas.getContext('2d');
 
-  // Background gradient
   const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   grad.addColorStop(0, '#1e293b');
   grad.addColorStop(1, '#0f172a');
@@ -102,7 +126,6 @@ export const getPromoCoverImage = async (photos = []) => {
     }
   }
 
-  // Bottom overlay banner
   const bannerHeight = 160;
   const gradOverlay = ctx.createLinearGradient(0, canvas.height - bannerHeight, 0, canvas.height);
   gradOverlay.addColorStop(0, 'rgba(0,0,0,0)');
@@ -122,7 +145,6 @@ export const getPromoCoverImage = async (photos = []) => {
   let blob = await exportCanvasBlob(canvas, 'image/jpeg', 0.9);
   
   if (!blob) {
-    // Ultimate fallback if export fails
     canvas.width = 600;
     canvas.height = 450;
     const ctx2 = canvas.getContext('2d');
@@ -158,11 +180,9 @@ export const generatePromoPoster = async (posterData = {}) => {
   const theme = THEMES[themeKey] || THEMES.emerald;
   const fontFamily = posterData.fontFamily || 'Arial, sans-serif';
 
-  // Background
   ctx.fillStyle = themeKey === 'midnight' ? '#0f172a' : '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Top header banner
   ctx.fillStyle = theme.headerBg;
   ctx.fillRect(0, 0, canvas.width, 130);
 
@@ -171,7 +191,6 @@ export const generatePromoPoster = async (posterData = {}) => {
   ctx.textAlign = 'center';
   ctx.fillText('MARKETMIX REAL ESTATES', canvas.width / 2, 78);
 
-  // Image area
   const imgX = 80;
   const imgY = 170;
   const imgW = canvas.width - 160;
@@ -250,25 +269,62 @@ export const generatePromoPoster = async (posterData = {}) => {
 
   currentY += 115;
 
-  const drawSection = (title, items) => {
-    if (!Array.isArray(items) || items.length === 0) return;
-    ctx.fillStyle = themeKey === 'midnight' ? '#94a3b8' : '#64748b';
-    ctx.font = `bold 20px ${fontFamily}`;
-    ctx.fillText(title.toUpperCase(), 80, currentY);
-    currentY += 32;
+  // Render sections based on user's reordered sequence
+  const sectionsMap = {
+    highlights: () => {
+      const items = posterData.highlights;
+      if (!Array.isArray(items) || items.length === 0) return;
+      ctx.fillStyle = themeKey === 'midnight' ? '#94a3b8' : '#64748b';
+      ctx.font = `bold 20px ${fontFamily}`;
+      ctx.fillText("WHY YOU'LL LOVE IT", 80, currentY);
+      currentY += 32;
 
-    ctx.fillStyle = themeKey === 'midnight' ? '#cbd5e1' : '#334155';
-    ctx.font = `20px ${fontFamily}`;
-    for (const item of items.slice(0, 4)) {
-      ctx.fillText(`• ${item}`, 100, currentY);
-      currentY += 34;
+      ctx.fillStyle = themeKey === 'midnight' ? '#cbd5e1' : '#334155';
+      ctx.font = `20px ${fontFamily}`;
+      for (const item of items.slice(0, 4)) {
+        ctx.fillText(`• ${item}`, 100, currentY);
+        currentY += 34;
+      }
+      currentY += 15;
+    },
+    features: () => {
+      const items = posterData.features;
+      if (!Array.isArray(items) || items.length === 0) return;
+      ctx.fillStyle = themeKey === 'midnight' ? '#94a3b8' : '#64748b';
+      ctx.font = `bold 20px ${fontFamily}`;
+      ctx.fillText("FEATURES", 80, currentY);
+      currentY += 32;
+
+      ctx.fillStyle = themeKey === 'midnight' ? '#cbd5e1' : '#334155';
+      ctx.font = `20px ${fontFamily}`;
+      for (const item of items.slice(0, 4)) {
+        ctx.fillText(`• ${item}`, 100, currentY);
+        currentY += 34;
+      }
+      currentY += 15;
+    },
+    nearby: () => {
+      const items = posterData.nearby;
+      if (!Array.isArray(items) || items.length === 0) return;
+      ctx.fillStyle = themeKey === 'midnight' ? '#94a3b8' : '#64748b';
+      ctx.font = `bold 20px ${fontFamily}`;
+      ctx.fillText("NEARBY", 80, currentY);
+      currentY += 32;
+
+      ctx.fillStyle = themeKey === 'midnight' ? '#cbd5e1' : '#334155';
+      ctx.font = `20px ${fontFamily}`;
+      for (const item of items.slice(0, 4)) {
+        ctx.fillText(`• ${item}`, 100, currentY);
+        currentY += 34;
+      }
+      currentY += 15;
     }
-    currentY += 15;
   };
 
-  drawSection("Why you'll love it", posterData.highlights);
-  drawSection("Features", posterData.features);
-  drawSection("Nearby", posterData.nearby);
+  const order = Array.isArray(posterData.sectionsOrder) ? posterData.sectionsOrder : ['highlights', 'features', 'nearby'];
+  for (const key of order) {
+    if (sectionsMap[key]) sectionsMap[key]();
+  }
 
   if (posterData.listingUrl) {
     try {

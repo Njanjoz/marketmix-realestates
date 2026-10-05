@@ -5,6 +5,12 @@ import { getYouTubeTourUrl } from '../services/shareService';
 import { generatePromoPoster as requestPromoPoster, getPromoCoverImage } from '../services/posterService';
 import toast from 'react-hot-toast';
 
+const FONT_OPTIONS = {
+  'Arial, sans-serif': 'Modern Sans',
+  'Georgia, serif': 'Classic Serif',
+  'Courier New, monospace': 'Monospace',
+};
+
 const THEME_OPTIONS = {
   emerald: {
     badge: '#10b981',
@@ -22,6 +28,19 @@ const THEME_OPTIONS = {
     badge: '#f59e0b',
     accent: '#b45309',
     gradient: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
+    panel: '#ffffff',
+  },
+  midnight: {
+    badge: '#38bdf8',
+    accent: '#0f172a',
+    gradient: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+    panel: '#1e293b',
+    text: '#f8fafc',
+  },
+  sunset: {
+    badge: '#f43f5e',
+    accent: '#be123c',
+    gradient: 'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)',
     panel: '#ffffff',
   },
 };
@@ -271,6 +290,8 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const canShowContact = ['admin', 'seller', 'agent'].includes(role);
 
   const [themeKey, setThemeKey] = useState('emerald');
+  const [fontFamily, setFontFamily] = useState('Arial, sans-serif');
+  const [sectionsOrder, setSectionsOrder] = useState(['highlights', 'features', 'nearby']);
   const [headline, setHeadline] = useState(property?.title || 'Premium Property for You');
   const [caption, setCaption] = useState(
     property?.description || `Amazing ${property?.propertyType || 'property'} in ${property?.location || 'Kenya'}.`
@@ -285,6 +306,18 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const [coverFile, setCoverFile] = useState(null);
   const [coverLoading, setCoverLoading] = useState(true);
   const [coverError, setCoverError] = useState('');
+
+  const moveSection = (index, direction) => {
+    const next = [...sectionsOrder];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= next.length) return;
+    const temp = next[index];
+    next[index] = next[targetIndex];
+    next[targetIndex] = temp;
+    setSectionsOrder(next);
+    setPosterFile(null);
+    setPosterPreviewUrl('');
+  };
 
   const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.emerald;
   const contact = includeContact && canShowContact
@@ -374,6 +407,8 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
     listingUrl: getPropertyUrl(property),
     contact: contact ? { phone: contact.phone, email: contact.email } : null,
     theme: themeKey,
+    fontFamily,
+    sectionsOrder,
   });
 
   const generatePromoPoster = async () => {
@@ -493,7 +528,26 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Key points · one per line</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Key points · one per line</label>
+                  <div className="flex gap-1">
+                    {['✓', '⭐', '📍', '🏡', '💡', '•'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          const lines = highlights ? highlights.split(/\r?\n/) : [];
+                          const updated = lines.map((l) => l.startsWith(emoji) ? l : `${emoji} ${l}`).join('\n');
+                          updatePosterContent(setHighlights, updated);
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-slate-200/80 hover:bg-slate-300 text-[11px] font-medium text-slate-700"
+                        title={`Add ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   value={highlights}
                   onChange={(e) => updatePosterContent(setHighlights, e.target.value)}
@@ -504,7 +558,26 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Features · one per line</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Features · one per line</label>
+                  <div className="flex gap-1">
+                    {['✓', '⭐', '📍', '🏡', '💡', '•'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          const lines = features ? features.split(/\r?\n/) : [];
+                          const updated = lines.map((l) => l.startsWith(emoji) ? l : `${emoji} ${l}`).join('\n');
+                          updatePosterContent(setFeatures, updated);
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-slate-200/80 hover:bg-slate-300 text-[11px] font-medium text-slate-700"
+                        title={`Add ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   value={features}
                   onChange={(e) => updatePosterContent(setFeatures, e.target.value)}
@@ -515,7 +588,26 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Nearby · one per line</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Nearby · one per line</label>
+                  <div className="flex gap-1">
+                    {['✓', '⭐', '📍', '🏡', '💡', '•'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          const lines = nearby ? nearby.split(/\r?\n/) : [];
+                          const updated = lines.map((l) => l.startsWith(emoji) ? l : `${emoji} ${l}`).join('\n');
+                          updatePosterContent(setNearby, updated);
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-slate-200/80 hover:bg-slate-300 text-[11px] font-medium text-slate-700"
+                        title={`Add ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   value={nearby}
                   onChange={(e) => updatePosterContent(setNearby, e.target.value)}
@@ -526,17 +618,46 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Theme</label>
-                <div className="flex gap-2">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Font Family</label>
+                <select
+                  value={fontFamily}
+                  onChange={(e) => updatePosterContent(setFontFamily, e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                >
+                  {Object.entries(FONT_OPTIONS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Theme & Colors</label>
+                <div className="grid grid-cols-5 gap-2">
                   {Object.entries(THEME_OPTIONS).map(([key, option]) => (
                     <button
                       key={key}
                       type="button"
                       onClick={() => updatePosterContent(setThemeKey, key)}
-                      className={`w-8 h-8 rounded-full border-2 ${themeKey === key ? 'border-slate-800' : 'border-white'} shadow-sm`}
-                      style={{ background: option.gradient }}
-                      title={key}
-                    />
+                      className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 ${themeKey === key ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-200 bg-white'} transition-all`}
+                    >
+                      <div className="w-6 h-6 rounded-full shadow-sm" style={{ background: option.gradient }} />
+                      <span className="text-[10px] font-semibold text-slate-700 capitalize">{key}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Layout & Section Order</label>
+                <div className="space-y-1.5">
+                  {sectionsOrder.map((sectionKey, index) => (
+                    <div key={sectionKey} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">
+                      <span className="capitalize">{sectionKey === 'highlights' ? 'Why you’ll love it' : sectionKey}</span>
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => moveSection(index, 'up')} disabled={index === 0} className="rounded-lg px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40">↑</button>
+                        <button type="button" onClick={() => moveSection(index, 'down')} disabled={index === sectionsOrder.length - 1} className="rounded-lg px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40">↓</button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
