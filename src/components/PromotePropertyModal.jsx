@@ -451,14 +451,19 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
 
     setSharing(true);
     try {
-      if (supportsPromoFileSharing(coverFile)) {
+      const propertyUrl = getPropertyUrl(property);
+      const fileName = `MarketMix_${(property?.title || 'Property').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30)}.jpg`;
+      const coverFileForShare = new File([coverFile], fileName, { type: 'image/jpeg' });
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [coverFileForShare] })) {
         try {
           await navigator.share({
-            files: [coverFile],
-            title: property?.title || 'MarketMix property cover photo',
+            title: property?.title || 'MarketMix property',
             text: finalMessage,
+            files: [coverFileForShare],
+            url: propertyUrl,
           });
-          toast.success('Cover photo and listing text shared. Choose WhatsApp to send.');
+          toast.success('Cover photo and listing text shared successfully!');
           return;
         } catch (error) {
           if (error.name === 'AbortError') return;
@@ -466,9 +471,10 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
         }
       }
 
-      downloadPosterFile(coverFile);
+      downloadPosterFile(coverFileForShare);
+      await new Promise((r) => setTimeout(r, 800));
       openWhatsAppWithMessage(finalMessage);
-      toast.success('Cover photo downloaded; WhatsApp opened with the listing text. Attach the cover photo before sending.');
+      toast.success('Cover photo downloaded! WhatsApp opened with listing text. Attach the photo before sending.');
     } catch (error) {
       if (error.name === 'AbortError') return;
       console.error('[Property share] Could not open WhatsApp or prepare cover photo:', error);
