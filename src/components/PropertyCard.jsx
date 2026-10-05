@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
+import { Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
 import { getPropertyImage } from '../services/propertyService';
 import { shareProperty } from '../services/shareService';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import toast from 'react-hot-toast';
 
 const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
@@ -98,10 +97,6 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
                 <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
                   {property.title}
                 </h3>
-                <div className="flex items-center text-gray-500 text-sm mb-3">
-                  <MapPin className="w-4 h-4 mr-1" />
-                  {getPublicPropertyLocation(property)}
-                </div>
               </div>
               <button
                 type="button"
@@ -188,10 +183,6 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
           <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors line-clamp-1">
             {property.title}
           </h3>
-          <div className="flex items-center text-gray-500 text-sm mb-3">
-            <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
-            <span className="truncate">{getPublicPropertyLocation(property)}</span>
-          </div>
           <div className="flex justify-between items-center mb-3 text-gray-600 text-sm">
             <span className="flex items-center gap-1"><Bed className="w-4 h-4" /> {property.bedrooms || 0}</span>
             <span className="flex items-center gap-1"><Bath className="w-4 h-4" /> {property.bathrooms || 0}</span>

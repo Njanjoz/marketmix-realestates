@@ -1,4 +1,6 @@
 // src/utils/formatPrice.js
+import { resolvePropertyImage } from './propertyMapping';
+
 export const formatPrice = (price) => {
   if (price >= 10000000) {
     return `KES ${(price / 1000000).toFixed(1)}M`;
@@ -19,26 +21,7 @@ export const formatPriceDetailed = (price) => {
 };
 
 export const getPropertyImage = (property, fallback = 'https://placehold.co/400x300') => {
-  if (!property) return fallback;
-  if (Array.isArray(property.images) && property.images.length > 0) {
-    const img = property.images[0];
-    if (typeof img === 'string') return img;
-    if (img?.url) return img.url;
-  }
-  if (Array.isArray(property.publicMedia) && property.publicMedia.length > 0) {
-    const img = property.publicMedia[0];
-    if (typeof img === 'string') return img;
-    if (img?.url) return img.url;
-  }
-  if (Array.isArray(property.media) && property.media.length > 0) {
-    const img = property.media[0];
-    if (typeof img === 'string') return img;
-    if (img?.url) return img.url;
-    if (img?.remoteUrl) return img.remoteUrl;
-    if (img?.localPreviewUrl) return img.localPreviewUrl;
-  }
-  if (property.coverImage) return property.coverImage;
-  return fallback;
+  return resolvePropertyImage(property) || fallback;
 };
 
 // src/utils/propertyUtils.js

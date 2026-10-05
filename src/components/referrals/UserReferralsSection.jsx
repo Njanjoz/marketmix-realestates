@@ -5,7 +5,6 @@ import { Gift, Award, CheckCircle, Clock, Plus, Share2, ArrowRight, ShieldCheck,
 import { getUserReferrals } from '../../services/referralService';
 import SubmitReferralModal from './SubmitReferralModal';
 import toast from 'react-hot-toast';
-import { getPublicPropertyLocation } from '../../utils/propertyMapping';
 
 export default function UserReferralsSection({ currentUser, userProfile }) {
   const [properties, setProperties] = useState([]);
@@ -175,7 +174,6 @@ export default function UserReferralsSection({ currentUser, userProfile }) {
                     <tr key={p.id} className="hover:bg-slate-50/50 transition">
                       <td className="px-6 py-4 font-medium text-slate-900">
                         <div>{p.title}</div>
-                        <div className="text-xs text-slate-500">{getPublicPropertyLocation(p)}</div>
                       </td>
                       <td className="px-6 py-4 font-mono text-xs font-semibold text-emerald-700">
                         {p.referralCode || 'N/A'}

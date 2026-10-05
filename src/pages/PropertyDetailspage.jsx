@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, MapPin, Bed, Bath, Square, Heart, Share2,
+  ArrowLeft, Bed, Bath, Square, Heart, Share2,
   MessageCircle, CheckCircle, X, ChevronLeft,
   ChevronRight, Building, Calendar, Eye, Copy, AlertCircle,
   Maximize2, Shield, Clock, Users, Navigation,
@@ -20,7 +20,7 @@ import {
 } from '../services/propertyService';
 import toast from 'react-hot-toast';
 import { shareProperty } from '../services/shareService';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { recordPropertyView } from '../services/propertyViewService';
 
 // ─── tiny helpers ────────────────────────────────────────
 const KSh = (n) => `KSh ${(Number(n) || 0).toLocaleString()}`;
@@ -129,6 +129,19 @@ const PropertyDetailspage = () => {
 
   const handleContactSeller = () => setInquiryOpen(true);
 
+  const handleMessageSeller = () => {
+    if (!currentUser) {
+      toast.error('Please log in to message the seller');
+      navigate('/login');
+      return;
+    }
+    if (!publicProperty?.userId || publicProperty.userId === currentUser.uid) {
+      toast.error('Messaging is unavailable for this listing');
+      return;
+    }
+    navigate(`/messages?propertyId=${encodeURIComponent(publicProperty.id)}&userId=${encodeURIComponent(publicProperty.userId)}`);
+  };
+
   const handleSaveToggle = async () => {
     if (!publicProperty) return;
 
@@ -154,7 +167,6 @@ const PropertyDetailspage = () => {
           userId: currentUser.uid,
           propertyId: publicProperty.id,
           title: publicProperty.title,
-          location: publicProperty.location,
         });
         setSaved(true);
         toast.success('Property saved');
@@ -254,6 +266,13 @@ const PropertyDetailspage = () => {
   }, [id, navigate]);
 
   useEffect(() => {
+    if (!publicProperty || !currentUser || publicProperty.userId === currentUser.uid) return;
+    recordPropertyView(publicProperty, currentUser).catch((error) => {
+      console.warn('Unable to record property view:', error);
+    });
+  }, [publicProperty, currentUser]);
+
+  useEffect(() => {
     if (!publicProperty) return;
     try {
       const savedList = JSON.parse(localStorage.getItem('marketmix-saved-properties') || '[]');
@@ -275,7 +294,7 @@ const PropertyDetailspage = () => {
 
   const p = publicProperty;
   const rawMedia = p.media?.length ? p.media : (p.images?.length ? p.images : (p.publicMedia || []));
-  const media = (Array.isArray(rawMedia) ? rawMedia : []).map((m) => {
+  const galleryMedia = (Array.isArray(rawMedia) ? rawMedia : []).map((m) => {
     if (typeof m === 'string') return { url: m, category: 'other' };
     if (!m) return null;
     const url = m.url || m.remoteUrl || m.localPreviewUrl || m.preview || (typeof m.file === 'string' ? m.file : '');
@@ -284,6 +303,17 @@ const PropertyDetailspage = () => {
       category: m.category || 'other',
     };
   }).filter((m) => m && m.url);
+  const selectedCoverUrl = typeof p.coverImage === 'string'
+    ? p.coverImage
+    : p.coverImage?.remoteUrl || p.coverImage?.url || p.coverImage?.src || '';
+  const selectedCoverIndex = selectedCoverUrl
+    ? galleryMedia.findIndex((photo) => photo.url === selectedCoverUrl)
+    : -1;
+  const media = selectedCoverUrl
+    ? selectedCoverIndex >= 0
+      ? [galleryMedia[selectedCoverIndex], ...galleryMedia.filter((_, index) => index !== selectedCoverIndex)]
+      : [{ url: selectedCoverUrl, category: 'other' }, ...galleryMedia]
+    : galleryMedia;
   const cover = media[0]?.url;
 
   const photosByCategory = media.reduce((acc, m) => {
@@ -309,7 +339,6 @@ const PropertyDetailspage = () => {
   const rules = p.houseRules || {};
   const gate = p.gate || {};
   const availability = p.availability || {};
-  const approx = p.approxLocation || {};
   const youtubeId = p.youtubeVideoId;
 
   return (
@@ -474,13 +503,9 @@ const PropertyDetailspage = () => {
               {p.propertyName && (
                 <p className="text-sm text-gray-500 mt-0.5">{p.propertyName}</p>
               )}
-              <p className="text-sm text-gray-600 flex items-center gap-1 mt-2">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                <span>{getPublicPropertyLocation(p)}</span>
-                <button type="button" onClick={handleContactSeller} className="ml-1 shrink-0 font-semibold text-emerald-700 underline underline-offset-2">
-                  Contact seller
-                </button>
-              </p>
+              <button type="button" onClick={handleContactSeller} className="mt-2 text-sm font-semibold text-emerald-700 underline underline-offset-2">
+                Contact seller for location details
+              </button>
             </div>
             <div className="text-right">
               <p className="text-2xl font-bold text-emerald-600">{KSh(costs.rent)}</p>
@@ -540,12 +565,8 @@ const PropertyDetailspage = () => {
           </Section>
 
           {/* Student */}
-          {(p.institutionName || p.campus || p.distanceToCampus) && (
+          {(p.distanceToCampus || p.walkingTimeToCampus || p.transportTimeToCampus || p.studentHousingClassification) && (
             <Section title="Student information" icon={GraduationCap}>
-              <Row label="Institution" value={p.institutionName} />
-              <Row label="Institution type" value={p.institutionType} />
-              <Row label="Campus" value={p.campus} />
-              <Row label="Nearest campus gate" value={p.nearestCampusGate} />
               <Row label="Distance to campus" value={p.distanceToCampus} />
               <Row label="Walking time" value={p.walkingTimeToCampus} />
               <Row label="Transport time" value={p.transportTimeToCampus} />
@@ -733,18 +754,11 @@ const PropertyDetailspage = () => {
             </Section>
           )}
 
-          {/* Location & Transport */}
-          <Section title="Location & Transport" icon={Navigation}>
-            <PrivateRow label="Address" value={p.location} />
-            <PrivateRow label="County" value={approx.county} />
-            <PrivateRow label="Town" value={approx.town} />
-            <PrivateRow label="Estate / Area" value={approx.estate} />
-            <PrivateRow label="Nearest road" value={approx.nearestRoad} />
-            <ContactSellerButton onClick={handleContactSeller} className="my-3 w-full" />
+          {/* General access information without the property's address or area. */}
+          <Section title="Access & Transport" icon={Navigation}>
             <Row label="Road type" value={p.roadType} />
             <Row label="Road condition" value={p.roadCondition} />
             <Row label="Distance to main road" value={p.distanceToMainRoad} />
-            <Row label="Nearest matatu stage" value={p.nearestStage} />
             <Row label="Distance to stage" value={p.distanceToStage} />
             <Row label="Fare to campus" value={p.fareToCampus} />
             <Row label="Fare to CBD" value={p.fareToCBD} />
@@ -759,26 +773,6 @@ const PropertyDetailspage = () => {
               </div>
             )}
           </Section>
-
-          {/* Nearby places */}
-          {p.nearbyPlaces?.length > 0 && (
-            <Section title="Nearby places" icon={MapPin}>
-              <div className="space-y-2">
-                {p.nearbyPlaces.map((place, i) => (
-                  <div key={i} className="flex justify-between text-sm border-b border-gray-50 pb-1.5 last:border-0">
-                    <span className="text-gray-600">
-                      <strong className="text-gray-800">{place.type}</strong>
-                      {place.name && ` · ${place.name}`}
-                    </span>
-                    <span className="text-gray-500 text-right">
-                      {place.distance}
-                      {place.walkingTime && ` · ${place.walkingTime}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
 
           {/* YouTube tour */}
           {youtubeId && (
@@ -855,8 +849,19 @@ const PropertyDetailspage = () => {
               >
                 <Calendar className="w-4 h-4" /> Request site visit
               </button>
+              <button
+                type="button"
+                onClick={handleMessageSeller}
+                className="w-full flex items-center justify-center gap-2 py-2.5 border border-emerald-200 text-emerald-800 rounded-lg font-medium hover:bg-emerald-50"
+              >
+                <MessageCircle className="w-4 h-4" /> Message seller privately
+              </button>
               <ContactSellerButton onClick={() => setInquiryOpen((prev) => !prev)} className="w-full bg-slate-900 hover:bg-slate-800" />
             </div>
+
+            <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
+              Signed-in views may be shared with the listing owner. Your name and email are partially masked in their dashboard.
+            </p>
 
             {siteVisitOpen && (
               <form onSubmit={handleSiteVisitSubmit} className="mt-4 space-y-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">

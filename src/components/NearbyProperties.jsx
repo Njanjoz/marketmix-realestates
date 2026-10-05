@@ -5,7 +5,6 @@ import { db } from '../firebase/config';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { getPropertyImage } from '../utils/formatPrice';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
 
 const NearbyProperties = () => {
   const [userLocation, setUserLocation] = useState(null);
@@ -135,10 +134,6 @@ const NearbyProperties = () => {
                   />
                   <div className="flex-1">
                     <h4 className="font-medium text-gray-900 text-sm">{property.title}</h4>
-                    <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3" />
-                      {getPublicPropertyLocation(property)}
-                    </p>
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                       <span className="flex items-center gap-1"><Bed className="w-3 h-3" /> {property.bedrooms || 0}</span>
                       <span className="flex items-center gap-1"><Bath className="w-3 h-3" /> {property.bathrooms || 0}</span>

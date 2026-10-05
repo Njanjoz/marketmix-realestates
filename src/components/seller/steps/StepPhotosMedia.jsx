@@ -7,8 +7,8 @@ const StepPhotosMedia = ({ data, update }) => {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Upload photos of the property. Assign each photo to a category so tenants know what they're looking at.
-        The first photo becomes the cover photo. You can reorder by dragging.
+        Upload photos and assign each one a category. Choose <strong>Set as cover</strong> on the photo you want
+        property seekers to see first; it will also be used on property cards and promotion posters. Drag to reorder the rest.
       </p>
       <MediaUploader
         categories={MEDIA_CATEGORIES}

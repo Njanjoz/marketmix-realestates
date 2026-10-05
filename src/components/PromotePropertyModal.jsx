@@ -101,11 +101,6 @@ const getPropertyPhotos = (property) => {
   return photos.slice(0, 5);
 };
 
-const getPublicLocation = (property) => (
-  property?.approximateLocation || property?.estate || property?.neighborhood ||
-  property?.ward || property?.town || property?.county || 'Area shared on inquiry'
-);
-
 const getInitialHighlights = (property) => {
   const amenities = [property?.publicAmenities, property?.propertyAmenities, property?.roomAmenities, property?.features,
     property?.amenities?.property, property?.amenities?.room]
@@ -161,9 +156,23 @@ const getDepositLabel = (property) => {
 
 const sanitizeShareText = (value, property) => {
   let text = String(value || '');
-  const privateAddress = property?.exactAddress;
-  if (typeof privateAddress === 'string' && privateAddress.trim()) {
-    text = text.replace(new RegExp(privateAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), 'nearby neighborhood');
+  const privateAddressCandidates = [
+    property?.exactAddress,
+    property?.location,
+    typeof property?.approximateLocation === 'string' ? property.approximateLocation : '',
+    property?.approxLocation?.estate,
+    property?.approxLocation?.town,
+    property?.approxLocation?.county,
+    property?.estate,
+    property?.neighborhood,
+    property?.ward,
+    property?.town,
+    property?.county,
+  ].filter((candidate) => typeof candidate === 'string' && candidate.trim())
+    .map((candidate) => candidate.trim())
+    .sort((left, right) => right.length - left.length);
+  for (const privateAddress of privateAddressCandidates) {
+    text = text.replace(new RegExp(privateAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), 'the property area');
   }
 
   const coordinates = property?.exactCoordinates || property?.coordinates;
@@ -218,7 +227,6 @@ const openWhatsAppWithMessage = (message) => {
 
 const buildPromotedPropertyMessage = ({ property, headline, caption, highlights, features, nearby, includeContact, userProfile, currentUser }) => {
   const title = sanitizeShareText(property?.title || 'Property Listing', property);
-  const location = sanitizeShareText(getPublicLocation(property), property);
   const price = property?.price || property?.rentAmount || property?.rent || 0;
   const type = property?.propertyType || property?.unitType || 'Property';
   const url = getPropertyUrl(property);
@@ -226,8 +234,8 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
   const points = String(highlights || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 5);
   const featurePoints = String(features || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
   const nearbyPoints = String(nearby || '').split(/\r?\n/).map((point) => sanitizeShareText(point, property)).filter(Boolean).slice(0, 4);
-  const safeHeadline = sanitizeShareText(headline || `${title} · ${location}`, property);
-  const safeCaption = sanitizeShareText(caption || `A great ${type.toLowerCase()} in ${location}.`, property);
+  const safeHeadline = sanitizeShareText(headline || title, property);
+  const safeCaption = sanitizeShareText(caption || `A great ${type.toLowerCase()} available for viewing.`, property);
   const frequency = property?.paymentFrequency || (property?.status === 'rent' ? 'Monthly' : '');
   const availability = getAvailabilityLabel(property);
   const deposit = getDepositLabel(property);
@@ -243,7 +251,6 @@ const buildPromotedPropertyMessage = ({ property, headline, caption, highlights,
     '',
     'PROPERTY DETAILS',
     `• Price: KSh ${Number(price || 0).toLocaleString()}${frequency ? ` / ${frequency}` : ''}`,
-    `• Location: ${location}`,
     `• Type: ${type}`,
     ...[
       property?.bedrooms !== undefined && property?.bedrooms !== '' ? `• Bedrooms: ${property.bedrooms}` : '',
@@ -285,7 +292,6 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const posterPhotos = photos.length ? photos : ['https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1200'];
   const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
   const imageUrl = posterPhotos[heroPhotoIndex] || posterPhotos[0];
-  const publicLocation = getPublicLocation(property);
   const role = userProfile?.role || 'user';
   const canShowContact = ['admin', 'seller', 'agent'].includes(role);
 
@@ -294,7 +300,7 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
   const [sectionsOrder, setSectionsOrder] = useState(['highlights', 'features', 'nearby']);
   const [headline, setHeadline] = useState(property?.title || 'Premium Property for You');
   const [caption, setCaption] = useState(
-    property?.description || `Amazing ${property?.propertyType || 'property'} in ${property?.location || 'Kenya'}.`
+    property?.description || `Amazing ${property?.propertyType || 'property'} available for viewing.`
   );
   const [highlights, setHighlights] = useState(() => getInitialHighlights(property));
   const [features, setFeatures] = useState(() => getInitialFeatures(property));
@@ -400,7 +406,6 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
       bathrooms: property?.bathrooms,
       area: property?.area,
     },
-    location: publicLocation,
     price: property?.price || property?.rentAmount || property?.rent || 0,
     availability: getAvailabilityLabel(property),
     deposit: getDepositLabel(property),
@@ -727,7 +732,6 @@ export default function PromotePropertyModal({ property, currentUser, userProfil
                     <span className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white" style={{ background: theme.badge }}>
                       {property?.propertyType || 'Property'}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-500">{publicLocation}</span>
                   </div>
 
                   <h4 className="text-xl font-bold text-slate-900 leading-snug">{sanitizeShareText(headline, property)}</h4>

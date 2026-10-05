@@ -1,5 +1,5 @@
 import { isCapacitor } from '../utils/platform';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { resolvePropertyImage } from '../utils/propertyMapping';
 
 const getPropertyUrl = (property) => {
   if (property?.url || property?.propertyUrl) {
@@ -34,33 +34,17 @@ export const getYouTubeTourUrl = (property) => {
 
 export const getPropertySharePayload = (property) => {
   const title = property?.title || 'MarketMix Property';
-  const location = getPublicPropertyLocation(property);
   const price = property?.rent || property?.price || property?.monthlyRent || 'Price available on request';
   const type = property?.propertyType || property?.type || 'Property';
   const url = getPropertyUrl(property);
   const youtubeTourUrl = getYouTubeTourUrl(property);
 
-  const media = Array.isArray(property?.media) ? property.media : [];
-  const firstMediaString = media.find((item) => typeof item === 'string' && item);
-  const firstMediaObject = media.find((item) => item && typeof item === 'object' && (item.url || item.remoteUrl || item.localPreviewUrl || item.preview));
-  const imageUrl =
-    firstMediaString ||
-    firstMediaObject?.url ||
-    firstMediaObject?.remoteUrl ||
-    firstMediaObject?.localPreviewUrl ||
-    firstMediaObject?.preview ||
-    property?.coverImage ||
-    property?.images?.[0] ||
-    property?.publicMedia?.[0]?.url ||
-    property?.publicMedia?.[0] ||
-    property?.image ||
-    '';
+  const imageUrl = resolvePropertyImage(property) || property?.image || '';
 
   const summary = [
     `*${title}*`,
     `Type: ${type}`,
     `Price: ${price}`,
-    `Location: ${location}`,
     url ? `Link: ${url}` : '',
     youtubeTourUrl ? `YouTube property tour: ${youtubeTourUrl}` : '',
     imageUrl ? `Image: ${imageUrl}` : '',

@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext'; // Assuming context exists
-import { FaHome, FaHeart, FaBell, FaCog, FaSignOutAlt, FaUser, FaEnvelope, FaPhone, FaEdit, FaChartLine, FaHistory, FaCheckCircle, FaTimesCircle, FaMapMarkerAlt, FaBed, FaDollarSign } from 'react-icons/fa';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { FaHome, FaHeart, FaBell, FaCog, FaSignOutAlt, FaUser, FaEnvelope, FaPhone, FaEdit, FaChartLine, FaHistory, FaCheckCircle, FaTimesCircle, FaBed, FaDollarSign } from 'react-icons/fa';
 
 // --- COLOR AND STYLE CONSTANTS ---
 const PRIMARY_BLUE = '#0284c7'; 
@@ -416,9 +415,6 @@ const Dashboard = () => {
                                     <img src={prop.image} alt={prop.title} className="w-16 h-16 object-cover rounded-md" />
                                     <div>
                                         <h4 className="font-semibold text-gray-900">{prop.title}</h4>
-                                        <p className="text-sm text-gray-500 flex items-center gap-1">
-                                            <FaMapMarkerAlt size={12} /> {prop.location}
-                                        </p>
                                     </div>
                                     <div className="ml-auto text-lg font-bold text-primary-600">
                                         <FaDollarSign size={14} className="inline mr-1" />
@@ -460,9 +456,6 @@ const Dashboard = () => {
                         </div>
                         <div className="content">
                             <h4 className="text-lg">{property.title}</h4>
-                            <p>
-                                <FaMapMarkerAlt /> {getPublicPropertyLocation(property)}
-                            </p>
                             <p className="text-xl font-bold text-primary-600">
                                 <FaDollarSign size={14} className="inline mr-1" />
                                 {property.price.toLocaleString()}

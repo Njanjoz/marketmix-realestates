@@ -67,7 +67,30 @@ const hydrateImages = (property) => {
   const fromImages = Array.isArray(property.images) ? property.images : [];
   const fromPublic = Array.isArray(property.publicMedia) ? property.publicMedia : [];
   const raw = fromMedia.length > 0 ? fromMedia : (fromImages.length > 0 ? fromImages : fromPublic);
-  return normalizeImageEntries(raw);
+  const images = normalizeImageEntries(raw);
+  const coverUrl = typeof property.coverImage === 'string'
+    ? property.coverImage
+    : property.coverImage?.remoteUrl || property.coverImage?.url || property.coverImage?.src || '';
+  if (!coverUrl) return images;
+
+  const coverIndex = images.findIndex((image) => (image.remoteUrl || image.url) === coverUrl);
+  if (coverIndex >= 0) {
+    if (coverIndex === 0) return images;
+    const reordered = [...images];
+    const [cover] = reordered.splice(coverIndex, 1);
+    return [cover, ...reordered];
+  }
+
+  return [{
+    id: `saved-cover-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    url: coverUrl,
+    remoteUrl: coverUrl,
+    r2Key: null,
+    category: 'other',
+    localPreviewUrl: null,
+    status: 'uploaded',
+    error: null,
+  }, ...images];
 };
 
 const initialData = {
@@ -169,6 +192,7 @@ const initialData = {
   laundryHours: '',
   kitchenHours: '',
   location: '',
+  locationData: null,
   coordinates: null,
   county: '',
   town: '',
@@ -314,6 +338,18 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
       estate: approx.estate || p.estate || '',
       nearestRoad: approx.nearestRoad || p.nearestRoad || '',
       images: hydrateImages(p),
+      locationData: p.locationData || (p.coordinates?.lat != null && p.coordinates?.lng != null ? {
+        lat: Number(p.coordinates.lat),
+        lng: Number(p.coordinates.lng),
+        address: p.location || '',
+        county: p.county || approx.county || '',
+        town: p.town || approx.town || '',
+        estate: p.estate || approx.estate || '',
+        nearestRoad: p.nearestRoad || approx.nearestRoad || '',
+        locationSource: p.locationSource || 'search-selection',
+        locationAccuracyStatus: p.locationAccuracyStatus || 'unknown',
+        landmarks: p.landmarks || [],
+      } : null),
     });
   });
 
@@ -536,7 +572,9 @@ const SellerPropertyEdit = ({ property, onClose, onSuccess }) => {
           nearestRoad: data.nearestRoad,
         },
         location: data.location,
+        coordinates: data.coordinates,
         publicMedia,
+        coverImage: publicMedia[0] || '',
         media: uploadedImages,
         nearbyPlaces: data.nearbyPlaces,
         availability: {

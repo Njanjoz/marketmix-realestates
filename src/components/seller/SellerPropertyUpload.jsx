@@ -158,6 +158,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
         bedrooms: parseInt(formData.bedrooms) || 0,
         bathrooms: parseInt(formData.bathrooms) || 0,
         area: parseInt(formData.area) || 0,
+        coverImage: publicUrls[0],
         images: publicUrls,
         publicMedia: publicUrls,
         media: formattedMedia,
@@ -174,7 +175,9 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
         featured: false,
         views: 0,
         inquiries: 0,
-        coordinates: selectedLocation?.lat ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : null
+        coordinates: selectedLocation?.lat != null && selectedLocation?.lng != null
+          ? { lat: selectedLocation.lat, lng: selectedLocation.lng }
+          : null
       };
       
       await addDoc(collection(db, 'properties'), propertyData);
@@ -218,7 +221,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                 className="hidden" 
                 onChange={handleImageSelect}
               />
-              <p className="text-xs text-gray-500 mt-2">Upload multiple images (max 10). First image is cover photo.</p>
+              <p className="text-xs text-gray-500 mt-2">Upload up to 10 images, then choose the star on any photo to make it the property cover.</p>
             </div>
 
             <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
@@ -292,6 +295,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                           onClick={() => setCover(img.id)}
                           className="absolute bottom-1 left-1 p-1 bg-white rounded-full shadow hover:bg-emerald-50 text-yellow-600"
                           title="Set as property cover photo"
+                          aria-label="Set as property cover photo"
                         >
                           <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-500" />
                         </button>
@@ -332,7 +336,7 @@ const SellerPropertyUpload = ({ onClose, onSuccess }) => {
                   setFormData(prev => ({ 
                     ...prev, 
                     location: loc?.address || '',
-                    coordinates: loc?.lat ? { lat: loc.lat, lng: loc.lng } : null
+                    coordinates: loc?.lat != null && loc?.lng != null ? { lat: loc.lat, lng: loc.lng } : null
                   }));
                 }}
                 label="Property Location *"

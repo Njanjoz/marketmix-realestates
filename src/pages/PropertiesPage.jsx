@@ -4,11 +4,12 @@ import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { FaFilter, FaTh, FaThList, FaSort, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
-import { Search, Loader, Star, MapPin, Bed, Bath, Square, DollarSign, Crosshair, AlertCircle } from 'lucide-react';
+import { Search, Loader, Star, Bed, Bath, Square, DollarSign, Crosshair, AlertCircle } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import PropertyCard from '../components/PropertyCard.jsx';
 import PropertyFilter from '../components/PropertyFilter.jsx';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import toast from 'react-hot-toast';
 
 // Glassmorphism styles
@@ -295,7 +296,7 @@ const PropertiesPage = () => {
     
     if (filters.location) {
       filtered = filtered.filter(prop => 
-        prop.location?.toLowerCase().includes(filters.location.toLowerCase())
+        getPublicPropertyLocation(prop).toLowerCase().includes(filters.location.toLowerCase())
       );
     }
     if (filters.minPrice) {

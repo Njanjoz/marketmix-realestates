@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
-  Search, Loader, Crosshair, Navigation, MapPin, Bed, Bath, Square, 
+  Search, Loader, Crosshair, Navigation, Bed, Bath, Square, 
   DollarSign, Eye, Heart, Target, Compass, TrendingUp, Star, 
   Clock, ChevronRight, Filter, X, Grid3x3, LayoutGrid
 } from 'lucide-react';
@@ -119,7 +119,7 @@ const ExplorePage = () => {
     if (searchTerm) {
       filtered = filtered.filter(prop =>
         prop.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prop.location?.toLowerCase().includes(searchTerm.toLowerCase())
+        getPublicPropertyLocation(prop).toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     if (filters.propertyType) {
@@ -202,16 +202,6 @@ const ExplorePage = () => {
       return { color: '#83c325', fontSize: '1.25rem' }; // Small/bulk pricing
     }
     return { color: '#2d3e2b', fontSize: '1.1rem' }; // Standard pricing
-  };
-
-  const openGoogleMaps = (property, e) => {
-    if (e) e.preventDefault();
-    const query = getPublicPropertyLocation(property);
-    if (query === 'Location shared on request') {
-      toast('The seller shares the property area on request.');
-      return;
-    }
-    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
   };
 
   // Categories data - 5 items per row like the screenshot
@@ -583,11 +573,6 @@ const ExplorePage = () => {
                       {property.title}
                     </h3>
                     
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.5rem', color: '#6b7280', fontSize: '0.7rem' }}>
-                      <MapPin size={12} />
-                      {getPublicPropertyLocation(property)}
-                    </div>
-                    
                     <div style={{ 
                       display: 'flex', 
                       gap: '0.75rem', 
@@ -615,26 +600,6 @@ const ExplorePage = () => {
                       }}>
                         {formatPrice(property.price)}
                       </span>
-                      <button 
-                        onClick={(e) => openGoogleMaps(property, e)}
-                        style={{
-                          padding: '0.35rem 0.75rem',
-                          background: '#f3f4f6',
-                          border: 'none',
-                          borderRadius: '20px',
-                          fontSize: '0.65rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#83c325'; e.currentTarget.style.color = 'white'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = 'inherit'; }}
-                      >
-                        <Navigation size={10} />
-                        Map
-                      </button>
                     </div>
                   </div>
                 </Link>
@@ -662,7 +627,7 @@ const ExplorePage = () => {
                   <div style={{ flex: 1 }}>
                     <h3 style={{ fontWeight: '600', color: '#2d3e2b', marginBottom: '0.25rem' }}>{property.title}</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                      <MapPin size={12} /> {getPublicPropertyLocation(property)}
+                      {property.distance && <span>{formatDistance(property.distance)} away</span>}
                       {property.distance && <span>• {formatDistance(property.distance)} away</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: '#6b7280' }}>
@@ -673,7 +638,6 @@ const ExplorePage = () => {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: '700', color: '#83c325' }}>{formatPrice(property.price)}</div>
-                    <button onClick={(e) => openGoogleMaps(property, e)} style={{ marginTop: '0.5rem', padding: '0.25rem 0.75rem', background: '#f3f4f6', border: 'none', borderRadius: '20px', fontSize: '0.65rem', cursor: 'pointer' }}>Map</button>
                   </div>
                 </div>
               </Link>

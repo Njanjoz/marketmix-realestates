@@ -84,15 +84,17 @@ const ImageCard = ({ img, draggable, onDragStart, onDrop, onRetry, onCover, onRe
         {catLabel}
       </span>
 
-      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+      <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition flex items-center justify-center gap-2">
         {!isCover && (
           <button
             type="button"
             onClick={onCover}
-            className="p-1.5 bg-white rounded-full shadow hover:bg-emerald-50 text-yellow-600"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow hover:bg-emerald-50"
             title="Set as property cover photo"
+            aria-label="Set as property cover photo"
           >
             <Star className="w-4 h-4 fill-yellow-400 text-yellow-500" />
+            <span>Set cover</span>
           </button>
         )}
         <button

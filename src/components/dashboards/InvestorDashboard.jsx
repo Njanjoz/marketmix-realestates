@@ -242,7 +242,6 @@ export default function InvestorDashboard() {
               >
                 <div>
                   <div style={{ fontFamily: sans, fontSize: 13, color: ink }}>{o.name}</div>
-                  <div style={{ fontFamily: sans, fontSize: 11, color: ink3, marginTop: 1 }}>{o.location}</div>
                 </div>
                 <div style={{ fontFamily: serif, fontSize: 22, fontWeight: 300, color: ink, letterSpacing: -0.5, textAlign: 'right' }}>{o.roi}</div>
                 <div style={{ fontFamily: sans, fontSize: 12, color: ink2, textAlign: 'right' }}>{o.min}</div>

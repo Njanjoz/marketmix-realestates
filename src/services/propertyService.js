@@ -1,5 +1,6 @@
 // src/services/propertyService.js
 import { db } from "../firebase/config";
+import { resolvePropertyImage } from "../utils/propertyMapping";
 import {
   doc,
   getDoc,
@@ -13,34 +14,8 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
-const isPersistableImageUrl = (value) => {
-  if (typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.startsWith('blob:')) return false;
-  return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/');
-};
-
 export const getPropertyImage = (property) => {
-  const candidates = [
-    property?.images,
-    property?.publicMedia,
-    property?.media,
-    property?.coverImage ? [property.coverImage] : []
-  ];
-
-  for (const candidate of candidates) {
-    if (!Array.isArray(candidate)) continue;
-
-    for (const item of candidate) {
-      if (typeof item === 'string' && isPersistableImageUrl(item)) return item;
-      if (item && typeof item === 'object') {
-        const url = item.remoteUrl || item.url || item.src || item.localPreviewUrl || item.preview;
-        if (isPersistableImageUrl(url)) return url;
-      }
-    }
-  }
-
-  return 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800';
+  return resolvePropertyImage(property) || 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800';
 };
 
 /**
@@ -61,14 +36,13 @@ export const getProtectedProperty = async (propertyId) => {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
-export const savePropertyForUser = async ({ userId, propertyId, title, location }) => {
+export const savePropertyForUser = async ({ userId, propertyId, title }) => {
   if (!userId || !propertyId) return false;
   const ref = doc(db, 'savedProperties', `${userId}_${propertyId}`);
   await setDoc(ref, {
     userId,
     propertyId,
     title: title || '',
-    location: location || '',
     createdAt: serverTimestamp(),
   }, { merge: true });
   return true;

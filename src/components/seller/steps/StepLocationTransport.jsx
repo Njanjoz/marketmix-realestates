@@ -12,14 +12,14 @@ const StepLocationTransport = ({ data, update }) => {
   return (
     <div className="space-y-5">
       {/* Location Picker */}
-      <Field label="Property location" required hint="Drag the pin or search for the exact property location in Kenya.">
+      <Field label="Property location" required hint="Use GPS or search to set map coordinates. If no place name is found, enter the neighborhood or a nearby landmark.">
         <LocationPicker
           initialLocation={data.locationData || null}
           onLocationSelect={(loc) => {
             update({
               locationData: loc,
               location: loc?.address || '',
-              coordinates: loc?.lat && loc?.lng ? { lat: loc.lat, lng: loc.lng } : null,
+              coordinates: loc?.lat != null && loc?.lng != null ? { lat: loc.lat, lng: loc.lng } : null,
               county: loc?.county || data.county || '',
               constituency: loc?.constituency || data.constituency || '',
               ward: loc?.ward || data.ward || '',

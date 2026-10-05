@@ -33,6 +33,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [manualAddress, setManualAddress] = useState('');
+  const [pendingCoordinates, setPendingCoordinates] = useState(null);
+  const [pendingLocationName, setPendingLocationName] = useState('');
   const [loadingLandmarks, setLoadingLandmarks] = useState(false);
   
   const watchIdRef = useRef(null);
@@ -99,6 +101,44 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
     };
   };
 
+  const getReadableLocationName = (result, details = {}) => {
+    const candidates = [
+      result?.name,
+      result?.display_name,
+      details.estate,
+      details.town,
+      details.nearestRoad,
+      details.county,
+    ];
+    return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+  };
+
+  const requestLocationName = (coordinateLocation) => {
+    setLocation({ ...coordinateLocation, address: '' });
+    setPendingCoordinates(coordinateLocation);
+    setPendingLocationName('');
+    setMode('select');
+    setLoading(false);
+    setStatusMessage('');
+    setTimeoutOccurred(false);
+    activeLocationRequestRef.current = false;
+  };
+
+  const confirmPendingLocationName = () => {
+    const name = pendingLocationName.trim();
+    if (!name || !pendingCoordinates) {
+      toast.error('Enter a name for this location first.');
+      return;
+    }
+
+    const newLocation = { ...pendingCoordinates, address: name };
+    setLocation(newLocation);
+    setPendingCoordinates(null);
+    setPendingLocationName('');
+    onLocationSelect?.(newLocation);
+    toast.success('Location name saved with its map coordinates.');
+  };
+
   const classifyAccuracy = (acc) => {
     if (acc <= 50) return 'Excellent';
     if (acc <= 100) return 'Good';
@@ -131,9 +171,10 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
         { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
       );
+      if (!response.ok) throw new Error('Reverse geocoding request failed');
       const data = await response.json();
-      const address = data.display_name || `${latitude}, ${longitude}`;
       const details = parseAddressDetails(data.address || {});
+      const address = getReadableLocationName(data, details);
       const landmarks = await fetchNearbyLandmarks(latitude, longitude);
 
       const newLocation = {
@@ -147,7 +188,13 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         landmarks,
       };
 
+      if (!address) {
+        requestLocationName(newLocation);
+        return;
+      }
+
       setLocation(newLocation);
+      setPendingCoordinates(null);
       onLocationSelect?.(newLocation);
       setLoading(false);
       setTimeoutOccurred(false);
@@ -158,7 +205,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       const newLocation = {
         lat: latitude,
         lng: longitude,
-        address: `${latitude}, ${longitude}`,
+        address: '',
         county: '',
         constituency: '',
         ward: '',
@@ -170,11 +217,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
         locationAccuracyStatus: accuracyStatus,
         landmarks,
       };
-      setLocation(newLocation);
-      onLocationSelect?.(newLocation);
-      setLoading(false);
-      setTimeoutOccurred(false);
-      activeLocationRequestRef.current = false;
+      requestLocationName(newLocation);
       toast.success(`Location found — GPS accuracy ±${roundedAccuracy} m`);
     }
   };
@@ -378,11 +421,11 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       watchIdRef.current = null;
     }
 
-    let lat = item.lat;
-    let lon = item.lon;
-    let displayName = item.display_name;
+    let lat = item.lat == null ? NaN : Number(item.lat);
+    let lon = item.lon == null ? NaN : Number(item.lon);
+    let displayName = item.display_name || '';
 
-    if (!lat || !lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       try {
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(displayName)}&addressdetails=1&limit=1`,
@@ -399,33 +442,57 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       }
     }
 
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setError("We couldn't find map coordinates for that result. Try a more specific search or enter the location manually.");
+      setMode('search');
+      return;
+    }
+
+    let reverseData = null;
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+        { headers: { 'User-Agent': 'MarketMixRealEstates/1.0' } }
+      );
+      if (response.ok) reverseData = await response.json();
+    } catch (err) {
+      console.warn('Could not resolve a readable name for searched coordinates:', err);
+    }
+
+    const reverseDetails = parseAddressDetails(reverseData?.address || {});
+    displayName = getReadableLocationName(reverseData, reverseDetails) || displayName;
     const landmarks = await fetchNearbyLandmarks(lat, lon);
 
     const newLocation = {
-      lat: lat || null,
-      lng: lon || null,
+      lat,
+      lng: lon,
       address: displayName,
-      county: item.county || '',
+      county: item.county || reverseDetails.county || '',
       constituency: item.constituency || '',
       ward: item.ward || '',
-      town: item.town || '',
-      estate: item.estate || '',
-      nearestRoad: item.nearestRoad || '',
+      town: item.town || reverseDetails.town || '',
+      estate: item.estate || reverseDetails.estate || '',
+      nearestRoad: item.nearestRoad || reverseDetails.nearestRoad || '',
       gpsAccuracy: null,
       locationSource: 'search-selection',
-      locationAccuracyStatus: 'Excellent',
+      locationAccuracyStatus: 'unknown',
       landmarks
     };
 
-    setLocation(newLocation);
-    onLocationSelect?.(newLocation);
-    setMode('select');
+    if (!displayName.trim()) {
+      requestLocationName(newLocation);
+    } else {
+      setLocation(newLocation);
+      setPendingCoordinates(null);
+      onLocationSelect?.(newLocation);
+      setMode('select');
+      toast.success("Location and nearby landmarks selected!");
+    }
     setSearchResults([]);
     setSearchQuery('');
     setWarning(null);
     setError(null);
     setTimeoutOccurred(false);
-    toast.success("Location and nearby landmarks selected!");
   };
 
   const handleManualSubmit = () => {
@@ -455,6 +522,7 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       landmarks: []
     };
     setLocation(newLocation);
+    setPendingCoordinates(null);
     onLocationSelect?.(newLocation);
     setMode('select');
     setManualAddress('');
@@ -471,6 +539,8 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       watchIdRef.current = null;
     }
     isManualOrSearchRef.current = false;
+    setPendingCoordinates(null);
+    setPendingLocationName('');
     setLocation({ 
       lat: null, 
       lng: null, 
@@ -553,6 +623,20 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
             </div>
           </div>
 
+          {location.lat != null && location.lng != null && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+              <span>Coordinates: {Number(location.lat).toFixed(6)}, {Number(location.lng).toFixed(6)}</span>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.lat},${location.lng}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-emerald-700 underline"
+              >
+                Open in Google Maps
+              </a>
+            </div>
+          )}
+
           {/* Warning banner if accuracy is poor */}
           {warning && (
             <div className="flex items-start gap-2 p-2.5 bg-amber-100/80 text-amber-900 rounded-md text-xs border border-amber-300">
@@ -600,6 +684,45 @@ const LocationPicker = ({ onLocationSelect, initialLocation = null, label = "Pro
       ) : (
         <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-dashed border-gray-300">
           No location set yet. Use precise GPS, search Kenya boundaries & wards, or enter manually.
+        </div>
+      )}
+
+      {pendingCoordinates && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-900">
+            We found the map coordinates but couldn't identify the place name. Enter a neighborhood, estate, or nearby landmark.
+          </p>
+          <p className="text-xs text-amber-800">
+            Coordinates: {Number(pendingCoordinates.lat).toFixed(6)}, {Number(pendingCoordinates.lng).toFixed(6)}
+            {' · '}
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${pendingCoordinates.lat},${pendingCoordinates.lng}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold underline"
+            >
+              Check this pin in Google Maps
+            </a>
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={pendingLocationName}
+              onChange={(event) => setPendingLocationName(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && confirmPendingLocationName()}
+              placeholder="e.g. Kilimani, Nairobi"
+              aria-label="Name for the selected map location"
+              className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+            />
+            <button
+              type="button"
+              onClick={confirmPendingLocationName}
+              disabled={!pendingLocationName.trim()}
+              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save name
+            </button>
+          </div>
         </div>
       )}
 

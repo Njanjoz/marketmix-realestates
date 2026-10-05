@@ -33,14 +33,14 @@ export const PROTECTED_FIELDS = [
 export const getPublicPropertyLocation = (property) => {
   if (!property) return 'Location shared on request';
 
-  const approximate = property.approxLocation || property.approximateLocation;
-  if (typeof approximate === 'string' && approximate.trim()) return approximate.trim();
-
-  const parts = [approximate?.estate, approximate?.town, approximate?.county]
+  // Older moderation flows copied the full address into approximateLocation.
+  // Public discovery filters should only use structured area fields.
+  const approximate = property.approxLocation;
+  const parts = [approximate?.estate, approximate?.town, approximate?.county,
+    property.estate, property.neighborhood, property.ward, property.town, property.county]
     .filter((part) => typeof part === 'string' && part.trim())
     .map((part) => part.trim());
-
-  return parts.join(', ') || property.publicLocation || 'Location shared on request';
+  return [...new Set(parts)].join(', ') || 'Location shared on request';
 };
 
 const isPersistableImageUrl = (value) => {

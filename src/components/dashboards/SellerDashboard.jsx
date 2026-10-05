@@ -1,12 +1,13 @@
 // src/components/dashboards/SellerDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, deleteDoc, doc, orderBy, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, orderBy, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import SellerPropertyUpload from '../seller/SellerPropertyUpload';
 import SellerPropertyEdit from '../seller/SellerPropertyEdit';
-import { Building, Eye, MessageSquare, TrendingUp, Plus, Edit, Trash2, MapPin, Bed, Bath, Square, DollarSign, Loader, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Building, Eye, MessageSquare, TrendingUp, Plus, Edit, Trash2, MapPin, Bed, Bath, Square, DollarSign, Loader, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
 import PromotePropertyModal from '../PromotePropertyModal';
@@ -72,9 +73,88 @@ function StatusBadge({ status }) {
   );
 }
 
+const maskViewerName = (name = '') => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'MarketMix member';
+  return parts.map((part) => `${part[0]}•••`).join(' ');
+};
+
+const maskViewerEmail = (email = '') => {
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return 'Email hidden';
+  const domainParts = domain.split('.');
+  const topLevelDomain = domainParts.pop() || '';
+  const maskedDomain = domainParts.map((part) => `${part[0] || ''}•••`).join('.') || '•••';
+  return `${local[0]}•••@${maskedDomain}${topLevelDomain ? `.${topLevelDomain}` : ''}`;
+};
+
+function ListingViewers({ listing, views, navigate }) {
+  const [expanded, setExpanded] = useState(false);
+  const listingViews = views.filter((view) => view.propertyId === listing.id);
+
+  return (
+    <section style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${rule}` }}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 4px', border: 0, background: 'transparent', color: ink, textAlign: 'left', cursor: 'pointer' }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <Eye size={16} color={orange} />
+          <span>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>
+              {listingViews.length} unique {listingViews.length === 1 ? 'viewer' : 'viewers'}
+            </span>
+            <span style={{ display: 'block', marginTop: 2, fontSize: 11, color: ink2 }}>
+              Signed-in visitors to this property's details; contact info is masked.
+            </span>
+          </span>
+        </span>
+        <ChevronDown size={16} style={{ flex: '0 0 auto', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />
+      </button>
+
+      {expanded && (listingViews.length === 0 ? (
+        <p style={{ margin: '8px 4px 2px', color: ink2, fontSize: 12 }}>
+          No signed-in visitors have opened this property's details yet.
+        </p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 10, maxHeight: 340, overflowY: 'auto', padding: '8px 2px 2px' }}>
+          {listingViews.map((view) => {
+            const viewedAt = view.lastViewedAt?.toDate ? view.lastViewedAt.toDate().toLocaleString() : 'Recently';
+            return (
+              <article key={view.id} style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, padding: 12, background: 'rgba(255,255,255,0.55)', border: `1px solid ${rule}`, borderRadius: 12 }}>
+                <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', flex: '0 0 36px', width: 36, height: 36, borderRadius: '50%', background: orangeLight, color: orange, fontWeight: 700 }}>
+                  {(view.viewerName || 'M').trim().charAt(0).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>{maskViewerName(view.viewerName)}</div>
+                  <div title="Partially masked for privacy" style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 10, color: ink2, filter: 'blur(0.7px)' }}>
+                    {maskViewerEmail(view.viewerEmail)}
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 10, color: ink3 }}>{viewedAt}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/messages?propertyId=${encodeURIComponent(view.propertyId)}&userId=${encodeURIComponent(view.viewerId)}`)}
+                  style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, borderRadius: 9, padding: '7px 9px', background: orange, color: '#fff', fontSize: 10, cursor: 'pointer' }}
+                >
+                  <MessageSquare size={12} /> Message
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function SellerDashboard() {
   const { currentUser, userProfile } = useAuth();
+  const navigate = useNavigate();
   const [listings, setListings] = useState([]);
+  const [propertyViews, setPropertyViews] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [activeDraft, setActiveDraft] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -138,9 +218,23 @@ export default function SellerDashboard() {
   };
 
   useEffect(() => {
-    if (currentUser) {
-      fetchListings();
-    }
+    if (!currentUser?.uid) return undefined;
+    fetchListings();
+    const viewsQuery = query(
+      collection(db, 'propertyViews'),
+      where('sellerId', '==', currentUser.uid)
+    );
+    return onSnapshot(viewsQuery, (snapshot) => {
+      const views = snapshot.docs.map((viewDoc) => ({ id: viewDoc.id, ...viewDoc.data() }));
+      views.sort((a, b) => {
+        const timeA = a.lastViewedAt?.toDate ? a.lastViewedAt.toDate().getTime() : 0;
+        const timeB = b.lastViewedAt?.toDate ? b.lastViewedAt.toDate().getTime() : 0;
+        return timeB - timeA;
+      });
+      setPropertyViews(views);
+    }, (error) => {
+      console.error('Error listening for property viewers:', error);
+    });
   }, [currentUser]);
 
   const handleDeleteListing = async (listingId) => {
@@ -361,6 +455,7 @@ export default function SellerDashboard() {
                       </div>
                     </div>
                   </div>
+                  <ListingViewers listing={listing} views={propertyViews} navigate={navigate} />
                 </motion.div>
               ))}
             </div>

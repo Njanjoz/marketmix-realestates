@@ -1,3 +1,5 @@
+import { resolvePropertyImage } from '../utils/propertyMapping';
+
 export const generatePropertyPoster = async (property = {}) => {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
@@ -16,13 +18,14 @@ export const generatePropertyPoster = async (property = {}) => {
   ctx.font = '700 62px sans-serif';
   ctx.fillText('MarketMix Real Estates', 80, 120);
 
-  const image = property.imageUrl ? new Image() : null;
+  const coverImage = resolvePropertyImage(property) || property.imageUrl;
+  const image = coverImage ? new Image() : null;
   if (image) {
     image.crossOrigin = 'anonymous';
     await new Promise((resolve) => {
       image.onload = resolve;
       image.onerror = resolve;
-      image.src = property.imageUrl;
+      image.src = coverImage;
     });
 
     if (image.width > 0 && image.height > 0) {
@@ -51,7 +54,6 @@ export const generatePropertyPoster = async (property = {}) => {
   const rent = property.rent || property.monthlyRent || 'Price available';
   ctx.fillText(`Rent: ${rent}`, 80, 1000);
   ctx.fillText(`Type: ${property.propertyType || property.type || 'Property'}`, 80, 1055);
-  ctx.fillText(`Location: ${property.location || 'Approximate area available'}`, 80, 1110);
   ctx.fillText(`Property ID: ${property.id || 'N/A'}`, 80, 1165);
   ctx.fillText('Book a Site Visit', 80, 1260);
 

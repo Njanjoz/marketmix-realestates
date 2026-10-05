@@ -4,13 +4,13 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Search, Home, Building2, Building, TreePine, Hotel, Store, 
-  ChevronRight, Star, MapPin, Bed, Bath, Square, Loader, 
+  ChevronRight, Star, Bed, Bath, Square, Loader, 
   Award, Users, TrendingUp, Phone, Mail, MapPin as MapPinIcon,
   Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle
 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { getPublicPropertyLocation } from '../utils/propertyMapping';
+import { resolvePropertyImage } from '../utils/propertyMapping';
 
 const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,26 +64,7 @@ const HomePage = () => {
   const [typeCounts, setTypeCounts] = useState({});
 
   const getPropertyImage = (property) => {
-    const candidates = [
-      property?.images,
-      property?.publicMedia,
-      property?.media,
-      property?.coverImage ? [property.coverImage] : [],
-    ];
-
-    for (const candidate of candidates) {
-      if (!Array.isArray(candidate)) continue;
-
-      for (const item of candidate) {
-        if (typeof item === 'string' && item.trim()) return item;
-        if (item && typeof item === 'object') {
-          const url = item.remoteUrl || item.url || item.src || item.localPreviewUrl;
-          if (typeof url === 'string' && url.trim()) return url;
-        }
-      }
-    }
-
-    return null;
+    return resolvePropertyImage(property) || null;
   };
 
   // Load homepage settings from Firestore
@@ -267,6 +248,37 @@ const HomePage = () => {
                 </Link>
               ))}
             </div>
+
+            {/* Quick Intent Entry Links */}
+            <div className="grid sm:grid-cols-2 gap-4 mt-8">
+              <Link
+                to="/explore"
+                className="flex items-center justify-between px-6 py-4 bg-emerald-600/90 backdrop-blur-sm text-white rounded-xl border border-emerald-500/30 hover:bg-emerald-700 transition-all font-medium shadow-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🔍</span>
+                  <div className="text-left">
+                    <div className="text-sm font-bold">Find a Property</div>
+                    <div className="text-xs text-emerald-100 font-light">I'm looking for a place</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-emerald-200" />
+              </Link>
+
+              <Link
+                to="/login?intent=list"
+                className="flex items-center justify-between px-6 py-4 bg-amber-600/90 backdrop-blur-sm text-white rounded-xl border border-amber-500/30 hover:bg-amber-700 transition-all font-medium shadow-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">＋</span>
+                  <div className="text-left">
+                    <div className="text-sm font-bold">List a Property</div>
+                    <div className="text-xs text-amber-100 font-light">I know a property & earn rewards</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-amber-200" />
+              </Link>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -396,10 +408,6 @@ const HomePage = () => {
 
                   <div className="p-6">
                     <h3 className="text-xl font-serif font-light mb-2 text-gray-900">{property.title}</h3>
-                    <div className="flex items-center text-gray-600 mb-4">
-                      <MapPin className="w-4 h-4 mr-2" />
-                      <span className="text-sm">{getPublicPropertyLocation(property)}</span>
-                    </div>
 
                     <div className="flex justify-between border-t border-b border-gray-100 py-4 mb-4">
                       <div className="text-center">
@@ -453,7 +461,6 @@ const HomePage = () => {
                 <div key={property.id} className="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200 p-6">
                   <img src={getPropertyImage(property) || 'https://placehold.co/400x200'} alt="" className="w-full h-48 object-cover rounded-lg mb-4" />
                   <h3 className="text-lg font-serif font-semibold">{property.title}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{getPublicPropertyLocation(property)}</p>
                   <div className="flex justify-between items-center mt-4">
                     <span className="text-xl font-serif font-bold text-gray-900">KES {property.price?.toLocaleString()}</span>
                     <Link to={`/property/${property.id}`} className="px-4 py-2 bg-black text-white text-sm rounded-lg">View</Link>

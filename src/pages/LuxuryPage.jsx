@@ -6,6 +6,7 @@ import { useProperties } from '../context/PropertyContext';
 import { useAuth } from '../context/AuthContext';
 import { FaSearch, FaFilter, FaStar, FaSwimmingPool, FaCar, FaBed, FaBath, FaRulerCombined, FaHeart, FaMapMarkerAlt } from 'react-icons/fa';
 import PropertyCard from '../components/PropertyCard';
+import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import toast from 'react-hot-toast';
 
 // --- STYLED COMPONENTS ---
@@ -184,7 +185,7 @@ const LuxuryPage = () => {
     if (searchTerm) {
       results = results.filter(prop =>
         prop.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prop.location.toLowerCase().includes(searchTerm.toLowerCase())
+        getPublicPropertyLocation(prop).toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
