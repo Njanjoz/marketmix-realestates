@@ -1,4 +1,4 @@
-// src/services/posterService.js - Pure Client-Side Canvas Poster & Cover Generator
+// src/services/posterService.js - Pure Client-Side Canvas Poster & Cover Generator (CORS Resilient)
 
 const THEMES = {
   emerald: { bg: '#ecfdf5', badge: '#10b981', accent: '#0f766e', text: '#065f46' },
@@ -15,6 +15,7 @@ const loadImage = (url) => new Promise((resolve) => {
   img.crossOrigin = 'anonymous';
   img.onload = () => resolve(img);
   img.onerror = () => {
+    // Retry without crossOrigin if CORS outright blocks anonymous
     const imgFallback = new Image();
     imgFallback.onload = () => resolve(imgFallback);
     imgFallback.onerror = () => resolve(null);
@@ -23,67 +24,77 @@ const loadImage = (url) => new Promise((resolve) => {
   img.src = url;
 });
 
+const exportCanvasBlob = (canvas, mimeType, quality) => new Promise((resolve) => {
+  try {
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, mimeType, quality);
+  } catch (err) {
+    console.warn('[Poster] Tainted canvas detected or export error:', err);
+    resolve(null);
+  }
+});
+
 export const getPromoCoverImage = async (photos = []) => {
   const photoUrl = Array.isArray(photos) ? photos.find(p => typeof p === 'string' && p.trim()) : null;
   const canvas = document.createElement('canvas');
   canvas.width = 1200;
   canvas.height = 900;
-  const ctx = canvas.getContext('2d');
+  let ctx = canvas.getContext('2d');
 
   // Background
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const img = await loadImage(photoUrl);
+  let img = await loadImage(photoUrl);
+  let blob = null;
+
   if (img) {
-    const hRatio = canvas.width / img.width;
-    const vRatio = canvas.height / img.height;
-    const ratio = Math.max(hRatio, vRatio);
-    const centerShiftX = (canvas.width - img.width * ratio) / 2;
-    const centerShiftY = (canvas.height - img.height * ratio) / 2;
-    ctx.drawImage(img, 0, 0, img.width, img.height, centerShiftX, centerShiftY, img.width * ratio, img.height * ratio);
-  } else {
+    try {
+      const hRatio = canvas.width / img.width;
+      const vRatio = canvas.height / img.height;
+      const ratio = Math.max(hRatio, vRatio);
+      const centerShiftX = (canvas.width - img.width * ratio) / 2;
+      const centerShiftY = (canvas.height - img.height * ratio) / 2;
+      ctx.drawImage(img, 0, 0, img.width, img.height, centerShiftX, centerShiftY, img.width * ratio, img.height * ratio);
+      
+      // Try exporting with image
+      blob = await exportCanvasBlob(canvas, 'image/jpeg', 0.9);
+    } catch {
+      blob = null; // Canvas tainted
+    }
+  }
+
+  // If tainted or image failed, re-render clean without external image
+  if (!blob) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     grad.addColorStop(0, '#1e293b');
     grad.addColorStop(1, '#0f172a');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#64748b';
-    ctx.font = 'bold 36px Arial, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 42px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('MARKETMIX REAL ESTATES', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('MARKETMIX REAL ESTATES', canvas.width / 2, canvas.height / 2 - 20);
+
+    ctx.font = '24px Arial, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Verified Property Listing', canvas.width / 2, canvas.height / 2 + 30);
+
+    blob = await exportCanvasBlob(canvas, 'image/jpeg', 0.9);
   }
 
   // Bottom overlay banner
-  const bannerHeight = 160;
-  const gradOverlay = ctx.createLinearGradient(0, canvas.height - bannerHeight, 0, canvas.height);
-  gradOverlay.addColorStop(0, 'rgba(0,0,0,0)');
-  gradOverlay.addColorStop(1, 'rgba(0,0,0,0.85)');
-  ctx.fillStyle = gradOverlay;
-  ctx.fillRect(0, canvas.height - bannerHeight, canvas.width, bannerHeight);
+  if (blob) {
+    return {
+      file: new File([blob], 'marketmix-property-cover.jpg', { type: 'image/jpeg' }),
+      hasPropertyPhoto: !!img,
+    };
+  }
 
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 32px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('MARKETMIX REAL ESTATES', 60, canvas.height - 90);
-
-  ctx.font = '24px Arial, sans-serif';
-  ctx.fillStyle = '#cbd5e1';
-  ctx.fillText('Verified Property Listing · Tap to view details', 60, canvas.height - 50);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Could not generate cover image'));
-        return;
-      }
-      resolve({
-        file: new File([blob], 'marketmix-property-cover.jpg', { type: 'image/jpeg' }),
-        hasPropertyPhoto: !!img,
-      });
-    }, 'image/jpeg', 0.9);
-  });
+  throw new Error('Could not generate cover image');
 };
 
 export const generatePromoPoster = async (posterData = {}) => {
@@ -120,30 +131,31 @@ export const generatePromoPoster = async (posterData = {}) => {
   ctx.fillStyle = '#f1f5f9';
   ctx.fillRect(imgX, imgY, imgW, imgH);
 
-  const img = await loadImage(photoUrl);
+  let img = await loadImage(photoUrl);
+  let blob = null;
+
   if (img) {
-    const hRatio = imgW / img.width;
-    const vRatio = imgH / img.height;
-    const ratio = Math.max(hRatio, vRatio);
-    const centerShiftX = imgX + (imgW - img.width * ratio) / 2;
-    const centerShiftY = imgY + (imgH - img.height * ratio) / 2;
-    
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(imgX, imgY, imgW, imgH);
-    ctx.clip();
-    ctx.drawImage(img, 0, 0, img.width, img.height, centerShiftX, centerShiftY, img.width * ratio, img.height * ratio);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#64748b';
-    ctx.font = '28px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Property Photo Unavailable', canvas.width / 2, imgY + imgH / 2);
+    try {
+      const hRatio = imgW / img.width;
+      const vRatio = imgH / img.height;
+      const ratio = Math.max(hRatio, vRatio);
+      const centerShiftX = imgX + (imgW - img.width * ratio) / 2;
+      const centerShiftY = imgY + (imgH - img.height * ratio) / 2;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(imgX, imgY, imgW, imgH);
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, img.width, img.height, centerShiftX, centerShiftY, img.width * ratio, img.height * ratio);
+      ctx.restore();
+    } catch {
+      img = null;
+    }
   }
 
+  // Draw rest of poster content
   let currentY = imgY + imgH + 60;
 
-  // Property Type Badge
   const propertyType = posterData.property?.propertyType || posterData.property?.unitType || 'PROPERTY';
   ctx.fillStyle = theme.badge;
   if (ctx.roundRect) {
@@ -158,7 +170,6 @@ export const generatePromoPoster = async (posterData = {}) => {
   ctx.textAlign = 'center';
   ctx.fillText(propertyType.toUpperCase(), 170, currentY + 28);
 
-  // Location
   ctx.fillStyle = '#64748b';
   ctx.font = '20px Arial, sans-serif';
   ctx.textAlign = 'right';
@@ -166,7 +177,6 @@ export const generatePromoPoster = async (posterData = {}) => {
 
   currentY += 70;
 
-  // Headline
   ctx.fillStyle = '#0f172a';
   ctx.font = 'bold 38px Arial, sans-serif';
   ctx.textAlign = 'left';
@@ -175,7 +185,6 @@ export const generatePromoPoster = async (posterData = {}) => {
 
   currentY += 50;
 
-  // Price box
   ctx.fillStyle = theme.bg;
   if (ctx.roundRect) {
     ctx.beginPath();
@@ -224,16 +233,26 @@ export const generatePromoPoster = async (posterData = {}) => {
     ctx.fillText(`CONTACT: ${posterData.contact.phone} ${posterData.contact.email ? `| ${posterData.contact.email}` : ''}`, canvas.width / 2, currentY + 58);
   }
 
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Could not generate A4 poster'));
-        return;
-      }
-      resolve({
-        file: new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' }),
-        hasPropertyPhoto: !!img,
-      });
-    }, 'image/png', 0.95);
-  });
+  blob = await exportCanvasBlob(canvas, 'image/png', 0.95);
+
+  // Fallback if tainted
+  if (!blob) {
+    // Redraw without clipping image
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(imgX, imgY, imgW, imgH);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '28px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Property Poster', canvas.width / 2, imgY + imgH / 2);
+    blob = await exportCanvasBlob(canvas, 'image/png', 0.95);
+  }
+
+  if (blob) {
+    return {
+      file: new File([blob], 'marketmix-property-poster-a4.png', { type: 'image/png' }),
+      hasPropertyPhoto: !!img,
+    };
+  }
+
+  throw new Error('Could not generate A4 poster');
 };
