@@ -3,13 +3,13 @@ import React from 'react';
 import StepPropertyType from './StepPropertyType';
 import StepBasicDetails from './StepBasicDetails';
 
-const StepPropertyAndBasic = ({ data, update }) => {
+const StepPropertyAndBasic = ({ data, update, onNext }) => {
   return (
     <div className="space-y-8">
       <div>
         <h3 className="text-lg font-extrabold text-slate-900 mb-1">1. Property Type</h3>
-        <p className="text-xs text-slate-500 mb-4">Select the category of property you are listing.</p>
-        <StepPropertyType data={data} update={update} />
+        <p className="text-xs text-slate-500 mb-4">Select the category of property you are listing. Selecting an option will instantly advance you.</p>
+        <StepPropertyType data={data} update={update} onNext={onNext} />
       </div>
 
       <div className="border-t border-slate-200 pt-6">
