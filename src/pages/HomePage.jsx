@@ -6,7 +6,7 @@ import {
   Search, Home, Building2, Building, TreePine, Hotel, Store, 
   ChevronRight, Star, Bed, Bath, Square, Loader, 
   Award, Users, TrendingUp, Phone, Mail, MapPin as MapPinIcon,
-  Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle
+  Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle, Compass, ArrowRight, MapPin
 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
@@ -412,7 +412,7 @@ const HomePage = () => {
               <p className="text-gray-500">No featured properties assigned yet. Use the Admin Control Center to publish listings to the homepage!</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-8">
               {properties.map((property, index) => (
                 <motion.div
                   key={property.id}
@@ -490,7 +490,7 @@ const HomePage = () => {
               <p className="text-gray-600 font-light">High-demand properties highlighted by our administrators</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-8">
               {trendingProperties.map((property, index) => (
                 <div key={property.id} className="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200 p-6">
                   <img
@@ -530,6 +530,38 @@ const HomePage = () => {
               className="px-8 py-3 bg-transparent border border-white text-white font-medium hover:bg-white/10 transition-colors rounded-lg"
             >
               {homepageSettings.cta.button2Text}
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Site Seeing Banner */}
+      <section className="py-16 bg-emerald-950 text-white relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/25 px-4 py-1.5 text-xs font-bold text-emerald-300 backdrop-blur-md mb-4 border border-emerald-400/30">
+              <Compass className="w-4 h-4" /> MarketMix Site Seeing
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Want to see properties in person?</h2>
+            <p className="mt-3 text-sm sm:text-base text-slate-300 max-w-xl">
+              Explore listings across Kenya, scan your area to discover nearby homes, and arrange guided property site-seeing packages.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-4 shrink-0">
+            <Link
+              to="/site-seeing"
+              className="mmx-liquid-primary inline-flex items-center gap-2 rounded-2xl px-6 py-4 text-sm font-bold text-white shadow-lg transition hover:scale-105"
+            >
+              <span>Explore Site Seeing</span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/site-seeing"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-6 py-4 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/20"
+            >
+              <MapPin className="h-4 w-4" />
+              <span>Search an Area</span>
             </Link>
           </div>
         </div>

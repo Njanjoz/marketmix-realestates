@@ -10,7 +10,7 @@ import {
   Facebook, Twitter, Instagram, Linkedin, Youtube, MessageCircle,
   Maximize2, Crop, Loader, UserCog, UserCheck, UserX, Filter, Search,
   Briefcase, User, Shield as ShieldIcon, UserMinus, Clock, Check, X,
-  Eye as EyeIcon, Calendar, Flag, Info
+  Eye as EyeIcon, Calendar, Flag, Info, Truck, Package, Building2, Compass
 } from 'lucide-react';
 import { db } from '../../firebase/config';
 import { 
@@ -21,6 +21,12 @@ import {
 import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
 import PromotePropertyModal from '../PromotePropertyModal';
+import TestPaymentModal from '../TestPaymentModal';
+import AgencyPackagesPage from '../../pages/admin/AgencyPackagesPage';
+import SightseeingPackagesPage from '../../pages/admin/SightseeingPackagesPage';
+import MovingPackagesPage from '../../pages/admin/MovingPackagesPage';
+import TransportRequestsPage from '../../pages/admin/TransportRequestsPage';
+import AdminServiceRequestsPage from '../../pages/admin/ServiceRequestsPage';
 import { useAuth } from '../../context/AuthContext';
 
 const YOUTUBE_ADMIN_API = import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
@@ -644,7 +650,12 @@ const AdminDashboard = () => {
   const sections = [
     { id: 'listings', label: 'Listing Approval & Info', icon: <CheckCircle size={18} /> },
     { id: 'homepageManager', label: 'Homepage Placements', icon: <Layout size={18} /> },
-    { id: 'homepageEditor', label: 'Edit All Pages (Home, Explore, About, Agents)', icon: <Edit size={18} /> },
+    { id: 'homepageEditor', label: 'Edit All Pages', icon: <Edit size={18} /> },
+    { id: 'transportRequests', label: 'Moving Requests', icon: <Truck size={18} /> },
+    { id: 'serviceRequests', label: 'Move-in Requests', icon: <Briefcase size={18} /> },
+    { id: 'movingPackages', label: 'Moving Packages', icon: <Package size={18} /> },
+    { id: 'agencyPackages', label: 'Agency Packages', icon: <Building2 size={18} /> },
+    { id: 'sightseeingPackages', label: 'Sightseeing Packages', icon: <Compass size={18} /> },
     { id: 'users', label: 'User Management', icon: <Users size={18} /> },
     { id: 'allProperties', label: 'All Properties', icon: <Building size={18} /> },
     { id: 'analytics', label: 'Analytics', icon: <BarChart size={18} /> },
@@ -1496,6 +1507,12 @@ const AdminDashboard = () => {
         )}
 
         {/* Analytics Section */}
+        {activeSection === 'transportRequests' && <TransportRequestsPage />}
+        {activeSection === 'serviceRequests' && <AdminServiceRequestsPage />}
+        {activeSection === 'movingPackages' && <MovingPackagesPage />}
+        {activeSection === 'agencyPackages' && <AgencyPackagesPage />}
+        {activeSection === 'sightseeingPackages' && <SightseeingPackagesPage />}
+
         {activeSection === 'analytics' && (
           <div style={{ ...glass, padding: '24px', textAlign: 'center' }}>
             <BarChart size={48} style={{ margin: '40px auto 16px', opacity: 0.5 }} />

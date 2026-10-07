@@ -1,4 +1,4 @@
-// src/components/Navbar.jsx - COMPLETE RESET VERSION
+// src/components/Navbar.jsx - COMPLETE NAV WITH URBANNEST, TRANSPORT, ROOMMATES & LUXURY
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,8 +10,10 @@ import {
   Bell, MessageSquare, Settings, ChevronLeft, CreditCard,
   Shield, Calendar, Bookmark, Briefcase, DollarSign, 
   Key, Lock, Mail, UserCircle, LayoutDashboard, 
-  LogOut as LogOutIcon
+  LogOut as LogOutIcon, Truck, Users
 } from 'lucide-react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
@@ -67,22 +69,80 @@ const Navbar = () => {
     }
   }, [googleSignIn]);
 
+  // Navigation Items including UrbanNest, Transport, Roommates, Luxury
   const navItems = useMemo(() => [
     { name: 'Buy', path: '/properties?status=sale', icon: <Gem className="w-4 h-4" /> },
     { name: 'Rent', path: '/properties?status=rent', icon: <Home className="w-4 h-4" /> },
     { name: 'Explore', path: '/explore', icon: <Compass className="w-4 h-4" /> },
-    { name: 'Roommates', path: '/roommates', icon: <User className="w-4 h-4" /> },
-    { name: 'Moving', path: '/transport', icon: <Key className="w-4 h-4" /> },
+    { name: 'UrbanNest', path: '/urban-nest', icon: <Building2 className="w-4 h-4 text-emerald-600" /> },
+    { name: 'Transport', path: '/transport', icon: <Truck className="w-4 h-4" /> },
+    { name: 'Roommates', path: '/roommates', icon: <Users className="w-4 h-4" /> },
     { name: 'Luxury', path: '/luxury', icon: <Crown className="w-4 h-4" /> },
     { name: 'Agents', path: '/agents', icon: <User className="w-4 h-4" /> },
-    { name: 'Contact', path: '/contact', icon: <Phone className="w-4 h-4" /> },
   ], []);
 
-  // ✅ FIX: ALL dashboard links go to /dashboard ONLY
+  // Dynamic Notifications from Firestore
+  const [notifications, setNotifications] = useState([
+    { id: 'default-1', title: 'Welcome to MarketMix', description: 'Explore verified properties, book site seeing tours, and moving services.', time: 'Just now', read: false, type: 'property' }
+  ]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setNotifications([
+        { id: 'default-1', title: 'Welcome to MarketMix', description: 'Explore verified properties, book site seeing tours, and moving services.', time: 'Just now', read: false, type: 'property' }
+      ]);
+      return;
+    }
+
+    const unsubSightseeing = onSnapshot(query(collection(db, 'sightseeingBookings'), where('userId', '==', currentUser.uid)), (snap) => {
+      const items = snap.docs.map(doc => {
+        const data = doc.data();
+        const isPaid = data.paymentStatus === 'paid' || data.status === 'confirmed';
+        return {
+          id: `sightseeing_${doc.id}`,
+          title: isPaid ? '✅ Site Seeing Tour Confirmed' : '⏳ Site Seeing Request Submitted',
+          description: `Tour for "${data.propertyTitle || 'Property'}" (${data.packageName || 'Package'}) is ${data.status || 'pending'}.`,
+          time: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          read: isPaid,
+          type: 'appointment'
+        };
+      });
+
+      const unsubTransport = onSnapshot(query(collection(db, 'transportRequests'), where('userId', '==', currentUser.uid)), (tSnap) => {
+        const tItems = tSnap.docs.map(doc => {
+          const data = doc.data();
+          const accepted = data.status === 'accepted' || data.status === 'completed';
+          return {
+            id: `transport_${doc.id}`,
+            title: accepted ? '🚚 Moving Request Accepted' : '📦 Moving Request Made',
+            description: `From ${data.pickupLocation || 'Pickup'} to ${data.destinationLocation || 'Destination'} is ${data.status || 'pending'}.`,
+            time: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+            read: accepted,
+            type: 'price'
+          };
+        });
+
+        const combined = [...items, ...tItems];
+        if (combined.length > 0) {
+          setNotifications(combined);
+        }
+      });
+
+      return () => unsubTransport();
+    }, (err) => {
+      console.error("Error loading dynamic notifications:", err);
+    });
+
+    return () => {
+      unsubSightseeing();
+    };
+  }, [currentUser]);
+
+  const unreadNotifications = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  // Dashboard Links
   const dashboardLinks = useMemo(() => {
     const userType = userProfile?.userType || userProfile?.role || 'user';
-    
-    // Get dashboard name based on role
     let dashboardName = 'My Dashboard';
     let badge = null;
     
@@ -117,7 +177,6 @@ const Navbar = () => {
       { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
     ];
     
-    // ✅ ONLY ONE DASHBOARD LINK - to /dashboard
     return [
       { 
         name: dashboardName, 
@@ -134,15 +193,6 @@ const Navbar = () => {
       ...baseLinks
     ];
   }, [userProfile?.userType, userProfile?.role]);
-
-  // Mock notifications
-  const notifications = useMemo(() => [
-    { id: 1, title: 'New Property Match', description: 'A property matching your criteria was just listed', time: '2 min ago', read: false, type: 'property' },
-    { id: 2, title: 'Price Drop Alert', description: 'Property in Karen is now KES 25M', time: '1 hour ago', read: false, type: 'price' },
-    { id: 3, title: 'Viewing Confirmed', description: 'Your viewing at 3 PM today is confirmed', time: '2 hours ago', read: true, type: 'appointment' },
-  ], []);
-
-  const unreadNotifications = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
   // Glass effect styles
   const glassNavbarStyle = {
@@ -178,7 +228,6 @@ const Navbar = () => {
           className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-50"
           style={glassDropdownStyle}
         >
-          {/* User Profile Header */}
           <div className="p-4 border-b border-white/25">
             <div className="flex items-center space-x-3">
               <div className="relative">
@@ -219,7 +268,6 @@ const Navbar = () => {
             </div>
           </div>
           
-          {/* Dashboard Links - ALL GO TO /dashboard */}
           <div className="p-2">
             <div className="px-3 py-2">
               <p className="text-xs font-semibold text-gray-800 uppercase tracking-wider mb-2">Dashboard</p>
@@ -227,7 +275,6 @@ const Navbar = () => {
                 <button
                   key={item.name}
                   onClick={() => {
-                    console.log('🔗 Navigating to:', item.path);
                     setDropdownOpen(false);
                     navigate(item.path);
                   }}
@@ -248,7 +295,6 @@ const Navbar = () => {
               ))}
             </div>
 
-            {/* Logout Button */}
             <div className="p-3 border-t border-white/25 mt-2">
               <button
                 onClick={handleLogout}
@@ -280,7 +326,7 @@ const Navbar = () => {
           <div className="p-4 border-b border-white/25 flex justify-between items-center">
             <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             <span className="text-xs text-emerald-600 cursor-pointer hover:text-emerald-700">
-              Mark all as read
+              Live updates
             </span>
           </div>
           
@@ -438,7 +484,7 @@ const Navbar = () => {
         </div>
       </motion.nav>
 
-      {/* Mobile Menu Drawer - Simplified */}
+      {/* Mobile Menu Drawer */}
       <AnimatePresence>
         {isMenuOpen && (
           <>

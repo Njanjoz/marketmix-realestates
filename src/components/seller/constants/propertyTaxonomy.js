@@ -1,6 +1,7 @@
 // src/components/seller/constants/propertyTaxonomy.js
 
 export const PROPERTY_TYPES = [
+  { id: 'urbannest', label: 'UrbanNest (Short Stay)', description: 'Furnished short-term stays, vacation homes, and serviced apartments.' },
   { id: 'single_room', label: 'Single Room', description: 'One private room rented separately, usually with shared facilities.' },
   { id: 'bedsitter', label: 'Bedsitter', description: 'A single self-contained living space combining sleeping/living area with private facilities.' },
   { id: 'student_hostel', label: 'Student Hostel', description: 'Purpose-built or managed accommodation primarily for students.' },

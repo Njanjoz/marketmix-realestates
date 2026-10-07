@@ -1,26 +1,27 @@
 // src/components/seller/constants/wizardSteps.js
 
 export const WIZARD_STEPS = [
-  { id: 'propertyType', label: 'Property' },
-  { id: 'unitRoom', label: 'Unit' },
-  { id: 'basicDetails', label: 'Details' },
-  { id: 'studentInfo', label: 'Campus' },
-  { id: 'roomOccupancy', label: 'Room' },
-  { id: 'rentCosts', label: 'Costs' },
-  { id: 'waterUtilities', label: 'Utilities' },
-  { id: 'internetGarbage', label: 'Internet' },
+  { id: 'propertyType', label: 'Property Type' },
+  { id: 'basicDetails', label: 'Basic Details' },
+  { id: 'unitRoom', label: 'Unit / Room' },
+  { id: 'studentInfo', label: 'Student Info' },
+  { id: 'roomOccupancy', label: 'Room & Occupancy' },
+  { id: 'rentCosts', label: 'Price & Costs' },
+  { id: 'locationTransport', label: 'Location & Transport' },
+  { id: 'waterUtilities', label: 'Water & Utilities' },
+  { id: 'internetGarbage', label: 'Internet & Garbage' },
   { id: 'management', label: 'Management' },
   { id: 'security', label: 'Security' },
-  { id: 'gateHouseRules', label: 'Rules' },
-  { id: 'locationTransport', label: 'Location' },
+  { id: 'gateHouseRules', label: 'Gate & Rules' },
   { id: 'amenities', label: 'Amenities' },
-  { id: 'nearbyPlaces', label: 'Nearby' },
-  { id: 'photosMedia', label: 'Media' },
-  { id: 'youtubeTour', label: 'Video' },
-  { id: 'review', label: 'Review' },
+  { id: 'nearbyPlaces', label: 'Nearby Places' },
+  { id: 'photosMedia', label: 'Photos & Media' },
+  { id: 'youtubeTour', label: 'YouTube Tour' },
+  { id: 'review', label: 'Review & Submit' },
 ];
 
 export const PROGRESS_LABELS = [
-  'Property', 'Unit', 'Costs', 'Utilities', 'Management',
-  'Security', 'Location', 'Amenities', 'Media', 'Review',
+  'Property', 'Details', 'Unit', 'Student', 'Occupancy',
+  'Costs', 'Location', 'Utilities', 'Internet', 'Management',
+  'Security', 'Rules', 'Amenities', 'Nearby', 'Media', 'Tour', 'Review',
 ];

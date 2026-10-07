@@ -31,6 +31,8 @@ const PropertyDetailsPage = lazy(() => import('./pages/PropertyDetailspage'));
 const LuxuryPage = lazy(() => import('./pages/LuxuryPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const TransportPage = lazy(() => import('./pages/TransportPage'));
+const SiteSeeingPage = lazy(() => import('./pages/SiteSeeingPage'));
+const UrbanNestPage = lazy(() => import('./pages/UrbanNestPage'));
 const TransportDriverPage = lazy(() => import('./pages/TransportDriverPage'));
 
 // Dashboard Router
@@ -42,6 +44,8 @@ const PropertyModerationPage = lazy(() => import('./pages/admin/PropertyModerati
 const AdminServiceRequestsPage = lazy(() => import('./pages/admin/ServiceRequestsPage'));
 const AdminTransportRequestsPage = lazy(() => import('./pages/admin/TransportRequestsPage'));
 const MovingPackagesPage = lazy(() => import('./pages/admin/MovingPackagesPage'));
+const AgencyPackagesPage = lazy(() => import('./pages/admin/AgencyPackagesPage'));
+const SightseeingPackagesPage = lazy(() => import('./pages/admin/SightseeingPackagesPage'));
 
 function ScrollToTop() {
   const location = useLocation();
@@ -130,8 +134,11 @@ function App() {
                       <Route path="/property/:id" element={<PropertyDetailsPage />} />
                       <Route path="/luxury" element={<LuxuryPage />} />
                       <Route path="/explore" element={<ExplorePage />} />
+                      <Route path="/urban-nest" element={<UrbanNestPage />} />
                       <Route path="/roommates" element={<ExplorePage />} />
                       <Route path="/transport" element={<TransportPage />} />
+                      <Route path="/site-seeing" element={<SiteSeeingPage />} />
+                      <Route path="/sightseeing" element={<Navigate to="/site-seeing" replace />} />
                       <Route path="/transport/driver" element={
                         <ProtectedRoute><TransportDriverPage /></ProtectedRoute>
                       } />
@@ -166,6 +173,12 @@ function App() {
                       } />
                       <Route path="/admin/moving-packages" element={
                         <ProtectedRoute allowedRoles={['admin']}><MovingPackagesPage /></ProtectedRoute>
+                      } />
+                      <Route path="/admin/agency-packages" element={
+                        <ProtectedRoute allowedRoles={['admin']}><AgencyPackagesPage /></ProtectedRoute>
+                      } />
+                      <Route path="/admin/sightseeing-packages" element={
+                        <ProtectedRoute allowedRoles={['admin']}><SightseeingPackagesPage /></ProtectedRoute>
                       } />
 
                       {/* User Profile Routes */}

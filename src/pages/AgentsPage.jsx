@@ -1,23 +1,19 @@
-// src/pages/AgentsPage.jsx
+// src/pages/AgentsPage.jsx - Agents Page
+// Adopts the Transport page theme (Liquid Glass, mmx-glass-surface-dark hero header)
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FaStar, FaPhone, FaEnvelope, FaSearch, FaFilter } from 'react-icons/fa'; 
-import { ExternalLink } from 'lucide-react'; 
+import { Search, Filter, Star, Phone, Mail, Award, ExternalLink, ChevronRight, User } from 'lucide-react';
 import { db } from '../firebase/config';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-
-const PRIMARY_COLOR = '#0284c7'; 
-const SECONDARY_COLOR = '#0c4a6e';
+import '../components/moving/LiquidGlass.css';
 
 const AgentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterSpecialty, setFilterSpecialty] = useState('all');
   const [agents, setAgents] = useState([]);
   const [agentsSettings, setAgentsSettings] = useState({
     title: 'Meet Our Real Estate Experts',
-    subtitle: 'Connect with top-rated agents specializing in luxury homes, commercial properties, and rentals.',
-    ctaTitle: 'Join Our Team of Experts',
-    ctaSubtitle: 'Are you a real estate professional? Join MarketMix Real Estates and grow your career with us.'
+    subtitle: 'Connect with top-rated agents specializing in luxury homes, commercial properties, and rentals across Kenya.'
   });
 
   useEffect(() => {
@@ -48,25 +44,21 @@ const AgentsPage = () => {
 
           return {
             id: docSnap.id,
-            name: profile.name || data.name || 'Agent',
-            title: profile.title || data.title || 'Real Estate Agent',
-            photo: profile.photo || data.photo || '/images/profile-placeholder.svg',
-            rating: Number(profile.rating ?? data.rating ?? 4.8),
-            experience: Number(profile.experience ?? data.experience ?? 1),
-            propertiesSold: Number(profile.propertiesSold ?? data.propertiesSold ?? 0),
+            name: data.name || profile.name || data.email?.split('@')[0] || 'Agent',
+            email: data.email || '',
+            phone: profile.phone || data.phone || '+254 700 000000',
+            agency: profile.agency || data.agency || 'MarketMix Verified Agency',
             specialties,
-            phone: profile.phone || data.phone || '',
-            email: profile.email || data.email || '',
-            bio: profile.bio || data.bio || 'Experienced real estate professional helping clients buy, sell, and invest.',
-            languages: Array.isArray(profile.languages) && profile.languages.length ? profile.languages : ['English'],
-            office: profile.office || data.office || '',
+            rating: profile.rating || data.rating || 5.0,
+            reviewsCount: profile.reviewsCount || data.reviewsCount || 12,
+            avatar: profile.avatar || data.avatar || null,
+            bio: profile.bio || data.bio || 'Professional real estate expert dedicated to finding you the perfect home in Kenya.'
           };
         });
 
         setAgents(agentList);
       } catch (err) {
-        console.error('Failed to load agent data:', err);
-        setAgents([]);
+        console.error('Error loading agents:', err);
       }
     };
 
@@ -74,183 +66,104 @@ const AgentsPage = () => {
     loadAgents();
   }, []);
 
-  const specialtyOptions = [
-    'all', 'Luxury Homes', 'Commercial', 'Apartments', 'Residential', 'Rentals', 'Investment', 'Land', 'Houses', 'Villas'
-  ];
-
-  const filteredAgents = agents.filter(agent => {
-    const name = (agent.name || '').toLowerCase();
-    const title = (agent.title || '').toLowerCase();
-    const specialties = Array.isArray(agent.specialties) ? agent.specialties : [];
-
-    const searchMatch = searchQuery === '' ||
-      name.includes(searchQuery.toLowerCase()) ||
-      title.includes(searchQuery.toLowerCase()) ||
-      specialties.some(s => (s || '').toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const specialtyMatch = filterSpecialty === 'all' || specialties.includes(filterSpecialty);
-
-    return searchMatch && specialtyMatch;
+  const filtered = agents.filter(agent => {
+    const text = `${agent.name} ${agent.agency} ${agent.bio} ${agent.specialties.join(' ')}`.toLowerCase();
+    if (searchQuery.trim() && !text.includes(searchQuery.toLowerCase())) return false;
+    return true;
   });
 
-  const cardVariants = {
-    hidden: { opacity: 0, y: 50 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } }
-  };
-
   return (
-    <div className="bg-gray-50 min-h-screen pt-28 pb-16">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <header className="text-center mb-12">
-          <h1 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4">
-            {agentsSettings.title}
-          </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+    <main className="mmx-liquid-canvas min-h-screen overflow-hidden pb-24 text-slate-900">
+      {/* Dark Hero Header matching Transport/Site Seeing */}
+      <section className="mmx-glass-surface-dark relative isolate overflow-hidden rounded-b-[2.8rem] text-white">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(45%_45%_at_50%_25%,rgba(52,211,153,0.22)_0%,rgba(15,23,42,0)_100%)]" />
+        <div className="mx-auto max-w-7xl px-4 pt-12 pb-16 sm:px-6 lg:px-8 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-4 py-1.5 text-xs font-bold text-emerald-300 backdrop-blur-md mb-4 border border-emerald-400/30">
+            <Award className="w-4 h-4" /> Verified Experts
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">{agentsSettings.title}</h1>
+          <p className="mt-3 max-w-2xl mx-auto text-sm sm:text-base text-slate-300">
             {agentsSettings.subtitle}
           </p>
-        </header>
 
-        {/* Search and Filter Controls */}
-        <div className="bg-white p-6 rounded-2xl shadow-xl mb-12 flex flex-col md:flex-row gap-4 items-center">
-          <div className="relative flex-grow w-full md:w-auto">
-            <FaSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <div className="mt-8 max-w-xl mx-auto relative">
+            <Search className="absolute left-4 top-4 h-5 w-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name or specialty..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search agents by name, agency, specialty..."
+              className="w-full rounded-2xl border border-white/20 bg-white/10 py-3.5 pl-12 pr-4 text-sm text-white placeholder-slate-300 outline-none backdrop-blur-md focus:border-emerald-400 shadow-lg"
             />
           </div>
+        </div>
+      </section>
 
-          <div className="w-full md:w-64 relative">
-            <FaFilter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <select
-              value={filterSpecialty}
-              onChange={(e) => setFilterSpecialty(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-            >
-              <option value="all">All Specialties</option>
-              {specialtyOptions.filter(s => s !== 'all').map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+      {/* Content Container */}
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Our Professional Agents</h2>
+            <p className="text-xs text-slate-500">{filtered.length} verified experts ready to assist you</p>
           </div>
         </div>
 
-        {/* Agents Grid */}
-        <motion.div 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8"
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
-        >
-          {filteredAgents.map(agent => (
-            <motion.div 
-              key={agent.id}
-              className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 transform hover:shadow-xl transition-shadow duration-300"
-              variants={cardVariants}
-            >
-              <div className="relative h-48 bg-gray-100">
-                <img 
-                  src={agent.photo} 
-                  alt={agent.name} 
-                  className="w-full h-full object-cover"
-                  onError={(event) => { event.currentTarget.src = '/images/profile-placeholder.svg'; }}
-                />
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold flex items-center shadow-md">
-                  <FaStar className="text-yellow-500 mr-1 w-3 h-3" />
-                  {agent.rating}
-                </div>
-              </div>
-
-              <div className="p-6">
-                <h3 className="text-2xl font-bold text-gray-900 mb-1">{agent.name}</h3>
-                <p className="text-primary-600 font-medium mb-3">{agent.title}</p>
-                
-                <div className="flex justify-between text-sm text-gray-600 border-t border-b py-3 mb-4">
-                  <div className="text-center">
-                    <span className="font-bold text-lg text-gray-800">{agent.experience}+</span>
-                    <p>Years Exp</p>
+        {filtered.length === 0 ? (
+          <div className="mmx-glass-surface rounded-3xl border border-slate-200 p-12 text-center bg-white/70 backdrop-blur-md">
+            <User className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+            <h3 className="text-lg font-bold text-slate-900">No agents found</h3>
+            <p className="mt-1 text-xs text-slate-500">Try adjusting your search criteria.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map(agent => (
+              <div key={agent.id} className="mmx-glass-surface rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xl flex items-center justify-center shrink-0 shadow">
+                      {agent.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">{agent.name}</h3>
+                      <p className="text-xs font-semibold text-emerald-700">{agent.agency}</p>
+                      <div className="flex items-center gap-1 mt-1 text-amber-500 text-xs font-bold">
+                        <Star className="w-3.5 h-3.5 fill-current" />
+                        <span>{agent.rating} ({agent.reviewsCount} reviews)</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <span className="font-bold text-lg text-gray-800">{agent.propertiesSold}</span>
-                    <p>Properties Sold</p>
-                  </div>
-                </div>
 
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Specializes In:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {agent.specialties.map(s => (
-                      <span key={s} className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
-                        {s}
+                  <p className="mt-4 text-xs text-slate-600 line-clamp-3 leading-relaxed">{agent.bio}</p>
+
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {agent.specialties.map((spec, i) => (
+                      <span key={i} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                        {spec}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t">
-                  <a 
-                    href={`tel:${agent.phone}`} 
-                    className="flex-1 flex items-center justify-center p-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium text-sm"
+                <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <a
+                    href={`tel:${agent.phone}`}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold text-center hover:bg-slate-800 transition"
                   >
-                    <FaPhone className="mr-2" /> Call
+                    Call Agent
                   </a>
-                  <a 
-                    href={`mailto:${agent.email}`} 
-                    className="flex-1 flex items-center justify-center p-3 bg-gray-200 text-gray-800 rounded-xl hover:bg-gray-300 transition-colors font-medium text-sm"
+                  <a
+                    href={`mailto:${agent.email}`}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs font-bold text-center hover:bg-slate-50 transition"
                   >
-                    <FaEnvelope className="mr-2" /> Email
+                    Email
                   </a>
                 </div>
               </div>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* Empty State */}
-        {filteredAgents.length === 0 && (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">👥</div>
-            <h3 className="text-2xl font-bold mb-2">No Agents Found</h3>
-            <p className="text-gray-600 mb-6">Try adjusting your search criteria</p>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setFilterSpecialty('all');
-              }}
-              className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              Reset Filters
-            </button>
+            ))}
           </div>
         )}
-
-        {/* Become an Agent CTA */}
-        <div 
-          style={{ 
-            background: `linear-gradient(to right, ${PRIMARY_COLOR}, ${SECONDARY_COLOR})`
-          }}
-          className="mt-16 rounded-2xl p-8 text-white text-center shadow-2xl"
-        >
-          <h2 className="text-3xl font-bold mb-4">{agentsSettings.ctaTitle}</h2>
-          <p className="text-xl mb-8 max-w-2xl mx-auto">
-            {agentsSettings.ctaSubtitle}
-          </p>
-          <button 
-            style={{ 
-              backgroundColor: 'white', 
-              color: PRIMARY_COLOR,
-              fontWeight: 600
-            }}
-            className="px-8 py-4 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center mx-auto"
-          >
-            Apply Now <ExternalLink className="w-5 h-5 ml-2" />
-          </button>
-        </div>
       </div>
-    </div>
+    </main>
   );
 };
 

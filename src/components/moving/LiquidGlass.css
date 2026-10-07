@@ -47,9 +47,12 @@
   transform: translateY(-1px);
 }
 
-.mmx-liquid-canvas input:not([type='checkbox']):not([type='radio']):not([type='file']),
-.mmx-liquid-canvas select,
-.mmx-liquid-canvas textarea {
+/* Global glassy input treatment.
+   Controls that opt out with .mmx-bare-field are excluded here so the Explore search/filter pills
+   can render bare inside their glass wrapper. */
+.mmx-liquid-canvas input:not([type='checkbox']):not([type='radio']):not([type='file']):not(.mmx-bare-field),
+.mmx-liquid-canvas select:not(.mmx-bare-field),
+.mmx-liquid-canvas textarea:not(.mmx-bare-field) {
   border-color: rgba(255, 255, 255, 0.88) !important;
   background: rgba(255, 255, 255, 0.56) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 8px 24px rgba(34, 68, 56, 0.05);

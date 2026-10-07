@@ -8,7 +8,7 @@ import {
   Maximize2, Shield, Clock, Users, Navigation,
   Droplet, Zap, Wifi, Trash2, Car, BookOpen, Utensils, Store,
   Dumbbell, Cross, Church, Landmark, Route, Bus, Footprints, Lock,
-  GraduationCap, Home, Sparkles, Play, Star, Waves, Sun, DollarSign,
+  GraduationCap, Home, Sparkles, Play, Star, Waves, Sun, DollarSign, Compass,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -858,6 +858,13 @@ const PropertyDetailspage = () => {
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
               >
                 <Calendar className="w-4 h-4" /> Request site visit
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/site-seeing?propertyId=${id}`)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 text-white rounded-lg font-bold hover:bg-emerald-800 shadow"
+              >
+                <Compass className="w-4 h-4" /> Book Site Seeing Tour
               </button>
               <button
                 type="button"

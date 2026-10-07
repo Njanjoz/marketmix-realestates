@@ -1,3 +1,6 @@
+// src/pages/ExplorePage.jsx - MARKETMIX DISCOVERY & ROOMMATES
+// Adopts Transport page theme and Transport location search logic (KenyaAreaPicker)
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -28,6 +31,30 @@ const TABS = [
 
 const LIFESTYLE_OPTIONS = ['Quiet home', 'Social', 'Study-friendly', 'Work from home', 'Neat shared spaces', 'Early riser'];
 const PROPERTY_TYPES = ['Any type', 'Bedsitter', 'Studio', '1 bedroom', '2 bedrooms', '3+ bedrooms'];
+
+// ---- Liquid Glass style tokens (shared, purely presentational) ----
+const GLASS_INPUT =
+  'rounded-xl border border-white/25 bg-white/10 px-3 py-2.5 text-sm text-white shadow-[0_6px_20px_-8px_rgba(2,6,23,0.55)] backdrop-blur-2xl backdrop-saturate-150 outline-none placeholder:text-slate-300 transition focus:border-emerald-300/70 focus:ring-2 focus:ring-emerald-400/50';
+const GLASS_PANEL =
+  'relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 shadow-[0_18px_60px_-18px_rgba(2,6,23,0.65)] backdrop-blur-2xl backdrop-saturate-150';
+// Shared glass surface used by the search input, the inline filter pills, and the Location Search button —
+// so they all render as one consistent family of pills. The glass effect lives ONLY on this wrapper.
+const GLASS_CONTROL =
+  'rounded-full border border-white/25 bg-transparent px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_-10px_rgba(2,6,23,0.6)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-white/10';
+// Bare text-input styling — pairs with the <style> block below, which forces every visual layer off.
+const BARE_FIELD =
+  'w-full min-w-0 appearance-none border-0 bg-transparent p-0 text-sm font-semibold text-white outline-none shadow-none ring-0 placeholder:text-slate-300 focus:border-0 focus:bg-transparent focus:outline-none focus:ring-0 focus:shadow-none';
+// Inline overrides applied to text inputs — belt-and-braces against any global CSS or UA chrome.
+const BARE_FIELD_STYLE = {
+  background: 'transparent',
+  backgroundColor: 'transparent',
+  backgroundImage: 'none',
+  boxShadow: 'none',
+  border: 'none',
+  outline: 'none',
+  backdropFilter: 'none',
+  WebkitBackdropFilter: 'none',
+};
 
 const propertyPrice = (property) => Number(property?.price ?? 0);
 const propertyStatus = getListingType;
@@ -95,6 +122,10 @@ const ExplorePage = () => {
   const [statusFilter, setStatusFilter] = useState('rent');
   const [moreFilters, setMoreFilters] = useState(false);
   const [bedroomFilter, setBedroomFilter] = useState('');
+  
+  // Transport location search logic state
+  const [exploreLocationFilter, setExploreLocationFilter] = useState({ county: '', subCounty: '', ward: '', area: '' });
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
     displayName: '', preferredArea: '', county: '', subCounty: '', ward: '', budgetMin: '', budgetMax: '', moveInDate: '',
@@ -118,105 +149,100 @@ const ExplorePage = () => {
   };
 
   const propertyContext = useMemo(() => {
-    const id = searchParams.get('propertyId');
-    return id ? allProperties.find((property) => property.id === id) || null : null;
-  }, [allProperties, searchParams]);
+    const list = allProperties.filter((p) => p.county || p.subCounty || p.ward);
+    return list[0] || {};
+  }, [allProperties]);
 
-  useEffect(() => {
-    const nextTab = location.pathname === '/roommates' ? 'roommates' : TABS.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'properties';
-    setActiveTab(nextTab);
-  }, [location.pathname, searchParams]);
+  const distanceKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
 
-  const loadProperties = useCallback(async () => {
+  const loadProperties = async () => {
     setLoadingProperties(true);
     try {
-      const snapshot = await getDocs(query(collection(db, 'properties'), where('approvalStatus', '==', 'approved')));
-      const items = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-      items.sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt));
-      setAllProperties(items);
+      const snap = await getDocs(collection(db, 'properties'));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setAllProperties(list);
     } catch (error) {
-      console.error('Could not load Explore properties:', error);
-      toast.error('Could not load properties right now.');
+      console.error('Could not load properties:', error);
+      toast.error('Could not load listings.');
     } finally {
       setLoadingProperties(false);
     }
-  }, []);
+  };
 
-  const loadRoommates = useCallback(async () => {
+  const loadRoommates = async () => {
     setLoadingRoommates(true);
     try {
-      const activeQuery = query(collection(db, 'roommateProfiles'), where('active', '==', true));
-      const snapshot = await getDocs(activeQuery);
-      const profiles = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-      profiles.sort((a, b) => timestampValue(b.updatedAt) - timestampValue(a.updatedAt));
-      setRoommateProfiles(profiles);
-
+      const snap = await getDocs(collection(db, 'roommateProfiles'));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.active !== false);
+      setRoommateProfiles(list);
       if (currentUser?.uid) {
-        const ownerSnapshot = await getDoc(doc(db, 'roommateProfileLinks', currentUser.uid));
-        if (ownerSnapshot.exists()) {
-          const ownSnapshot = await getDoc(doc(db, 'roommateProfiles', ownerSnapshot.data().profileId));
-          if (ownSnapshot.exists()) {
-            const own = { id: ownSnapshot.id, ...ownSnapshot.data() };
-            setOwnProfile(own);
+        const linkSnap = await getDoc(doc(db, 'roommateProfileLinks', currentUser.uid));
+        if (linkSnap.exists()) {
+          const profileId = linkSnap.data().profileId;
+          const found = list.find((p) => p.id === profileId);
+          if (found) {
+            setOwnProfile(found);
             setProfileForm({
-              displayName: own.displayName || '', preferredArea: own.preferredArea || '',
-              county: own.county || '', subCounty: own.subCounty || '', ward: own.ward || '',
-              budgetMin: String(own.budgetMin || ''), budgetMax: String(own.budgetMax || ''),
-              moveInDate: own.moveInDate || '', propertyType: own.propertyType || '',
-              lifestyle: own.lifestyle || [], smoking: own.smoking || 'No preference',
-              pets: own.pets || 'No preference', furnished: own.furnished || 'Either',
-              workStudy: own.workStudy || 'Prefer not to say', roommateCount: String(own.roommateCount || 1),
-              seekingType: own.seekingType || 'either',
+              displayName: found.displayName || '',
+              preferredArea: found.preferredArea || '',
+              county: found.county || '',
+              subCounty: found.subCounty || '',
+              ward: found.ward || '',
+              budgetMin: found.budgetMin != null ? String(found.budgetMin) : '',
+              budgetMax: found.budgetMax != null ? String(found.budgetMax) : '',
+              moveInDate: found.moveInDate || '',
+              propertyType: found.propertyType || '',
+              lifestyle: found.lifestyle || [],
+              smoking: found.smoking || 'No preference',
+              pets: found.pets || 'No preference',
+              furnished: found.furnished || 'Either',
+              workStudy: found.workStudy || 'Prefer not to say',
+              roommateCount: found.roommateCount != null ? String(found.roommateCount) : '1',
+              seekingType: found.seekingType || 'either',
             });
           }
-        } else {
-          setOwnProfile(null);
         }
-      } else {
-        setOwnProfile(null);
       }
     } catch (error) {
       console.error('Could not load roommate profiles:', error);
-      toast.error('Could not load roommate profiles.');
     } finally {
       setLoadingRoommates(false);
     }
-  }, [currentUser?.uid]);
+  };
 
-  const loadConnections = useCallback(async () => {
-    if (!currentUser?.uid) {
-      setConnections([]);
-      return;
-    }
+  const loadConnections = async () => {
+    if (!currentUser?.uid) return;
     try {
-      const outgoing = await getDocs(query(collection(db, 'roommateConnections'), where('fromUserId', '==', currentUser.uid)));
-      const requests = outgoing.docs.map((item) => ({ id: item.id, ...item.data() }));
-      if (ownProfile?.id) {
-        const incoming = await getDocs(query(collection(db, 'roommateConnections'), where('targetProfileId', '==', ownProfile.id)));
-        incoming.docs.forEach((item) => {
-          if (!requests.some((request) => request.id === item.id)) requests.push({ id: item.id, ...item.data() });
-        });
-      }
-      requests.sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt));
-      setConnections(requests);
+      const q = query(collection(db, 'roommateConnections'), where('fromUserId', '==', currentUser.uid));
+      const q2 = query(collection(db, 'roommateConnections'), where('targetProfileId', '==', ownProfile?.id || 'none'));
+      const [snap1, snap2] = await Promise.all([getDocs(q), getDocs(q2)]);
+      const map = new Map();
+      [...snap1.docs, ...snap2.docs].forEach((d) => map.set(d.id, { id: d.id, ...d.data() }));
+      setConnections(Array.from(map.values()));
     } catch (error) {
-      console.error('Could not load roommate connection requests:', error);
-      toast.error('Could not load connection requests.');
+      console.error('Could not load roommate connections:', error);
     }
-  }, [currentUser?.uid, ownProfile?.id]);
-
-  useEffect(() => { loadProperties(); }, [loadProperties]);
-  useEffect(() => { loadRoommates(); }, [loadRoommates]);
-  useEffect(() => { loadConnections(); }, [loadConnections]);
+  };
 
   useEffect(() => {
-    if (!propertyContext) return;
-    const area = getPublicPropertyLocation(propertyContext).split(',')[0].trim();
-    if (area) setAreaFilter((current) => current || area);
+    loadProperties();
+    loadRoommates();
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (ownProfile?.id) loadConnections();
+  }, [ownProfile?.id]);
+
+  useEffect(() => {
     setProfileForm((current) => ({
       ...current,
-      preferredArea: current.preferredArea || propertyContext.estate || propertyContext.neighborhood || area,
-      county: current.county || propertyContext.county || propertyContext.approxLocation?.county || '',
+      county: current.county || propertyContext.county || '',
       subCounty: current.subCounty || propertyContext.subCounty || propertyContext.constituency || '',
       ward: current.ward || propertyContext.ward || '',
     }));
@@ -227,25 +253,35 @@ const ExplorePage = () => {
       setTab('roommates');
       if (currentUser) setProfileOpen(true);
     }
-  // setTab is intentionally not a dependency: the query flag is one-shot.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, currentUser?.uid]);
 
   const properties = useMemo(() => {
     const terms = [searchTerm, areaFilter].map((value) => value.trim().toLowerCase()).filter(Boolean);
     return allProperties.filter((property) => {
       const location = getPublicPropertyLocation(property);
-      const text = `${property.title || ''} ${property.propertyType || ''} ${property.unitType || ''} ${location}`.toLowerCase();
+      const text = `${property.title || ''} ${property.propertyType || ''} ${property.unitType || ''} ${location} ${property.county || ''} ${property.subCounty || ''} ${property.ward || ''} ${property.estate || ''} ${property.town || ''}`.toLowerCase();
       const status = propertyStatus(property);
       const propertyKind = (property.propertyType || property.unitType || '').toLowerCase();
       const budget = Number(maxBudget);
       const price = propertyPrice(property);
       const bedrooms = Number(property.bedrooms || 0);
+
       if (terms.some((term) => !text.includes(term))) return false;
       if (statusFilter && status && !status.includes(statusFilter)) return false;
       if (typeFilter && !propertyKind.includes(typeFilter.toLowerCase())) return false;
       if (Number.isFinite(budget) && budget > 0 && price > budget) return false;
       if (bedroomFilter && bedrooms < Number(bedroomFilter)) return false;
+
+      // Transport location filtering logic (County, Sub-county, Ward, Area)
+      if (exploreLocationFilter.county && property.county && property.county.toLowerCase() !== exploreLocationFilter.county.toLowerCase()) return false;
+      if (exploreLocationFilter.subCounty && (property.subCounty || property.constituency) && !(property.subCounty || property.constituency || '').toLowerCase().includes(exploreLocationFilter.subCounty.toLowerCase())) return false;
+      if (exploreLocationFilter.ward && property.ward && !property.ward.toLowerCase().includes(exploreLocationFilter.ward.toLowerCase())) return false;
+      if (exploreLocationFilter.area) {
+        const areaTerm = exploreLocationFilter.area.toLowerCase();
+        const propAreaText = `${property.location || ''} ${property.estate || ''} ${property.town || ''} ${property.landmark || ''}`.toLowerCase();
+        if (!propAreaText.includes(areaTerm)) return false;
+      }
+
       if (nearbyOnly && nearbyCenter) {
         const point = property.coordinates;
         if (point?.lat == null || point?.lng == null) return false;
@@ -259,7 +295,7 @@ const ExplorePage = () => {
         ? { ...property, exploreDistance: distanceKm(nearbyCenter.lat, nearbyCenter.lng, Number(point.lat), Number(point.lng)) }
         : property;
     });
-  }, [allProperties, searchTerm, areaFilter, maxBudget, typeFilter, statusFilter, bedroomFilter, nearbyOnly, nearbyCenter, radiusKm]);
+  }, [allProperties, searchTerm, areaFilter, maxBudget, typeFilter, statusFilter, bedroomFilter, exploreLocationFilter, nearbyOnly, nearbyCenter, radiusKm]);
 
   const visibleRoommates = useMemo(() => roommateProfiles.filter((profile) => {
     if (ownProfile?.id && profile.id === ownProfile.id) return false;
@@ -507,52 +543,185 @@ const ExplorePage = () => {
   const filteredTabs = useMemo(() => TABS, []);
 
   return (
-    <main className={`${activeTab === 'roommates' ? 'mmx-liquid-canvas' : ''} min-h-screen bg-slate-50 pb-8`}>
-      <section className="bg-slate-950 text-white">
-        <div className="mx-auto max-w-7xl px-4 pb-6 pt-8 sm:px-6 lg:px-8 lg:pb-10 lg:pt-12">
+    <main className="mmx-liquid-canvas min-h-screen overflow-hidden pb-24 text-slate-900">
+      {/* Scoped override: strip every visual layer from the bare text inputs inside the search/filter pills.
+          Only `input.mmx-bare-field` is targeted, so the House Type <select> keeps its native appearance
+          (and its dropdown arrow). */}
+      <style>{`
+        .mmx-liquid-canvas input.mmx-bare-field {
+          border: 0 !important;
+          border-color: transparent !important;
+          background: transparent !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          box-shadow: none !important;
+          outline: none !important;
+          -webkit-backdrop-filter: none !important;
+          backdrop-filter: none !important;
+        }
+
+        .mmx-liquid-canvas input.mmx-bare-field:focus,
+        .mmx-liquid-canvas input.mmx-bare-field:focus-visible {
+          border: 0 !important;
+          border-color: transparent !important;
+          background: transparent !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          box-shadow: none !important;
+          outline: none !important;
+          -webkit-backdrop-filter: none !important;
+          backdrop-filter: none !important;
+        }
+
+        .mmx-liquid-canvas input.mmx-bare-field::placeholder {
+          background: transparent !important;
+          opacity: 1 !important;
+        }
+      `}</style>
+
+      {/* Transport-matching Dark Hero Header */}
+      <section className="mmx-glass-surface-dark relative isolate overflow-hidden rounded-b-[2.8rem] text-white">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(45%_45%_at_50%_25%,rgba(52,211,153,0.22)_0%,rgba(15,23,42,0)_100%)]" />
+        <div className="mx-auto max-w-7xl px-4 pb-12 pt-10 sm:px-6 lg:px-8 lg:pb-16 lg:pt-14">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-300"><Compass className="h-4 w-4" /> MARKETMIX DISCOVERY</p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Find your place in the city.</h1>
+              <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Find your place in the city.</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">Find a home, plan how to get there, and meet people looking to share a place.</p>
             </div>
             {currentUser && <Link to="/favorites" className="hidden items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10 sm:inline-flex"><Heart className="h-4 w-4" /> Saved homes</Link>}
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 rounded-2xl bg-white p-2 shadow-xl sm:flex-row sm:items-center">
-            <label className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-slate-500">
-              <Search className="h-5 w-5 shrink-0" />
-              <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search homes, areas, or roommate preferences" className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" />
+          {/* Search + filters — glass lives on the outer pill; text inputs are bare; select keeps native arrow */}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className={`flex min-w-0 flex-1 items-center gap-3 ${GLASS_CONTROL}`}>
+              <Search className="h-5 w-5 shrink-0 text-emerald-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search homes, areas, or roommate preferences"
+                className={`mmx-bare-field ${BARE_FIELD}`}
+                style={BARE_FIELD_STYLE}
+              />
             </label>
-            <div className="flex gap-2 overflow-x-auto border-t border-slate-100 pt-2 sm:border-0 sm:pt-0">
-              <input value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} placeholder="Area" className="w-24 rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 sm:w-32" />
-              <input value={maxBudget} onChange={(event) => setMaxBudget(event.target.value)} inputMode="numeric" placeholder="Max budget" className="w-28 rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500" />
-              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Property type" className="max-w-32 rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="">Any type</option><option value="bedsitter">Bedsitter</option><option value="apartment">Apartment</option><option value="house">House</option><option value="studio">Studio</option>
-              </select>
-              <button type="button" onClick={() => setMoreFilters((value) => !value)} aria-expanded={moreFilters} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${moreFilters ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><SlidersHorizontal className="h-4 w-4" /><span className="hidden sm:inline">More</span></button>
+            <div className="flex gap-2 overflow-x-auto">
+              <label className={`flex w-32 items-center ${GLASS_CONTROL}`}>
+                <input
+                  value={areaFilter}
+                  onChange={(event) => setAreaFilter(event.target.value)}
+                  placeholder="Area / Town"
+                  className={`mmx-bare-field ${BARE_FIELD}`}
+                  style={BARE_FIELD_STYLE}
+                />
+              </label>
+              <label className={`flex w-32 items-center ${GLASS_CONTROL}`}>
+                <input
+                  value={maxBudget}
+                  onChange={(event) => setMaxBudget(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="Max budget"
+                  className={`mmx-bare-field ${BARE_FIELD}`}
+                  style={BARE_FIELD_STYLE}
+                />
+              </label>
+              <label className={`flex max-w-36 items-center ${GLASS_CONTROL}`}>
+                <select
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                  aria-label="Property type"
+                  className="mmx-bare-field w-full cursor-pointer border-0 bg-transparent px-0 py-0 text-sm font-semibold text-white outline-none [&>option]:bg-slate-900 [&>option]:text-white"
+                >
+                  <option value="" className="bg-slate-900 text-white">Any type</option>
+                  <option value="bedsitter" className="bg-slate-900 text-white">Bedsitter</option>
+                  <option value="apartment" className="bg-slate-900 text-white">Apartment</option>
+                  <option value="house" className="bg-slate-900 text-white">House</option>
+                  <option value="studio" className="bg-slate-900 text-white">Studio</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => setMoreFilters((value) => !value)}
+                aria-expanded={moreFilters}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold shadow-[0_8px_24px_-10px_rgba(2,6,23,0.6)] backdrop-blur-2xl backdrop-saturate-150 transition ${
+                  moreFilters
+                    ? 'border-emerald-300/60 bg-transparent text-emerald-100'
+                    : 'border-white/25 bg-transparent text-white hover:bg-white/10'
+                }`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">Location Search</span>
+              </button>
             </div>
           </div>
 
-          {moreFilters && <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-3">
-            <label className="text-xs font-semibold text-slate-200">Listing type<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="ml-2 rounded-lg border-0 bg-white px-2 py-2 text-sm text-slate-900"><option value="">Any</option><option value="rent">Rent</option><option value="sale">Buy</option></select></label>
-            <label className="text-xs font-semibold text-slate-200">Bedrooms<select value={bedroomFilter} onChange={(event) => setBedroomFilter(event.target.value)} className="ml-2 rounded-lg border-0 bg-white px-2 py-2 text-sm text-slate-900"><option value="">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option></select></label>
-            <button type="button" onClick={() => { setSearchTerm(''); setAreaFilter(''); setMaxBudget(''); setTypeFilter(''); setStatusFilter(''); setBedroomFilter(''); setCombinedBudget(null); }} className="ml-auto text-xs font-bold text-emerald-200 hover:text-white">Clear filters</button>
-          </div>}
+          {/* Transport Location Search Integration (County, Sub-county, Ward, Area, Landmark) */}
+          {moreFilters && (
+            <div className={`mt-4 space-y-4 p-4 ${GLASS_PANEL}`}>
+              <div className="relative flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">Precise Location Filter (Transport Logic)</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setAreaFilter('');
+                    setMaxBudget('');
+                    setTypeFilter('');
+                    setStatusFilter('');
+                    setBedroomFilter('');
+                    setExploreLocationFilter({ county: '', subCounty: '', ward: '', area: '' });
+                    setCombinedBudget(null);
+                  }}
+                  className="text-xs font-bold text-emerald-200 hover:text-white"
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="relative">
+                <KenyaAreaPicker value={exploreLocationFilter} onChange={setExploreLocationFilter} />
+              </div>
+              <div className="relative grid gap-4 border-t border-white/10 pt-4 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-200">
+                  Listing type
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                    className={`ml-2 ${GLASS_INPUT} [&>option]:bg-slate-900 [&>option]:text-white`}
+                  >
+                    <option value="" className="bg-slate-900 text-white">Any</option>
+                    <option value="rent" className="bg-slate-900 text-white">Rent</option>
+                    <option value="sale" className="bg-slate-900 text-white">Buy</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-200">
+                  Bedrooms
+                  <select
+                    value={bedroomFilter}
+                    onChange={(event) => setBedroomFilter(event.target.value)}
+                    className={`ml-2 ${GLASS_INPUT} [&>option]:bg-slate-900 [&>option]:text-white`}
+                  >
+                    <option value="" className="bg-slate-900 text-white">Any</option>
+                    <option value="1" className="bg-slate-900 text-white">1+</option>
+                    <option value="2" className="bg-slate-900 text-white">2+</option>
+                    <option value="3" className="bg-slate-900 text-white">3+</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
 
-          <div className="mt-5 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Explore marketplace">
-            {filteredTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition ${activeTab === id ? 'bg-emerald-400 text-slate-950' : 'border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'}`}><Icon className="h-4 w-4" />{label}</button>)}
+          <div className="mt-6 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Explore marketplace">
+            {filteredTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${activeTab === id ? 'bg-emerald-400 text-slate-950 shadow-lg' : 'border border-white/15 bg-white/10 text-slate-200 hover:bg-white/20'}`}><Icon className="h-4 w-4" />{label}</button>)}
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
+      {/* Content Container */}
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
         {activeTab === 'properties' && <section>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-emerald-700">{combinedBudget ? 'Roommate budget match' : 'Homes for your next chapter'}</p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-900">Properties matching your search</h2>
-              <p className="mt-1 text-sm text-slate-500">{combinedBudget ? `Rent listings up to ${formatMoney(combinedBudget)} total per month.` : 'Compact cards show the essentials. Open a listing for full details.'}</p>
+              <p className="text-sm font-semibold text-emerald-800">{combinedBudget ? 'Roommate budget match' : 'Homes for your next chapter'}</p>
+              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Properties matching your search</h2>
+              <p className="mt-1 text-sm text-slate-500">{combinedBudget ? `Rent listings up to ${formatMoney(combinedBudget)} total per month.` : 'Compact cards show essentials. Open a listing for full details & site seeing.'}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={nearbyOnly ? () => { setNearbyOnly(false); setNearbyCenter(null); } : findNearby} disabled={findingNearby} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${nearbyOnly ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-400'}`}>
@@ -564,12 +733,12 @@ const ExplorePage = () => {
           </div>
 
           {nearbyOnly && <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Showing properties within {radiusKm < 1 ? `${radiusKm * 1000} m` : `${radiusKm} km`} by straight-line distance from your device.</p>}
-          {loadingProperties ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"><div className="col-span-full flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Loading homesâ€¦</div></div> : properties.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-14 text-center"><Home className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-bold text-slate-900">No homes match those filters</h3><p className="mt-1 text-sm text-slate-500">Try a wider area or clear your filters.</p></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
-            {properties.map((property) => <article key={property.id} className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+          {loadingProperties ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"><div className="col-span-full flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Loading homes…</div></div> : properties.length === 0 ? <div className="mmx-glass-surface rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-14 text-center"><Home className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-bold text-slate-900">No homes match those filters</h3><p className="mt-1 text-sm text-slate-500">Try a wider area or clear your filters.</p></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
+            {properties.map((property) => <article key={property.id} className="mmx-glass-surface group min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
               <Link to={`/property/${property.id}`} className="block text-slate-900">
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-200">
                   <img src={resolvePropertyImage(property) || '/images/property-hero.svg'} alt={property.title || 'Property'} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                  <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-900 shadow-sm">{propertyStatus(property) === 'sale' ? 'For sale' : propertyStatus(property) === 'rent' ? 'For rent' : 'Listing type unavailable'}</span>
+                  <span className="absolute left-2 top-2 rounded-full bg-slate-900/85 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">{propertyStatus(property) === 'sale' ? 'For sale' : propertyStatus(property) === 'rent' ? 'For rent' : 'Listing type'}</span>
                   {property.exploreDistance != null && <span className="absolute bottom-2 left-2 rounded-full bg-slate-950/75 px-2 py-1 text-[10px] font-semibold text-white">{property.exploreDistance < 1 ? `${Math.round(property.exploreDistance * 1000)} m` : `${property.exploreDistance.toFixed(1)} km`} away</span>}
                 </div>
                 <div className="p-3 sm:p-4">
@@ -578,15 +747,15 @@ const ExplorePage = () => {
                   <p className="mt-1 text-sm font-extrabold text-emerald-800">{formatMoney(propertyPrice(property))}{propertyStatus(property) === 'rent' ? <span className="font-medium text-slate-500"> / mo</span> : null}</p>
                   <p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0" />{getPublicPropertyLocation(property)}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {(property.approvalStatus === 'approved' || property.verificationStatus === 'approved') && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" /> Verified listing</span>}
+                    {(property.approvalStatus === 'approved' || property.verificationStatus === 'approved') && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" /> Verified</span>}
                     {property.bedrooms != null && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600"><BedDouble className="h-3 w-3" />{property.bedrooms} bed</span>}
                   </div>
                 </div>
               </Link>
-              <div className="flex gap-2 border-t border-slate-100 p-2.5">
+              <div className="flex gap-2 border-t border-slate-100 p-2.5 bg-slate-50/50">
                 <Link to={`/property/${property.id}`} className="flex-1 rounded-lg bg-slate-900 px-2 py-2 text-center text-xs font-bold text-white hover:bg-slate-800">View</Link>
-                <button type="button" onClick={() => shareProperty(property)} aria-label={`Share ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-slate-50"><Share2 className="h-4 w-4" /></button>
-                <button type="button" onClick={() => setActionProperty(property)} aria-label={`More actions for ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-slate-50"><MoreHorizontal className="h-4 w-4" /></button>
+                <button type="button" onClick={() => shareProperty(property)} aria-label={`Share ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-white"><Share2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setActionProperty(property)} aria-label={`More actions for ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-white"><MoreHorizontal className="h-4 w-4" /></button>
               </div>
             </article>)}
           </div>}
@@ -598,104 +767,121 @@ const ExplorePage = () => {
             {currentUser ? <button type="button" onClick={() => setProfileOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800"><CircleUserRound className="h-4 w-4" />{ownProfile ? 'Edit my profile' : 'Create roommate profile'}</button> : <Link to="/login" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">Sign in to create a profile <ArrowRight className="h-4 w-4" /></Link>}
           </div>
 
-          {propertyContext && <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-4"><div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-800">Looking for someone to share this property?</p><h3 className="mt-1 font-bold text-slate-950">{propertyContext.title}</h3><p className="mt-1 text-xs text-slate-600">{getPublicPropertyLocation(propertyContext)} · We’ve filtered profiles nearby.</p></div><Link to={`/property/${propertyContext.id}`} className="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-xs font-bold text-emerald-900">View property</Link></div>}
-
-          {ownProfile && <div className="mb-5 grid gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div><div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-700" /><p className="font-bold text-emerald-950">Your profile is {ownProfile.active ? 'visible' : 'hidden'}</p></div><p className="mt-1 text-sm text-emerald-900">{ownProfile.displayName} Â· {ownProfile.preferredArea} Â· {formatMoney(ownProfile.budgetMin)}â€“{formatMoney(ownProfile.budgetMax)} monthly</p>{!ownProfile.active && <p className="mt-1 text-xs text-emerald-800">Turn it back on by editing and saving your profile.</p>}</div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setProfileOpen(true)} className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-900">Edit profile</button>{ownProfile.active && <button type="button" onClick={deactivateProfile} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-bold text-emerald-900 hover:bg-white">Hide profile</button>}</div>
-          </div>}
-
-          {connections.length > 0 && currentUser && <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-bold text-slate-900">Connection requests</h3><p className="mt-1 text-xs text-slate-500">Accept a request to open a private MarketMix chat.</p></div><button type="button" onClick={loadConnections} className="text-xs font-bold text-emerald-800">Refresh</button></div>
-            <div className="mt-3 space-y-2">{connections.map((connection) => {
-              const incoming = connection.targetProfileId === ownProfile?.id && connection.fromUserId !== currentUser.uid;
-              const peer = incoming ? connection.fromName : roommateProfiles.find((profile) => profile.id === connection.targetProfileId)?.displayName || 'Roommate profile';
-              return <div key={connection.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3">
-                <div><p className="text-sm font-semibold text-slate-900">{incoming ? `${peer} wants to connect` : `Request to ${peer}`}</p><p className="mt-0.5 text-xs capitalize text-slate-500">{connection.status}</p></div>
-                <div className="flex gap-2">{incoming && connection.status === 'pending' && <><button type="button" onClick={() => updateConnection(connection, 'rejected')} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Decline</button><button type="button" onClick={() => updateConnection(connection, 'accepted')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Accept</button></>}{connection.status === 'accepted' && <button type="button" onClick={() => startRoommateChat(connection)} className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white"><MessageCircle className="h-3.5 w-3.5" />Message</button>}</div>
-              </div>;
-            })}</div>
-          </div>}
-
-          {loadingRoommates ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Loading roommate profilesâ€¦</div> : visibleRoommates.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-14 text-center"><Users className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-bold text-slate-900">No roommate profiles found yet</h3><p className="mt-1 text-sm text-slate-500">Try another area or be the first to create a profile.</p>{currentUser && <button type="button" onClick={() => setProfileOpen(true)} className="mt-4 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white">Create a profile</button>}</div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
+          {loadingRoommates ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Loading roommate profiles…</div> : roommateProfiles.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-14 text-center"><Users className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-bold text-slate-900">No roommate profiles yet</h3><p className="mt-1 text-sm text-slate-500">Create a profile to connect with people looking for shared housing.</p></div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visibleRoommates.map((profile) => {
-              const score = ownProfile ? matchScore(ownProfile, profile) : null;
-              const pairBudget = Number(ownProfile?.budgetMax || 0) + Number(profile.budgetMax || 0);
-              const alreadyRequested = connections.some((item) => item.fromUserId === currentUser?.uid && item.targetProfileId === profile.id && item.status !== 'rejected');
-              return <article key={profile.id} className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-                <div className="flex items-start justify-between gap-2"><div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-900">{(profile.displayName || 'M').slice(0, 1).toUpperCase()}</div>{score != null && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-extrabold text-emerald-800">{score}% match</span>}</div>
-                <h3 className="mt-3 truncate text-sm font-bold text-slate-900 sm:text-base">{profile.displayName || 'MarketMix member'}</h3>
-                <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0" />{formatKenyaArea({ area: profile.preferredArea, ward: profile.ward, subCounty: profile.subCounty, county: profile.county })}</p>
-                <p className="mt-2 text-sm font-extrabold text-emerald-800">{formatMoney(profile.budgetMin)}â€“{formatMoney(profile.budgetMax)}<span className="font-medium text-slate-500"> / mo</span></p>
-                <p className="mt-1 text-xs text-slate-500">Moves {formatMoveDate(profile.moveInDate)}</p>
-                <p className="mt-1 line-clamp-1 text-[10px] font-semibold text-slate-600">{profile.seekingType === 'share_existing' ? 'Has a home to share' : profile.seekingType === 'find_property' ? 'Looking for a home together' : 'Open to either option'}</p>
-                <div className="mt-3 flex min-h-6 flex-wrap gap-1">{(profile.lifestyle || []).slice(0, 2).map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">{tag}</span>)}</div>
-                <div className="mt-auto space-y-2 pt-4">
-                  <button type="button" onClick={() => setProfileToView(profile)} className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View profile</button>
-                  <button type="button" onClick={() => connectToRoommate(profile)} disabled={alreadyRequested} className="w-full rounded-lg bg-slate-900 px-2 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-default disabled:bg-slate-300">{alreadyRequested ? 'Request sent' : 'Connect'}</button>
-                  {ownProfile && pairBudget > 0 && <button type="button" onClick={() => chooseBudgetForPair(profile)} className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100">Find homes together Â· {formatMoney(pairBudget)}</button>}
+              const score = ownProfile ? matchScore(ownProfile, profile) : 0;
+              const conn = connections.find((item) => (item.fromUserId === currentUser?.uid && item.targetProfileId === profile.id) || (profile.ownerId && item.fromUserId === profile.ownerId));
+              return <div key={profile.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-900">{profile.displayName?.charAt(0)?.toUpperCase() || 'U'}</div>
+                      <div>
+                        <h3 className="font-bold text-slate-900">{profile.displayName}</h3>
+                        <p className="flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" />{profile.preferredArea || profile.ward || profile.subCounty || profile.county}</p>
+                      </div>
+                    </div>
+                    {score > 0 && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">{score}% match</span>}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Budget: up to {formatMoney(profile.budgetMax)} / mo</span>
+                    {profile.propertyType && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{profile.propertyType}</span>}
+                    {profile.moveInDate && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Move: {formatMoveDate(profile.moveInDate)}</span>}
+                  </div>
+                  {profile.lifestyle?.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{profile.lifestyle.slice(0, 4).map((tag, i) => <span key={i} className="rounded-md bg-emerald-50/70 px-2 py-0.5 text-[11px] font-medium text-emerald-900">{tag}</span>)}</div>}
                 </div>
-              </article>;
+                <div className="mt-5 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <button type="button" onClick={() => setProfileToView(profile)} className="text-xs font-bold text-slate-700 hover:text-slate-900">View details</button>
+                  {conn?.status === 'accepted' ? <button type="button" onClick={() => startRoommateChat(conn)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-800"><MessageCircle className="h-3.5 w-3.5" />Chat</button> : conn?.status === 'pending' ? <span className="text-xs font-semibold text-amber-600">Request pending</span> : <button type="button" onClick={() => connectToRoommate(profile)} className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:border-emerald-500 hover:text-emerald-800">Connect</button>}
+                </div>
+              </div>;
             })}
           </div>}
-          <p className="mt-5 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs leading-5 text-slate-600"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />We never publish email addresses, phone numbers, gender, or exact addresses in roommate search. Chat opens only after the other person accepts.</p>
         </section>}
       </div>
 
-      {profileToView && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && setProfileToView(null)}><section className="mmx-glass-surface max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl p-5 shadow-2xl sm:rounded-3xl"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-lg font-bold text-emerald-900">{(profileToView.displayName || 'M').slice(0, 1).toUpperCase()}</span><span><span className="block text-lg font-extrabold text-slate-950">{profileToView.displayName || 'MarketMix member'}</span><span className="block text-xs text-slate-500">{profileToView.seekingType === 'share_existing' ? 'Has a home and wants a roommate' : profileToView.seekingType === 'find_property' ? 'Looking for a home to share' : 'Open to either option'}</span></span></div><button type="button" onClick={() => setProfileToView(null)} aria-label="Close profile" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5"/></button></div><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Preferred area</p><p className="mt-1 text-sm font-bold text-slate-900">{formatKenyaArea({ area: profileToView.preferredArea, ward: profileToView.ward, subCounty: profileToView.subCounty, county: profileToView.county })}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Monthly budget</p><p className="mt-1 text-sm font-bold text-slate-900">{formatMoney(profileToView.budgetMin)}–{formatMoney(profileToView.budgetMax)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Move-in</p><p className="mt-1 text-sm font-bold text-slate-900">{formatMoveDate(profileToView.moveInDate)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Property type</p><p className="mt-1 text-sm font-bold text-slate-900">{profileToView.propertyType || 'Flexible'}</p></div></div><div className="mt-4 space-y-2 rounded-xl border border-slate-100 p-4 text-xs text-slate-600"><p><strong>Lifestyle:</strong> {(profileToView.lifestyle || []).join(', ') || 'Not specified'}</p><p><strong>Smoking:</strong> {profileToView.smoking || 'No preference'} · <strong>Pets:</strong> {profileToView.pets || 'No preference'}</p><p><strong>Furnishing:</strong> {profileToView.furnished || 'Either'} · <strong>Study/work:</strong> {profileToView.workStudy || 'Not specified'}</p></div>{ownProfile && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-950">Combined maximum budget: <strong>{formatMoney(Number(ownProfile.budgetMax || 0) + Number(profileToView.budgetMax || 0))}/month</strong></p>}<button type="button" onClick={() => { const target = profileToView; setProfileToView(null); connectToRoommate(target); }} className="mmx-liquid-primary mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white">Connect</button></section></div>}
-
-      {profileOpen && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && setProfileOpen(false)}>
-        <form onSubmit={saveRoommateProfile} className="mmx-glass-surface max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl p-5 shadow-2xl sm:rounded-3xl sm:p-7">
-          <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-emerald-700">Your choice, your profile</p><h2 className="mt-1 text-xl font-bold text-slate-900">{ownProfile ? 'Edit roommate profile' : 'Create roommate profile'}</h2><p className="mt-1 text-xs leading-5 text-slate-500">Only the fields you enter below are shown. Leave anything blank that you do not want to share.</p></div><button type="button" onClick={() => setProfileOpen(false)} aria-label="Close profile form" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
-          {!currentUser ? <div className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Sign in to create and manage your profile. <Link to="/login" className="font-bold underline">Sign in</Link></div> : <>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-semibold text-slate-700">Display name<input required maxLength={40} value={profileForm.displayName} onChange={(event) => setProfileForm((form) => ({ ...form, displayName: event.target.value }))} placeholder="First name or a nickname" className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal outline-none focus:border-emerald-600" /></label>
-              <div className="sm:col-span-2"><KenyaAreaPicker value={{ county: profileForm.county, subCounty: profileForm.subCounty, ward: profileForm.ward, area: profileForm.preferredArea }} onChange={(area) => setProfileForm((form) => ({ ...form, county: area.county, subCounty: area.subCounty, ward: area.ward, preferredArea: area.area }))} areaLabel="Estate, neighbourhood or local place" areaPlaceholder="e.g. Kilimani, Kaptembwo or near a known landmark" /></div>
-              <label className="text-sm font-semibold text-slate-700">Minimum monthly budget (KES)<input required type="number" min="0" max="10000000" value={profileForm.budgetMin} onChange={(event) => setProfileForm((form) => ({ ...form, budgetMin: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal outline-none focus:border-emerald-600" /></label>
-              <label className="text-sm font-semibold text-slate-700">Maximum monthly budget (KES)<input required type="number" min="0" max="10000000" value={profileForm.budgetMax} onChange={(event) => setProfileForm((form) => ({ ...form, budgetMax: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal outline-none focus:border-emerald-600" /></label>
-              <label className="text-sm font-semibold text-slate-700">Move-in date<input type="date" value={profileForm.moveInDate} onChange={(event) => setProfileForm((form) => ({ ...form, moveInDate: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal outline-none focus:border-emerald-600" /></label>
-              <label className="text-sm font-semibold text-slate-700">Property type<select value={profileForm.propertyType} onChange={(event) => setProfileForm((form) => ({ ...form, propertyType: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-emerald-600">{PROPERTY_TYPES.map((type) => <option key={type} value={type === 'Any type' ? '' : type}>{type}</option>)}</select></label>
-              <label className="text-sm font-semibold text-slate-700">Roommate plan<select value={profileForm.seekingType} onChange={(event) => setProfileForm((form) => ({ ...form, seekingType: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-emerald-600"><option value="share_existing">I have a property and need a roommate</option><option value="find_property">I want to find a property to share</option><option value="either">Either option works for me</option></select></label>
-              <label className="text-sm font-semibold text-slate-700">Smoking preference<select value={profileForm.smoking} onChange={(event) => setProfileForm((form) => ({ ...form, smoking: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none"><option>No preference</option><option>Non-smoking home</option><option>Smoking outdoors only</option></select></label>
-              <label className="text-sm font-semibold text-slate-700">Pets<select value={profileForm.pets} onChange={(event) => setProfileForm((form) => ({ ...form, pets: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none"><option>No preference</option><option>Pets welcome</option><option>No pets</option></select></label>
-              <label className="text-sm font-semibold text-slate-700">Furnishing<select value={profileForm.furnished} onChange={(event) => setProfileForm((form) => ({ ...form, furnished: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none"><option>Either</option><option>Furnished</option><option>Unfurnished</option></select></label>
-              <label className="text-sm font-semibold text-slate-700">Study/work status<select value={profileForm.workStudy} onChange={(event) => setProfileForm((form) => ({ ...form, workStudy: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal outline-none"><option>Prefer not to say</option><option>Student</option><option>Working</option><option>Working from home</option><option>Other</option></select></label>
-              <label className="text-sm font-semibold text-slate-700">People you hope to share with<input type="number" min="1" max="10" value={profileForm.roommateCount} onChange={(event) => setProfileForm((form) => ({ ...form, roommateCount: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal outline-none" /></label>
-            </div>
-            <fieldset className="mt-4"><legend className="text-sm font-semibold text-slate-700">Lifestyle preferences</legend><div className="mt-2 flex flex-wrap gap-2">{LIFESTYLE_OPTIONS.map((tag) => { const selected = profileForm.lifestyle.includes(tag); return <button key={tag} type="button" aria-pressed={selected} onClick={() => setProfileForm((form) => ({ ...form, lifestyle: selected ? form.lifestyle.filter((item) => item !== tag) : [...form.lifestyle, tag] }))} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selected ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : 'border-slate-300 text-slate-600'}`}>{tag}</button>; })}</div></fieldset>
-            <div className="mt-5 flex flex-col-reverse justify-between gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center"><p className="text-xs text-slate-500">Do not include phone numbers, email, or exact addresses.</p><div className="flex gap-2"><button type="button" onClick={() => setProfileOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" disabled={savingProfile} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{savingProfile && <LoaderCircle className="h-4 w-4 animate-spin" />}{savingProfile ? 'Savingâ€¦' : ownProfile ? 'Save profile' : 'Publish profile'}</button></div></div>
-          </>}
-        </form>
-      </div>}
-
-      {actionProperty && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && setActionProperty(null)}>
-        <section className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-          <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Property actions</p><h2 className="mt-1 font-bold text-slate-900">{actionProperty.title || 'Property listing'}</h2><p className="mt-1 text-xs text-slate-500">{getPublicPropertyLocation(actionProperty)}</p></div><button type="button" onClick={() => setActionProperty(null)} aria-label="Close actions" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => saveProperty(actionProperty)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"><Heart className="h-4 w-4" /> Save</button>
-            <button type="button" onClick={() => shareProperty(actionProperty)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"><Share2 className="h-4 w-4" /> Share</button>
-            <button type="button" onClick={() => { toast(`Approximate area: ${getPublicPropertyLocation(actionProperty)}`); setActionProperty(null); }} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"><MapPin className="h-4 w-4" /> View area</button>
-            <button type="button" onClick={() => navigate(`/transport?propertyId=${encodeURIComponent(actionProperty.id)}`)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"><Truck className="h-4 w-4" /> Arrange moving</button>
-            <button type="button" onClick={() => navigate(`/roommates?propertyId=${encodeURIComponent(actionProperty.id)}`)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"><Users className="h-4 w-4" /> Find roommate</button>
-            <button type="button" onClick={() => openReport(actionProperty)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-50"><ShieldCheck className="h-4 w-4" /> Report listing</button>
+      {/* Action Sheet Modal */}
+      {actionProperty && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <h3 className="font-bold text-slate-900 line-clamp-1">{actionProperty.title || 'Property actions'}</h3>
+            <button type="button" onClick={() => setActionProperty(null)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X className="h-4 w-4" /></button>
           </div>
-          <Link to={`/property/${actionProperty.id}`} onClick={() => setActionProperty(null)} className="mt-3 block rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-bold text-white">Open property details</Link>
-        </section>
+          <div className="mt-4 space-y-2">
+            <Link to={`/property/${actionProperty.id}`} className="flex w-full items-center justify-between rounded-xl bg-slate-50 p-3.5 text-sm font-bold text-slate-900 hover:bg-slate-100">View full property details <ArrowRight className="h-4 w-4" /></Link>
+            <Link to={`/site-seeing?propertyId=${actionProperty.id}`} className="flex w-full items-center justify-between rounded-xl bg-emerald-50 p-3.5 text-sm font-bold text-emerald-900 hover:bg-emerald-100">Book Site Seeing Tour <Compass className="h-4 w-4 text-emerald-700" /></Link>
+            <button type="button" onClick={() => saveProperty(actionProperty)} className="flex w-full items-center justify-between rounded-xl bg-slate-50 p-3.5 text-sm font-bold text-slate-900 hover:bg-slate-100">Save to favorites <Heart className="h-4 w-4 text-rose-500" /></button>
+            <button type="button" onClick={() => shareProperty(actionProperty)} className="flex w-full items-center justify-between rounded-xl bg-slate-50 p-3.5 text-sm font-bold text-slate-900 hover:bg-slate-100">Share listing link <Share2 className="h-4 w-4 text-slate-600" /></button>
+            <button type="button" onClick={() => openReport(actionProperty)} className="flex w-full items-center justify-between rounded-xl bg-slate-50 p-3.5 text-sm font-bold text-rose-600 hover:bg-rose-50">Report incorrect listing <ShieldCheck className="h-4 w-4 text-rose-500" /></button>
+          </div>
+        </div>
       </div>}
 
-      {reportProperty && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4">
-        <form onSubmit={reportListing} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 className="font-bold text-slate-900">Report this listing</h2><p className="mt-1 text-xs text-slate-500">{reportProperty.title || 'Property listing'}</p></div><button type="button" onClick={() => setReportProperty(null)} aria-label="Close report" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div><label className="mt-4 block text-sm font-semibold text-slate-700">What should we review?<textarea required maxLength={1000} rows="4" value={reportReason} onChange={(event) => setReportReason(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-emerald-600" /></label><button type="submit" className="mt-4 w-full rounded-xl bg-red-700 px-4 py-3 text-sm font-bold text-white hover:bg-red-800">Send report</button></form>
+      {/* Profile Modal & Roommate Detail Modal */}
+      {profileOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <h3 className="text-xl font-bold text-slate-900">Your roommate profile</h3>
+            <button type="button" onClick={() => setProfileOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X className="h-4 w-4" /></button>
+          </div>
+          <form onSubmit={saveRoommateProfile} className="mt-5 space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Display name</label>
+              <input required value={profileForm.displayName} onChange={(e) => setProfileForm(f => ({ ...f, displayName: e.target.value }))} placeholder="e.g. Alex" className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-600" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Preferred Location in Kenya</label>
+              <KenyaAreaPicker value={{ county: profileForm.county, subCounty: profileForm.subCounty, ward: profileForm.ward }} onChange={(loc) => setProfileForm(f => ({ ...f, county: loc.county || '', subCounty: loc.subCounty || '', ward: loc.ward || '' }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Min Budget (KSh)</label>
+                <input required type="number" value={profileForm.budgetMin} onChange={(e) => setProfileForm(f => ({ ...f, budgetMin: e.target.value }))} placeholder="5000" className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-600" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Max Budget (KSh)</label>
+                <input required type="number" value={profileForm.budgetMax} onChange={(e) => setProfileForm(f => ({ ...f, budgetMax: e.target.value }))} placeholder="15000" className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-600" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Lifestyle Vibe</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {LIFESTYLE_OPTIONS.map((tag) => {
+                  const selected = profileForm.lifestyle.includes(tag);
+                  return <button key={tag} type="button" onClick={() => setProfileForm(f => ({ ...f, lifestyle: selected ? f.lifestyle.filter(t => t !== tag) : [...f.lifestyle, tag] }))} className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${selected ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{tag}</button>;
+                })}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4 border-t border-slate-100">
+              {ownProfile?.id && <button type="button" onClick={deactivateProfile} className="rounded-xl border border-rose-200 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50">Hide profile</button>}
+              <button type="submit" disabled={savingProfile} className="mmx-liquid-primary ml-auto inline-flex items-center gap-2 rounded-xl px-6 py-3 text-xs font-bold text-white shadow">{savingProfile && <LoaderCircle className="h-4 w-4 animate-spin" />}Save profile</button>
+            </div>
+          </form>
+        </div>
+      </div>}
+
+      {profileToView && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-lg font-bold text-emerald-900">{profileToView.displayName?.charAt(0) || 'U'}</div>
+              <div><h3 className="font-bold text-slate-900">{profileToView.displayName}</h3><p className="text-xs text-slate-500">{profileToView.preferredArea || profileToView.ward || profileToView.subCounty || profileToView.county}</p></div>
+            </div>
+            <button type="button" onClick={() => setProfileToView(null)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="mt-4 space-y-3 text-sm text-slate-700">
+            <p><strong>Monthly budget:</strong> up to {formatMoney(profileToView.budgetMax)}</p>
+            {profileToView.propertyType && <p><strong>Preferred home:</strong> {profileToView.propertyType}</p>}
+            {profileToView.lifestyle?.length > 0 && <div><strong className="block text-xs uppercase tracking-wider text-slate-400 mb-1">Lifestyle</strong><div className="flex flex-wrap gap-1">{profileToView.lifestyle.map((l, i) => <span key={i} className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900">{l}</span>)}</div></div>}
+          </div>
+          <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+            <button type="button" onClick={() => chooseBudgetForPair(profileToView)} className="rounded-xl border border-emerald-700 px-4 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50">Compare combined budget with homes</button>
+            <button type="button" onClick={() => { connectToRoommate(profileToView); setProfileToView(null); }} className="rounded-xl bg-emerald-700 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-800">Connect</button>
+          </div>
+        </div>
       </div>}
     </main>
   );
 };
-
-function distanceKm(lat1, lon1, lat2, lon2) {
-  const radians = (value) => (value * Math.PI) / 180;
-  const dLat = radians(lat2 - lat1);
-  const dLon = radians(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 export default ExplorePage;
