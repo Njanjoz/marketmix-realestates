@@ -53,10 +53,12 @@ const getPropertyUrl = (property) => {
   const id = property?.id || property?.propertyId;
   if (!id) return window.location.href;
 
+  const refParam = property?.referralCode ? `?ref=${encodeURIComponent(property.referralCode)}` : '';
+
   try {
-    return new URL(`/property/${encodeURIComponent(id)}`, window.location.origin).toString();
+    return new URL(`/property/${encodeURIComponent(id)}${refParam}`, window.location.origin).toString();
   } catch {
-    return `${window.location.origin}/property/${encodeURIComponent(id)}`;
+    return `${window.location.origin}/property/${encodeURIComponent(id)}${refParam}`;
   }
 };
 

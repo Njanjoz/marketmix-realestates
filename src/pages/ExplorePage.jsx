@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight, BadgeCheck, BedDouble, CheckCircle2, CircleUserRound,
-  Compass, Crosshair, Heart, Home, LoaderCircle, MapPin,
+  Compass, Crosshair, Gem, Heart, Home, LoaderCircle, MapPin,
   MessageCircle, MoreHorizontal, Search, Share2, ShieldCheck,
   SlidersHorizontal, Truck, Users, X,
 } from 'lucide-react';
@@ -16,9 +16,10 @@ import {
 import toast from 'react-hot-toast';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
+import { sendWhatsAppNotification } from '../lib/api';
 import { getCurrentLocation } from '../services/locationService';
 import { savePropertyForUser } from '../services/propertyService';
-import { getPublicPropertyLocation, resolvePropertyImage } from '../utils/propertyMapping';
+import { getPublicPropertyLocation, resolvePropertyImage, isApprovedProperty } from '../utils/propertyMapping';
 import { getListingType } from '../utils/listingType';
 import { formatKenyaArea } from '../utils/kenyaLocationOptions';
 import KenyaAreaPicker from '../components/moving/KenyaAreaPicker';
@@ -26,6 +27,8 @@ import '../components/moving/LiquidGlass.css';
 
 const TABS = [
   { id: 'properties', label: 'Properties', icon: Home },
+  { id: 'rent', label: 'Rent', icon: Home },
+  { id: 'sale', label: 'Buy', icon: Gem },
   { id: 'roommates', label: 'Roommates', icon: Users },
 ];
 
@@ -139,6 +142,22 @@ const ExplorePage = () => {
   const [combinedBudget, setCombinedBudget] = useState(null);
 
   const setTab = (tab) => {
+    if (tab === 'rent') {
+      setActiveTab('properties');
+      setStatusFilter('rent');
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', 'properties');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (tab === 'sale') {
+      setActiveTab('properties');
+      setStatusFilter('sale');
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', 'properties');
+      setSearchParams(next, { replace: true });
+      return;
+    }
     setActiveTab(tab);
     const next = new URLSearchParams(searchParams);
     next.set('tab', tab);
@@ -165,7 +184,7 @@ const ExplorePage = () => {
     setLoadingProperties(true);
     try {
       const snap = await getDocs(collection(db, 'properties'));
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter(isApprovedProperty);
       setAllProperties(list);
     } catch (error) {
       console.error('Could not load properties:', error);

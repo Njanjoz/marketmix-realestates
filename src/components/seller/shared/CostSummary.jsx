@@ -8,16 +8,29 @@ const CostSummary = ({ costs }) => {
   const {
     rent = 0,
     paymentFrequency = 'Monthly',
+    depositType = "One month's rent",
     depositAmount = 0,
+    semesterMonths = 4,
     recurringCharges = [],
     oneTimeFees = [],
   } = costs;
 
   const isMonthly = paymentFrequency === 'Monthly';
+  const isSemester = paymentFrequency === 'Semester';
+  const monthsInPeriod = isSemester ? Math.max(1, Number(semesterMonths) || 4) : 1;
+  const effectiveMonthlyRent = Number(rent) / monthsInPeriod;
+
+  const computedDeposit =
+    depositType === "One month's rent"
+      ? effectiveMonthlyRent
+      : depositType === "None"
+      ? 0
+      : Number(depositAmount) || 0;
+
   const monthlyRecurring = recurringCharges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
-  const monthlyCost = isMonthly ? Number(rent) + monthlyRecurring : null;
+  const monthlyCost = isMonthly || isSemester ? effectiveMonthlyRent + monthlyRecurring : null;
   const oneTimeTotal = oneTimeFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  const moveIn = Number(rent) + Number(depositAmount) + oneTimeTotal;
+  const moveIn = Number(rent) + computedDeposit + oneTimeTotal;
 
   return (
     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-2">

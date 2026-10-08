@@ -4,9 +4,11 @@ import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, serverTime
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Bike, Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Crosshair, MapPin, Minus, Package, Plus, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
+import { sendWhatsAppNotification } from '../lib/api';
 import { getPoint, TRANSPORT_PROGRESS, TRANSPORT_STATUS_LABELS } from '../services/transportService';
+import { notifyTransportRequest } from '../services/transportNotify';
 import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import MovingIllustration from '../components/moving/MovingIllustration';
 import TransportTrackingMap from '../components/moving/TransportTrackingMap';
@@ -113,6 +115,11 @@ function RequestTrackingCard({ request, selected, onSelect, showDetails = true }
             return <div key={status} className="relative text-center"><div className={`mx-auto grid h-7 w-7 place-items-center rounded-full border ${complete ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>{complete ? <Check className="h-3.5 w-3.5" /> : <span className="text-[10px] font-bold">{index + 1}</span>}</div><p className="mt-1.5 text-[9px] leading-3 text-slate-500 sm:text-[10px]">{TRANSPORT_STATUS_LABELS[status]}</p>{index < TRANSPORT_PROGRESS.length - 1 && <span className={`absolute left-[calc(50%+16px)] top-3.5 hidden h-px w-[calc(100%-28px)] sm:block ${progressIndex > index ? 'bg-emerald-500' : 'bg-slate-200'}`} />}</div>;
           })}</div>
           <div className="mt-5 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm"><p><span className="font-semibold text-slate-800">Pickup:</span> <span className="text-slate-600">{request.pickupLabel}</span></p><p><span className="font-semibold text-slate-800">Destination:</span> <span className="text-slate-600">{request.destinationTitle || request.destinationLabel}</span></p><p><span className="font-semibold text-slate-800">Vehicle:</span> <span className="text-slate-600">{request.vehicleLabel || 'Waiting for provider'}</span></p>{request.driverName && <p><span className="font-semibold text-slate-800">Driver:</span> <span className="text-slate-600">{request.driverName}</span></p>}{request.quotedPrice != null && <p><span className="font-semibold text-slate-800">Provider quote:</span> <span className="text-slate-600">{money(request.quotedPrice)}</span></p>}{request.etaMinutes && <p><span className="font-semibold text-slate-800">Provider ETA:</span> <span className="text-slate-600">{request.etaMinutes} min</span></p>}</div>
+          {['REQUESTED', 'DRIVER_ASSIGNED', 'PAID'].includes(request.status) && (
+            <div className="mt-3">
+              <CustomerCancelButton request={request} />
+            </div>
+          )}
           {request.driverPhone && <div className="mt-3 flex gap-2"><a href={`tel:${encodeURIComponent(request.driverPhone)}`} className="flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-bold text-white">Call driver</a><a href={`https://wa.me/${request.driverPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-bold text-emerald-900">WhatsApp</a></div>}
           <p className="mt-3 text-[11px] text-slate-500">Driver map sharing works while the assigned driver keeps this page open and location permission enabled.</p>
         </div>
@@ -372,6 +379,23 @@ const TransportPage = () => {
       setSelectedRequestId(requestRef.id);
       setStep(5);
       toast.success('Your transport request has been sent.');
+
+      sendWhatsAppNotification(
+        userProfile?.phone || userProfile?.phoneNumber || currentUser?.phoneNumber,
+        "transport-booked",
+        `🏠 MarketMix Real Estates\n` +
+        `Transport request confirmed\n` +
+        `Vehicle: ${selectedVehicle.title}\n` +
+        `Pickup: ${pickupLabel.trim()}\n` +
+        `Destination: ${destinationLabel.trim()}\n` +
+        `Items: ${totalItems} items\n` +
+        `Track: https://marketmix-realestates.vercel.app/transport`
+      );
+
+      const email = currentUser.email;
+      if (email) {
+        notifyTransportRequest({ requestId: requestRef.id, email }).catch(() => {});
+      }
     } catch (error) {
       console.error('Could not create moving request:', error);
       toast.error('Could not send the request. Please try again.');

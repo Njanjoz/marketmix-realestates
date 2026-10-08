@@ -50,6 +50,22 @@ const StepRentCosts = ({ data, update }) => {
         />
       </Field>
 
+      {data.paymentFrequency === 'Semester' && (
+        <Field label="Months in this semester" required>
+          <TextInput
+            type="number"
+            min="1"
+            max="12"
+            placeholder="e.g., 4"
+            value={data.semesterMonths || '4'}
+            onChange={(v) => update({ semesterMonths: v })}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Equivalent monthly rent: KSh {Math.round((Number(data.rentAmount || 0) / Math.max(1, Number(data.semesterMonths || 4)))).toLocaleString()}
+          </p>
+        </Field>
+      )}
+
       <Field label="Deposit type" required>
         <Select
           value={data.depositType}
@@ -67,7 +83,7 @@ const StepRentCosts = ({ data, update }) => {
 
       {data.depositType === "One month's rent" && (
         <p className="text-xs text-gray-500">
-          Deposit will be calculated as one month's rent: KSh {Number(data.rentAmount || 0).toLocaleString()}
+          Deposit will be calculated as one month's rent: KSh {Math.round(data.paymentFrequency === 'Semester' ? (Number(data.rentAmount || 0) / Math.max(1, Number(data.semesterMonths || 4))) : Number(data.rentAmount || 0)).toLocaleString()}
         </p>
       )}
 

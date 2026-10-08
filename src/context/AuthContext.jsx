@@ -44,15 +44,22 @@ export const AuthProvider = ({ children }) => {
 
   const createUserProfile = useCallback(async (user, data = {}) => {
     const ref = doc(db, 'users', user.uid);
+
+    // Merge everything the caller passed in (phone, driverIntent,
+    // driverStatus, driverApproved, driverProfile, etc.).
     const profile = {
       uid: user.uid,
       email: user.email,
       name: user.displayName || data.name || 'User',
       role: data.role || 'user',
       userType: data.userType || 'user',
+      ...data,
+      uid: user.uid,
+      email: user.email,
       createdAt: serverTimestamp(),
-      lastLogin: serverTimestamp()
+      lastLogin: serverTimestamp(),
     };
+
     await setDoc(ref, profile, { merge: true });
     return profile;
   }, []);

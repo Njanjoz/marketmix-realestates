@@ -11,6 +11,7 @@ import {
   GraduationCap, Home, Sparkles, Play, Star, Waves, Sun, DollarSign, Compass,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { sendWhatsAppNotification } from '../lib/api';
 import {
   getPublicProperty,
   savePropertyForUser,
@@ -199,6 +200,17 @@ const PropertyDetailspage = () => {
         message: inquiryText,
         propertyTitle: publicProperty.title,
       });
+
+      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone;
+      sendWhatsAppNotification(
+        landlordPhone,
+        "new-enquiry",
+        `🏠 MarketMix Real Estates\n` +
+        `New enquiry for ${publicProperty.title}\n` +
+        `From: ${currentUser?.displayName || currentUser?.email || 'Visitor'} — ${currentUser?.phoneNumber || 'N/A'}\n` +
+        `Message: "${inquiryText.slice(0, 140)}"`
+      );
+
       setInquiryText('');
       setInquiryOpen(false);
       toast.success('Inquiry sent to the seller');
@@ -231,6 +243,29 @@ const PropertyDetailspage = () => {
         meetingPoint: siteVisitForm.meetingPoint,
         notes: siteVisitForm.notes,
       });
+
+      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone;
+      sendWhatsAppNotification(
+        landlordPhone,
+        "viewing-booked-landlord",
+        `🏠 MarketMix Real Estates\n` +
+        `New viewing booked\n` +
+        `Property: ${publicProperty.title}\n` +
+        `Tenant: ${currentUser?.displayName || currentUser?.email || 'Tenant'}\n` +
+        `Date: ${siteVisitForm.date}\n` +
+        `Tenant phone: ${currentUser?.phoneNumber || 'N/A'}`
+      );
+      sendWhatsAppNotification(
+        currentUser?.phoneNumber,
+        "viewing-booked-tenant",
+        `🏠 MarketMix Real Estates\n` +
+        `Your viewing is confirmed\n` +
+        `${publicProperty.title}\n` +
+        `${publicProperty.location || ''}\n` +
+        `Date: ${siteVisitForm.date}\n` +
+        `Landlord: ${publicProperty.landlordName || 'Landlord'} — ${landlordPhone || ''}`
+      );
+
       setSiteVisitForm({
         date: '',
         time: '10:00',
@@ -325,19 +360,26 @@ const PropertyDetailspage = () => {
     return acc;
   }, {});
 
+  const rentVal = Number(p.rentAmount ?? p.price ?? 0) || 0;
+  const depositVal =
+    p.depositType === "One month's rent"
+      ? rentVal
+      : p.depositType === "None"
+      ? 0
+      : Number(p.depositAmount ?? p.deposit ?? 0) || 0;
+
   const costs = {
-    rent: p.rentAmount ?? p.price ?? 0,
-    deposit:
-      p.depositType === "One month's rent" ? Number(p.rentAmount) || 0 : Number(p.depositAmount) || 0,
-    recurring: p.recurringCharges || [],
-    oneTime: p.oneTimeFees || [],
+    rent: rentVal,
+    deposit: depositVal,
+    recurring: (p.recurringCharges || []).map((c) => ({ ...c, amount: Number(c.amount) || 0 })),
+    oneTime: (p.oneTimeFees || []).map((f) => ({ ...f, amount: Number(f.amount) || 0 })),
   };
   const monthlyCost =
-    costs.rent + costs.recurring.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    costs.rent + costs.recurring.reduce((s, c) => s + c.amount, 0);
   const moveInCost =
     costs.rent +
     costs.deposit +
-    costs.oneTime.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+    costs.oneTime.reduce((s, f) => s + f.amount, 0);
 
   const rules = p.houseRules || {};
   const gate = p.gate || {};
@@ -854,13 +896,6 @@ const PropertyDetailspage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setSiteVisitOpen((prev) => !prev)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
-              >
-                <Calendar className="w-4 h-4" /> Request site visit
-              </button>
-              <button
-                type="button"
                 onClick={() => navigate(`/site-seeing?propertyId=${id}`)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 text-white rounded-lg font-bold hover:bg-emerald-800 shadow"
               >
@@ -873,7 +908,6 @@ const PropertyDetailspage = () => {
               >
                 <MessageCircle className="w-4 h-4" /> Message seller privately
               </button>
-              <ContactSellerButton onClick={() => setInquiryOpen((prev) => !prev)} className="w-full bg-slate-900 hover:bg-slate-800" />
             </div>
 
             <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
@@ -980,7 +1014,7 @@ const PropertyDetailspage = () => {
 
             <p className="text-[11px] text-gray-400 mt-4 leading-snug">
               Listing added {p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : 'recently'} ·
-              {' '}Views: {p.views || 0}
+              {' '}Views: {p.views || 0} · Clicks: {p.clicks || 0} · Saves: {p.saves || 0}
             </p>
           </div>
         </div>

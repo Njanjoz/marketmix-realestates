@@ -35,21 +35,14 @@ const propertyTypeIcons = {
   other: Building2,
 };
 
-const StepPropertyType = ({ data, update, onNext }) => {
+const StepPropertyType = ({ data, update }) => {
   const handleSelect = (id) => {
     const isShortStay = id === 'urbannest';
     update({
       propertyType: id,
-      listingType: isShortStay ? 'rent' : data.listingType || 'rent',
-      unitType: '',
-      roomType: '',
-      rentalModel: isShortStay ? 'Short-term' : '',
-      occupancy: '1',
-      sharingAllowed: false,
+      listingType: isShortStay ? 'short_stay' : data.listingType || 'rent',
+      rentalModel: isShortStay ? 'Short-term' : data.rentalModel || '',
     });
-    if (onNext) {
-      setTimeout(() => onNext(), 300);
-    }
   };
 
   return (
@@ -57,7 +50,7 @@ const StepPropertyType = ({ data, update, onNext }) => {
       <Field
         label="What type of property are you listing?"
         required
-        hint="Choose the closest match. Selecting an option immediately animates the preview and advances to relevant details."
+        hint="Choose the closest match. Selecting an option immediately constructs the building in the live preview."
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {PROPERTY_TYPES.map((opt) => {

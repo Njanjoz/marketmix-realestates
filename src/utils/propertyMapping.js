@@ -43,6 +43,17 @@ export const getPublicPropertyLocation = (property) => {
   return [...new Set(parts)].join(', ') || 'Location shared on request';
 };
 
+export const isApprovedProperty = (p) => {
+  if (!p) return false;
+  const status = String(p.status || '').toLowerCase();
+  const approval = String(p.approvalStatus || '').toLowerCase();
+  const verification = String(p.verificationStatus || '').toLowerCase();
+
+  if (status === 'draft' || approval === 'draft' || verification === 'draft') return false;
+  if (approval === 'approved' || verification === 'approved') return true;
+  return false;
+};
+
 const isPersistableImageUrl = (value) => {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();

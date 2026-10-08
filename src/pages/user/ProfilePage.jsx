@@ -1,12 +1,13 @@
 // src/pages/user/ProfilePage.jsx - FINAL WORKING VERSION
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, Phone, Shield, Briefcase, Home, Save, ArrowLeft, Building, TrendingUp, MapPin, Edit2, X, LogOut, RefreshCw, AlertTriangle, Repeat, CheckCircle } from 'lucide-react';
+import { User, Mail, Phone, Shield, Briefcase, Home, Save, ArrowLeft, Building, TrendingUp, MapPin, Edit2, X, LogOut, RefreshCw, AlertTriangle, Repeat, CheckCircle, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { SWITCHABLE_ROLES, ROLES, getRoleLabel as sharedGetRoleLabel } from '../../constants/roles';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
@@ -58,34 +59,50 @@ const ProfilePage = () => {
     toast.success('Logged out');
   };
 
-  const handleRoleChange = async (newRole, newUserType) => {
-    if (!currentUser) {
-      toast.error('No user logged in');
-      return;
-    }
-    
+  const handleRoleChange = async (newRoleValue, newUserType) => {
+    if (!currentUser) { toast.error('No user logged in'); return; }
+
     setIsSwitching(true);
-    
     try {
-      // Direct Firestore update
-      const userRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userRef, {
-        role: newRole,
-        userType: newUserType,
+      const target = availableRoles.find((r) => r.value === newRoleValue);
+      if (!target) throw new Error('Unknown role');
+
+      const isDriverIntent = target.value === 'driver';
+
+      // Driver stays a normal user until admin approves.
+      const roleUpdate = {
+        userType: target.userType,
+        role: isDriverIntent ? 'user' : target.storedRole,
         updatedAt: serverTimestamp(),
-      });
-      
-      // Update context
-      await updateUserProfile({ role: newRole, userType: newUserType });
-      
-      toast.success(`Switched to ${getRoleLabel(newRole)}!`);
+        ...(isDriverIntent
+          ? {
+              driverIntent: true,
+              // Only set to pending if not already approved
+              ...(userProfile?.driverApproved === true
+                ? {}
+                : { driverStatus: 'pending', driverApproved: false }),
+            }
+          : {}),
+      };
+
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, roleUpdate);
+      await updateUserProfile(roleUpdate);
+
+      toast.success(
+        isDriverIntent
+          ? 'Driver onboarding required — complete your details.'
+          : `Switched to ${target.label}!`
+      );
       setShowRoleModal(false);
-      
-      // Reload to dashboard
+
       setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 500);
-      
+        if (isDriverIntent && userProfile?.driverApproved !== true) {
+          navigate('/driver/onboard');
+        } else {
+          navigate('/dashboard');
+        }
+      }, 400);
     } catch (error) {
       console.error('Role change error:', error);
       toast.error(`Failed: ${error.message}`);
@@ -93,10 +110,8 @@ const ProfilePage = () => {
     }
   };
 
-  const getRoleLabel = (role) => {
-    const roles = { admin: 'Admin', agent: 'Agent', seller: 'Seller', buyer: 'Buyer', investor: 'Investor' };
-    return roles[role] || 'User';
-  };
+  const getRoleLabel = (role) => sharedGetRoleLabel(role);
+
 
   const getRoleColor = (role) => {
     const colors = { 
@@ -109,13 +124,21 @@ const ProfilePage = () => {
     return colors[role] || 'bg-gray-100 text-gray-800';
   };
 
-  const availableRoles = [
-    { value: 'buyer', label: 'Buyer/Tenant', userType: 'buyer', icon: <Home size={18} />, desc: 'Browse properties' },
-    { value: 'seller', label: 'Seller/Landlord', userType: 'seller', icon: <Building size={18} />, desc: 'List properties' },
-    { value: 'investor', label: 'Investor', userType: 'investor', icon: <TrendingUp size={18} />, desc: 'Investment focus' },
-    { value: 'agent', label: 'Real Estate Agent', userType: 'agent', icon: <Briefcase size={18} />, desc: 'Professional tools' },
-    { value: 'admin', label: 'Administrator', userType: 'admin', icon: <Shield size={18} />, desc: 'Full access' },
-  ];
+  // Pulled from shared roles. Admin intentionally excluded.
+  const availableRoles = SWITCHABLE_ROLES.map((r) => ({
+    value: r.storedRole === 'user' && r.value === 'buyer' ? 'buyer' : r.value,
+    label: r.label,
+    userType: r.userType,
+    storedRole: r.storedRole,
+    icon:
+      r.icon === 'home' ? <Home size={18} /> :
+      r.icon === 'building' ? <Building size={18} /> :
+      r.icon === 'trending' ? <TrendingUp size={18} /> :
+      r.icon === 'briefcase' ? <Briefcase size={18} /> :
+      r.icon === 'truck' ? <Truck size={18} /> :
+      <Shield size={18} />,
+    desc: r.desc,
+  }));
 
   if (loading) return <LoadingSpinner />;
   

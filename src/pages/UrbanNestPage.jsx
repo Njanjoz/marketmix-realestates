@@ -8,6 +8,7 @@ import { db } from '../firebase/config';
 import {
   resolvePropertyImage,
   getPublicPropertyLocation,
+  isApprovedProperty,
 } from '../utils/propertyMapping';
 import '../components/moving/LiquidGlass.css';
 
@@ -23,7 +24,7 @@ export default function UrbanNestPage() {
         const list = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        })).filter(isApprovedProperty);
 
         setProperties(list);
         setLoading(false);

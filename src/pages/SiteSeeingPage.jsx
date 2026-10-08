@@ -13,9 +13,8 @@ import KenyaLocationSearch from '../components/moving/KenyaLocationSearch';
 import KenyaAreaPicker from '../components/moving/KenyaAreaPicker';
 import CoordinateMapPicker from '../components/moving/CoordinateMapPicker';
 import '../components/moving/LiquidGlass.css';
-import { resolvePropertyImage, getPublicPropertyLocation } from '../utils/propertyMapping';
+import { resolvePropertyImage, getPublicPropertyLocation, isApprovedProperty } from '../utils/propertyMapping';
 import { reverseGeocodeKenyaPoint } from '../utils/transportLocationLookup';
-import TestPaymentModal from '../components/TestPaymentModal';
 
 const DEFAULT_PACKAGES = [
   {
@@ -114,7 +113,7 @@ export default function SiteSeeingPage() {
   useEffect(() => {
     // Load properties from Firestore
     const unsubProps = onSnapshot(collection(db, 'properties'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(isApprovedProperty);
       setProperties(list);
       setLoading(false);
       if (initialPropertyId) {
@@ -197,16 +196,11 @@ export default function SiteSeeingPage() {
     return 0;
   });
 
-  const handleBookViewing = () => {
+  const handleBookViewing = async () => {
     if (!activeProperty || !selectedPackage) {
       toast.error('Please select a property and a site seeing package');
       return;
     }
-    setShowPaymentModal(true);
-  };
-
-  const handlePaymentSuccess = async () => {
-    setShowPaymentModal(false);
     setBookingLoading(true);
     try {
       await addDoc(collection(db, 'sightseeingBookings'), {
@@ -218,17 +212,17 @@ export default function SiteSeeingPage() {
         packagePrice: selectedPackage.price || selectedPackage.priceLabel,
         userId: currentUser?.uid || 'anonymous',
         userEmail: currentUser?.email || 'guest@marketmix.site',
-        paymentStatus: 'paid',
+        paymentStatus: 'confirmed',
         status: 'confirmed',
         createdAt: serverTimestamp()
       });
 
-      toast.success(`✅ Payment verified! Site seeing tour for "${activeProperty.title}" booked & confirmed.`);
+      toast.success(`✅ Site seeing tour for "${activeProperty.title}" booked & confirmed successfully!`);
       setActiveProperty(null);
       setSelectedPackage(null);
     } catch (error) {
       console.error('Booking error:', error);
-      toast.error('Payment verified, but failed to record booking. Contact support.');
+      toast.error('Failed to record booking. Please try again.');
     } finally {
       setBookingLoading(false);
     }
@@ -382,19 +376,38 @@ export default function SiteSeeingPage() {
         {/* Property & Package Selection Modal */}
         <AnimatePresence>
           {activeProperty && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-sm overflow-y-auto">
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-3xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+                initial={{ opacity: 0, y: 50, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 50, scale: 0.95 }}
+                className="relative w-full max-w-3xl rounded-t-3xl sm:rounded-3xl bg-white p-6 sm:p-8 shadow-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto pb-32 sm:pb-8"
               >
                 <button
                   onClick={() => { setActiveProperty(null); setSelectedPackage(null); }}
-                  className="absolute right-4 top-4 rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"
+                  className="absolute right-4 top-4 rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 z-10"
                 >
                   ✕
                 </button>
+
+                {/* Property Selector Dropdown */}
+                <div className="mb-6">
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Select Property to Visit</label>
+                  <select
+                    value={activeProperty?.id || ''}
+                    onChange={(e) => {
+                      const found = properties.find(p => p.id === e.target.value);
+                      if (found) setActiveProperty(found);
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500"
+                  >
+                    {properties.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.title} — KSh {Number(p.price || 0).toLocaleString()} ({p.location || 'Kenya'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div className="flex flex-col sm:flex-row gap-6 items-start border-b border-slate-100 pb-6">
                   <img
@@ -446,13 +459,16 @@ export default function SiteSeeingPage() {
                               </li>
                             ))}
                           </ul>
+                          <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between">
+                            <span className="text-[11px] text-emerald-700 font-semibold">Ready to book</span>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="mt-8 flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+                <div className="mt-8 flex items-center justify-end gap-3 border-t border-slate-100 pt-4 pb-20 sm:pb-0">
                   <button
                     onClick={() => { setActiveProperty(null); setSelectedPackage(null); }}
                     className="rounded-xl border border-slate-200 px-5 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50"
@@ -465,22 +481,13 @@ export default function SiteSeeingPage() {
                     className="mmx-liquid-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-xs font-bold text-white shadow transition hover:opacity-95 disabled:opacity-50"
                   >
                     {bookingLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                    <span>{bookingLoading ? 'Booking...' : selectedPackage ? `Continue with ${selectedPackage.title}` : 'Select a Package'}</span>
+                    <span>{bookingLoading ? 'Booking...' : selectedPackage ? `Confirm & Book ${selectedPackage.title}` : 'Select a Package'}</span>
                   </button>
                 </div>
               </motion.div>
             </div>
           )}
         </AnimatePresence>
-
-        {/* Test Payment Modal */}
-        <TestPaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          onSuccess={handlePaymentSuccess}
-          title={`Pay for ${selectedPackage?.title || 'Site Seeing Package'}`}
-          subtitle={`Complete KSh ${selectedPackage?.price || 100} test payment via M-Pesa to confirm your site seeing booking.`}
-        />
 
       </div>
     </main>

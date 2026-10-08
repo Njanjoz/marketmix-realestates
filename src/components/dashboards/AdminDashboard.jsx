@@ -21,15 +21,18 @@ import {
 import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
 import PromotePropertyModal from '../PromotePropertyModal';
-import TestPaymentModal from '../TestPaymentModal';
 import AgencyPackagesPage from '../../pages/admin/AgencyPackagesPage';
 import SightseeingPackagesPage from '../../pages/admin/SightseeingPackagesPage';
 import MovingPackagesPage from '../../pages/admin/MovingPackagesPage';
 import TransportRequestsPage from '../../pages/admin/TransportRequestsPage';
 import AdminServiceRequestsPage from '../../pages/admin/ServiceRequestsPage';
+import WhatsAppControl from '../../pages/admin/WhatsAppControl';
 import { useAuth } from '../../context/AuthContext';
 
 const YOUTUBE_ADMIN_API = import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
+
+const YOUR_ADMIN_BACKEND =
+  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
 
 // Glassmorphism styles
 const glass = {
@@ -158,6 +161,12 @@ const AdminDashboard = () => {
     title: 'Homepage',
     subtitle: 'Customize this page from the admin dashboard.'
   }, null, 2));
+
+  // ---- Driver approvals ----
+  const [allDrivers, setAllDrivers] = useState([]);
+  const [driverFilter, setDriverFilter] = useState('pending');
+  const [driverSavingId, setDriverSavingId] = useState('');
+
 
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -328,10 +337,29 @@ const AdminDashboard = () => {
     }
   };
 
+  const loadDrivers = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const drivers = all.filter(u =>
+        u.driverProfile ||
+        u.driverApproved === true ||
+        u.driverStatus === 'approved' ||
+        u.driverStatus === 'rejected' ||
+        u.driverStatus === 'pending'
+      );
+      setAllDrivers(drivers);
+    } catch (e) {
+      console.error('Error loading drivers:', e);
+      toast.error('Could not load driver applications.');
+    }
+  };
+
   useEffect(() => {
     loadProperties();
     loadUsers();
     loadAllPagesSettings();
+    loadDrivers();
   }, []);
 
   const handleSaveHomepageSettings = async (e) => {
@@ -627,6 +655,33 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDriverDecision = async (driver, decision) => {
+    if (!driver) return;
+    if (!currentUser) { toast.error('Sign in as admin.'); return; }
+    let reason = '';
+    if (decision === 'reject') {
+      reason = window.prompt('Reason for rejection (sent to driver):', 'Documents unclear');
+      if (reason === null) return;
+    }
+    setDriverSavingId(driver.id);
+    try {
+      const token = await currentUser.getIdToken();
+      const res = await fetch(`${YOUR_ADMIN_BACKEND}/api/driver/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: driver.id, decision, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.message || `Server ${res.status}`);
+      toast.success(decision === 'approve' ? `Approved ${driver.name || driver.email}` : `Rejected ${driver.name || driver.email}`);
+      await loadDrivers();
+    } catch (e) {
+      toast.error(e.message || 'Could not update driver.');
+    } finally {
+      setDriverSavingId('');
+    }
+  };
+
   const getStatusBadge = (status) => {
     switch(status) {
       case 'pending':
@@ -652,10 +707,12 @@ const AdminDashboard = () => {
     { id: 'homepageManager', label: 'Homepage Placements', icon: <Layout size={18} /> },
     { id: 'homepageEditor', label: 'Edit All Pages', icon: <Edit size={18} /> },
     { id: 'transportRequests', label: 'Moving Requests', icon: <Truck size={18} /> },
+    { id: 'driverApprovals', label: 'Driver Approvals', icon: <UserCheck size={18} /> },
     { id: 'serviceRequests', label: 'Move-in Requests', icon: <Briefcase size={18} /> },
     { id: 'movingPackages', label: 'Moving Packages', icon: <Package size={18} /> },
     { id: 'agencyPackages', label: 'Agency Packages', icon: <Building2 size={18} /> },
     { id: 'sightseeingPackages', label: 'Sightseeing Packages', icon: <Compass size={18} /> },
+    { id: 'whatsappControl', label: 'WhatsApp Control', icon: <MessageCircle size={18} /> },
     { id: 'users', label: 'User Management', icon: <Users size={18} /> },
     { id: 'allProperties', label: 'All Properties', icon: <Building size={18} /> },
     { id: 'analytics', label: 'Analytics', icon: <BarChart size={18} /> },
@@ -1508,10 +1565,105 @@ const AdminDashboard = () => {
 
         {/* Analytics Section */}
         {activeSection === 'transportRequests' && <TransportRequestsPage />}
+        {activeSection === 'driverApprovals' && (
+          <div style={{ ...glass, padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 500 }}>Driver Approvals</div>
+                <div style={{ fontSize: 12, color: ink2, marginTop: 4 }}>
+                  Drivers self-register at <a href="/driver/onboard" target="_blank" rel="noreferrer" style={{ color: red, fontWeight: 600, textDecoration: 'underline' }}>/driver/onboard</a>. Review vehicle + license, then approve or reject.
+                </div>
+              </div>
+              <button type="button" onClick={loadDrivers} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 12, background: '#fff', color: ink2, border: `1px solid ${rule}`, cursor: 'pointer' }}>
+                <RefreshCw size={15} /> Refresh
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+              {[
+                { id: 'pending', label: 'Pending', count: allDrivers.filter(d => d.driverStatus !== 'approved' && d.driverStatus !== 'rejected').length },
+                { id: 'approved', label: 'Approved', count: allDrivers.filter(d => d.driverStatus === 'approved' || d.driverApproved === true).length },
+                { id: 'rejected', label: 'Rejected', count: allDrivers.filter(d => d.driverStatus === 'rejected').length },
+                { id: 'all', label: 'All', count: allDrivers.length },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setDriverFilter(tab.id)} style={{ padding: '8px 16px', borderRadius: 20, background: driverFilter === tab.id ? red : 'transparent', color: driverFilter === tab.id ? 'white' : ink2, border: `1px solid ${driverFilter === tab.id ? red : rule}`, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+                  {tab.label} · {tab.count}
+                </button>
+              ))}
+            </div>
+
+            {(() => {
+              const visible = allDrivers.filter(d => {
+                if (driverFilter === 'all') return true;
+                if (driverFilter === 'approved') return d.driverStatus === 'approved' || d.driverApproved === true;
+                if (driverFilter === 'rejected') return d.driverStatus === 'rejected';
+                return d.driverStatus !== 'approved' && d.driverStatus !== 'rejected' && d.driverApproved !== true;
+              });
+
+              if (!visible.length) return (
+                <div style={{ padding: 40, textAlign: 'center', color: ink2, border: `1px dashed ${rule}`, borderRadius: 16 }}>
+                  <UserCheck size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
+                  <p style={{ margin: 0 }}>No {driverFilter} driver applications.</p>
+                </div>
+              );
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {visible.map(driver => {
+                    const profile = driver.driverProfile || {};
+                    const status = driver.driverApproved === true || driver.driverStatus === 'approved' ? 'approved' : driver.driverStatus === 'rejected' ? 'rejected' : 'pending';
+                    const badge = status === 'approved' ? { bg: greenLight, color: green, label: 'Approved' } : status === 'rejected' ? { bg: redLight, color: red, label: 'Rejected' } : { bg: yellowLight, color: yellow, label: 'Pending review' };
+                    return (
+                      <div key={driver.id} style={{ background: 'rgba(255,255,255,0.55)', border: `1px solid ${rule}`, borderRadius: 16, padding: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: `linear-gradient(135deg, ${red}, #ef4444)`, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20, flex: '0 0 auto' }}>
+                          {(driver.name || driver.email || 'D').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 600, fontSize: 15 }}>{driver.name || 'No name'}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: badge.bg, color: badge.color, textTransform: 'uppercase', letterSpacing: 0.4 }}>{badge.label}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: ink2, marginTop: 3 }}>{driver.email || '—'} · {profile.phone || driver.phone || '—'}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 12 }}>
+                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
+                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Vehicle</div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.vehicleId || '—'}</div>
+                            </div>
+                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
+                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Plate</div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.plate || '—'}</div>
+                            </div>
+                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
+                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>License</div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.licenseNumber || '—'}</div>
+                            </div>
+                          </div>
+                          {driver.driverRejectionReason && status === 'rejected' && (
+                            <div style={{ marginTop: 10, fontSize: 12, color: red, background: redLight, padding: '6px 10px', borderRadius: 8 }}>Reason: {driver.driverRejectionReason}</div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flex: '0 0 auto' }}>
+                          {status !== 'approved' && (
+                            <button onClick={() => handleDriverDecision(driver, 'approve')} disabled={driverSavingId === driver.id} style={{ padding: '9px 16px', background: green, color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: driverSavingId === driver.id ? 0.6 : 1 }}>{driverSavingId === driver.id ? 'Working…' : 'Approve'}</button>
+                          )}
+                          {status !== 'rejected' && (
+                            <button onClick={() => handleDriverDecision(driver, 'reject')} disabled={driverSavingId === driver.id} style={{ padding: '9px 16px', background: red, color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: driverSavingId === driver.id ? 0.6 : 1 }}>Reject</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {activeSection === 'serviceRequests' && <AdminServiceRequestsPage />}
         {activeSection === 'movingPackages' && <MovingPackagesPage />}
         {activeSection === 'agencyPackages' && <AgencyPackagesPage />}
         {activeSection === 'sightseeingPackages' && <SightseeingPackagesPage />}
+        {activeSection === 'whatsappControl' && <WhatsAppControl />}
 
         {activeSection === 'analytics' && (
           <div style={{ ...glass, padding: '24px', textAlign: 'center' }}>

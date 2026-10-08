@@ -5,6 +5,7 @@ import {
   doc, serverTimestamp, query, orderBy 
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { isApprovedProperty } from "../utils/propertyMapping";
 
 const PropertyContext = createContext();
 
@@ -24,10 +25,9 @@ export const PropertyProvider = ({ children }) => {
     try {
       const q = query(collection(db, "properties"), orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
-      const propsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const propsData = querySnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(isApprovedProperty);
       setProperties(propsData);
     } catch (error) {
       console.error("Error fetching public properties:", error);

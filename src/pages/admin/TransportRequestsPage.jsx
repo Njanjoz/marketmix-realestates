@@ -6,6 +6,9 @@ import { db } from '../../firebase/config';
 import { TRANSPORT_STATUSES, TRANSPORT_STATUS_LABELS } from '../../services/transportService';
 import '../../components/moving/LiquidGlass.css';
 
+const BACKEND =
+  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+
 const draftFrom = (request) => ({
   status: request.status || 'REQUESTED', quote: request.quotedPrice == null ? '' : String(request.quotedPrice),
   driverUserId: request.driverUserId || '', driverName: request.driverName || '', driverPhone: request.driverPhone || '',
@@ -45,6 +48,19 @@ const TransportRequestsPage = () => {
         etaMinutes: draft.etaMinutes === '' ? null : Number(draft.etaMinutes),
         updatedAt: serverTimestamp(),
       });
+
+      // Fire email + WhatsApp to the customer (non-blocking, fire-and-forget)
+      fetch(`${BACKEND}/api/moving/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: request.id }),
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (!res.success) console.warn('Moving notify failed:', res);
+        })
+        .catch((err) => console.warn('Moving notify error:', err.message));
+
       toast.success('Move details sent to the customer.');
     } catch (error) {
       console.error('Could not update transport request:', error);

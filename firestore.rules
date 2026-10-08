@@ -11,7 +11,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && getUserData().role == 'admin';
+      return isAuthenticated() && (getUserData().role == 'admin' || getUserData().userType == 'admin');
     }
     
     function isOwner(data) {

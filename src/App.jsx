@@ -34,6 +34,10 @@ const TransportPage = lazy(() => import('./pages/TransportPage'));
 const SiteSeeingPage = lazy(() => import('./pages/SiteSeeingPage'));
 const UrbanNestPage = lazy(() => import('./pages/UrbanNestPage'));
 const TransportDriverPage = lazy(() => import('./pages/TransportDriverPage'));
+const ReceiptPage = lazy(() => import('./pages/ReceiptPage'));
+const DriverOnboarding = lazy(() => import('./pages/driver/DriverOnboarding'));
+const DriverDashboard = lazy(() => import('./pages/driver/DriverDashboard'));
+const DriverTripView  = lazy(() => import('./pages/driver/DriverTripView'));
 
 // Dashboard Router
 const DashboardRouter = lazy(() => import('./components/dashboards/DashboardRouter'));
@@ -46,6 +50,7 @@ const AdminTransportRequestsPage = lazy(() => import('./pages/admin/TransportReq
 const MovingPackagesPage = lazy(() => import('./pages/admin/MovingPackagesPage'));
 const AgencyPackagesPage = lazy(() => import('./pages/admin/AgencyPackagesPage'));
 const SightseeingPackagesPage = lazy(() => import('./pages/admin/SightseeingPackagesPage'));
+const WhatsAppControl = lazy(() => import('./pages/admin/WhatsAppControl'));
 
 function ScrollToTop() {
   const location = useLocation();
@@ -97,7 +102,7 @@ function App() {
         <PropertyProvider>
           <SearchProvider>
             <StyledComponentsProvider>
-              <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
+              <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
                 <Toaster position="top-right" />
                 {network.online === false && (
                   <div className="fixed inset-x-0 top-0 z-50 bg-red-600 text-white shadow-md">
@@ -139,6 +144,16 @@ function App() {
                       <Route path="/transport" element={<TransportPage />} />
                       <Route path="/site-seeing" element={<SiteSeeingPage />} />
                       <Route path="/sightseeing" element={<Navigate to="/site-seeing" replace />} />
+                      <Route path="/receipt/:ref" element={<ReceiptPage />} />
+                      <Route path="/driver/onboard" element={
+                        <ProtectedRoute><DriverOnboarding /></ProtectedRoute>
+                      } />
+                      <Route path="/driver/dashboard" element={
+                        <ProtectedRoute><DriverDashboard /></ProtectedRoute>
+                      } />
+                      <Route path="/driver/trip/:requestId" element={
+                        <ProtectedRoute><DriverTripView /></ProtectedRoute>
+                      } />
                       <Route path="/transport/driver" element={
                         <ProtectedRoute><TransportDriverPage /></ProtectedRoute>
                       } />
@@ -180,6 +195,7 @@ function App() {
                       <Route path="/admin/sightseeing-packages" element={
                         <ProtectedRoute allowedRoles={['admin']}><SightseeingPackagesPage /></ProtectedRoute>
                       } />
+                      <Route path="/admin/whatsapp" element={<WhatsAppControl />} />
 
                       {/* User Profile Routes */}
                       <Route path="/profile" element={

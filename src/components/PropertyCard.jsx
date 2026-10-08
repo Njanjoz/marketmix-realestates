@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bed, Bath, Square, Heart, Eye, Share2 } from 'lucide-react';
-import { getPropertyImage } from '../services/propertyService';
+import { getPropertyImage, recordPropertyClick } from '../services/propertyService';
 import { shareProperty } from '../services/shareService';
 import toast from 'react-hot-toast';
 import { getListingType } from '../utils/listingType';

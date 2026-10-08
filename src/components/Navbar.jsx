@@ -71,8 +71,6 @@ const Navbar = () => {
 
   // Navigation Items including UrbanNest, Transport, Roommates, Luxury
   const navItems = useMemo(() => [
-    { name: 'Buy', path: '/properties?status=sale', icon: <Gem className="w-4 h-4" /> },
-    { name: 'Rent', path: '/properties?status=rent', icon: <Home className="w-4 h-4" /> },
     { name: 'Explore', path: '/explore', icon: <Compass className="w-4 h-4" /> },
     { name: 'UrbanNest', path: '/urban-nest', icon: <Building2 className="w-4 h-4 text-emerald-600" /> },
     { name: 'Transport', path: '/transport', icon: <Truck className="w-4 h-4" /> },
@@ -189,6 +187,7 @@ const Navbar = () => {
         { name: 'Move-in Requests', path: '/admin/service-requests', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'Moving Requests', path: '/admin/transport-requests', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'Moving Package Posters', path: '/admin/moving-packages', icon: <Briefcase className="w-4 h-4" /> },
+        { name: 'WhatsApp Control', path: '/admin/whatsapp', icon: <MessageSquare className="w-4 h-4" /> },
       ] : []),
       ...baseLinks
     ];

@@ -196,3 +196,37 @@ export const getAllReferralsAndAcquisitions = async () => {
     return { properties: [], acquisitions: [], tokens: [] };
   }
 };
+
+/**
+ * 7. Record 10% commission when someone books through a referral link/code
+ */
+export const recordReferralBooking = async ({ referralCode, propertyId, bookingAmount, buyerId }) => {
+  if (!referralCode) return;
+  try {
+    const q = query(collection(db, 'properties'), where('referralCode', '==', referralCode));
+    const snap = await getDocs(q);
+    if (snap.empty) return;
+    const propData = snap.docs[0].data();
+    const referrerId = propData.submittedByUserId;
+    if (!referrerId || referrerId === buyerId) return;
+
+    const commissionAmount = Number(bookingAmount || 0) * 0.10; // 10% commission
+    const tokenCode = `MM-COM-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    await addDoc(collection(db, 'rewardTokens'), {
+      tokenCode,
+      propertyId,
+      referrerId,
+      buyerId,
+      rewardAmount: commissionAmount,
+      commissionPercentage: 10,
+      status: 'APPROVED',
+      createdAt: serverTimestamp(),
+      description: `10% commission for booking through referral code ${referralCode}`
+    });
+
+    console.log(`✅ Recorded 10% referral commission (KSh ${commissionAmount}) for referrer ${referrerId}`);
+  } catch (err) {
+    console.error('Error recording referral booking commission:', err);
+  }
+};

@@ -24,7 +24,10 @@ export const getPropertyImage = (property) => {
 export const getPublicProperty = async (propertyId) => {
   const docRef = doc(db, "properties", propertyId);
   const snap = await getDoc(docRef);
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!snap.exists()) return null;
+  const data = { id: snap.id, ...snap.data() };
+  if (data.approvalStatus === 'draft' || data.status === 'draft') return null;
+  return data;
 };
 
 /**
@@ -89,4 +92,18 @@ export const createSiteVisit = async ({ propertyId, buyerId, agentId, requestedD
   };
   const docRef = await addDoc(collection(db, 'siteVisits'), payload);
   return { id: docRef.id, ...payload };
+};
+
+export const recordPropertyClick = async (propertyId, userId) => {
+  if (!propertyId) return;
+  try {
+    const ref = doc(db, 'propertyClicks', `${propertyId}_${Date.now()}`);
+    await setDoc(ref, {
+      propertyId,
+      userId: userId || 'anonymous',
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.error('Error recording property click:', err);
+  }
 };
