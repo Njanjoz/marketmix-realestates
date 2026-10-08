@@ -54,8 +54,6 @@ export const AuthProvider = ({ children }) => {
       role: data.role || 'user',
       userType: data.userType || 'user',
       ...data,
-      uid: user.uid,
-      email: user.email,
       createdAt: serverTimestamp(),
       lastLogin: serverTimestamp(),
     };

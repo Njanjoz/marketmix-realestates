@@ -1,0 +1,708 @@
+########## 1. ADMIN DASHBOARD: BACKUP vs CURRENT ##########
+--- .backup-20261008-133459/AdminDashboard.jsx	2026-10-08 13:34:59.255751800 +0300
++++ src/components/dashboards/AdminDashboard.jsx	2026-10-08 16:38:31.266076700 +0300
+@@ -31,6 +31,9 @@
+ 
+ const YOUTUBE_ADMIN_API = import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
+ 
++const YOUR_ADMIN_BACKEND =
++  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
++
+ // Glassmorphism styles
+ const glass = {
+   background: 'rgba(255,255,255,0.62)',
+@@ -159,6 +162,12 @@
+     subtitle: 'Customize this page from the admin dashboard.'
+   }, null, 2));
+ 
++  // ---- Driver approvals ----
++  const [allDrivers, setAllDrivers] = useState([]);
++  const [driverFilter, setDriverFilter] = useState('pending');
++  const [driverSavingId, setDriverSavingId] = useState('');
++
++
+   const [stats, setStats] = useState({
+     totalUsers: 0,
+     totalProperties: 0,
+@@ -328,10 +337,29 @@
+     }
+   };
+ 
++  const loadDrivers = async () => {
++    try {
++      const snap = await getDocs(collection(db, 'users'));
++      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
++      const drivers = all.filter(u =>
++        u.driverProfile ||
++        u.driverApproved === true ||
++        u.driverStatus === 'approved' ||
++        u.driverStatus === 'rejected' ||
++        u.driverStatus === 'pending'
++      );
++      setAllDrivers(drivers);
++    } catch (e) {
++      console.error('Error loading drivers:', e);
++      toast.error('Could not load driver applications.');
++    }
++  };
++
+   useEffect(() => {
+     loadProperties();
+     loadUsers();
+     loadAllPagesSettings();
++    loadDrivers();
+   }, []);
+ 
+   const handleSaveHomepageSettings = async (e) => {
+@@ -627,6 +655,32 @@
+     }
+   };
+ 
++  const handleDriverDecision = async (driver, decision) => {
++    if (!driver) return;
++    if (!currentUser) { toast.error('Sign in as admin.'); return; }
++    let reason = '';
++    if (decision === 'reject') {
++      reason = window.prompt('Reason for rejection (sent to driver):', 'Documents unclear');
++      if (reason === null) return;
++    }
++    setDriverSavingId(driver.id);
++    try {
++      const userRef = doc(db, 'users', driver.id);
++      const updateData = decision === 'approve'
++        ? { driverApproved: true, driverStatus: 'approved', role: 'driver', driverRejectionReason: null, updatedAt: serverTimestamp() }
++        : { driverApproved: false, driverStatus: 'rejected', driverRejectionReason: reason || 'Documents unclear', updatedAt: serverTimestamp() };
++
++      await updateDoc(userRef, updateData);
++      toast.success(decision === 'approve' ? `Approved ${driver.name || driver.email}` : `Rejected ${driver.name || driver.email}`);
++      await loadDrivers();
++    } catch (e) {
++      console.error('Error updating driver decision:', e);
++      toast.error(e.message || 'Could not update driver.');
++    } finally {
++      setDriverSavingId('');
++    }
++  };
++
+   const getStatusBadge = (status) => {
+     switch(status) {
+       case 'pending':
+@@ -652,6 +706,7 @@
+     { id: 'homepageManager', label: 'Homepage Placements', icon: <Layout size={18} /> },
+     { id: 'homepageEditor', label: 'Edit All Pages', icon: <Edit size={18} /> },
+     { id: 'transportRequests', label: 'Moving Requests', icon: <Truck size={18} /> },
++    { id: 'driverApprovals', label: 'Driver Approvals', icon: <UserCheck size={18} /> },
+     { id: 'serviceRequests', label: 'Move-in Requests', icon: <Briefcase size={18} /> },
+     { id: 'movingPackages', label: 'Moving Packages', icon: <Package size={18} /> },
+     { id: 'agencyPackages', label: 'Agency Packages', icon: <Building2 size={18} /> },
+@@ -1509,6 +1564,100 @@
+ 
+         {/* Analytics Section */}
+         {activeSection === 'transportRequests' && <TransportRequestsPage />}
++        {activeSection === 'driverApprovals' && (
++          <div style={{ ...glass, padding: '24px' }}>
++            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
++              <div>
++                <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 500 }}>Driver Approvals</div>
++                <div style={{ fontSize: 12, color: ink2, marginTop: 4 }}>
++                  Drivers self-register at <a href="/driver/onboard" target="_blank" rel="noreferrer" style={{ color: red, fontWeight: 600, textDecoration: 'underline' }}>/driver/onboard</a>. Review vehicle + license, then approve or reject.
++                </div>
++              </div>
++              <button type="button" onClick={loadDrivers} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 12, background: '#fff', color: ink2, border: `1px solid ${rule}`, cursor: 'pointer' }}>
++                <RefreshCw size={15} /> Refresh
++              </button>
++            </div>
++
++            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
++              {[
++                { id: 'pending', label: 'Pending', count: allDrivers.filter(d => d.driverStatus !== 'approved' && d.driverStatus !== 'rejected').length },
++                { id: 'approved', label: 'Approved', count: allDrivers.filter(d => d.driverStatus === 'approved' || d.driverApproved === true).length },
++                { id: 'rejected', label: 'Rejected', count: allDrivers.filter(d => d.driverStatus === 'rejected').length },
++                { id: 'all', label: 'All', count: allDrivers.length },
++              ].map(tab => (
++                <button key={tab.id} onClick={() => setDriverFilter(tab.id)} style={{ padding: '8px 16px', borderRadius: 20, background: driverFilter === tab.id ? red : 'transparent', color: driverFilter === tab.id ? 'white' : ink2, border: `1px solid ${driverFilter === tab.id ? red : rule}`, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
++                  {tab.label} · {tab.count}
++                </button>
++              ))}
++            </div>
++
++            {(() => {
++              const visible = allDrivers.filter(d => {
++                if (driverFilter === 'all') return true;
++                if (driverFilter === 'approved') return d.driverStatus === 'approved' || d.driverApproved === true;
++                if (driverFilter === 'rejected') return d.driverStatus === 'rejected';
++                return d.driverStatus !== 'approved' && d.driverStatus !== 'rejected' && d.driverApproved !== true;
++              });
++
++              if (!visible.length) return (
++                <div style={{ padding: 40, textAlign: 'center', color: ink2, border: `1px dashed ${rule}`, borderRadius: 16 }}>
++                  <UserCheck size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
++                  <p style={{ margin: 0 }}>No {driverFilter} driver applications.</p>
++                </div>
++              );
++
++              return (
++                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
++                  {visible.map(driver => {
++                    const profile = driver.driverProfile || {};
++                    const status = driver.driverApproved === true || driver.driverStatus === 'approved' ? 'approved' : driver.driverStatus === 'rejected' ? 'rejected' : 'pending';
++                    const badge = status === 'approved' ? { bg: greenLight, color: green, label: 'Approved' } : status === 'rejected' ? { bg: redLight, color: red, label: 'Rejected' } : { bg: yellowLight, color: yellow, label: 'Pending review' };
++                    return (
++                      <div key={driver.id} style={{ background: 'rgba(255,255,255,0.55)', border: `1px solid ${rule}`, borderRadius: 16, padding: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
++                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: `linear-gradient(135deg, ${red}, #ef4444)`, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20, flex: '0 0 auto' }}>
++                          {(driver.name || driver.email || 'D').charAt(0).toUpperCase()}
++                        </div>
++                        <div style={{ flex: '1 1 320px', minWidth: 0 }}>
++                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
++                            <span style={{ fontWeight: 600, fontSize: 15 }}>{driver.name || 'No name'}</span>
++                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: badge.bg, color: badge.color, textTransform: 'uppercase', letterSpacing: 0.4 }}>{badge.label}</span>
++                          </div>
++                          <div style={{ fontSize: 12, color: ink2, marginTop: 3 }}>{driver.email || '—'} · {profile.phone || driver.phone || '—'}</div>
++                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 12 }}>
++                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
++                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Vehicle</div>
++                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.vehicleId || '—'}</div>
++                            </div>
++                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
++                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Plate</div>
++                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.plate || '—'}</div>
++                            </div>
++                            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
++                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>License</div>
++                              <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.licenseNumber || '—'}</div>
++                            </div>
++                          </div>
++                          {driver.driverRejectionReason && status === 'rejected' && (
++                            <div style={{ marginTop: 10, fontSize: 12, color: red, background: redLight, padding: '6px 10px', borderRadius: 8 }}>Reason: {driver.driverRejectionReason}</div>
++                          )}
++                        </div>
++                        <div style={{ display: 'flex', gap: 8, flex: '0 0 auto' }}>
++                          {status !== 'approved' && (
++                            <button onClick={() => handleDriverDecision(driver, 'approve')} disabled={driverSavingId === driver.id} style={{ padding: '9px 16px', background: green, color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: driverSavingId === driver.id ? 0.6 : 1 }}>{driverSavingId === driver.id ? 'Working…' : 'Approve'}</button>
++                          )}
++                          {status !== 'rejected' && (
++                            <button onClick={() => handleDriverDecision(driver, 'reject')} disabled={driverSavingId === driver.id} style={{ padding: '9px 16px', background: red, color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: driverSavingId === driver.id ? 0.6 : 1 }}>Reject</button>
++                          )}
++                        </div>
++                      </div>
++                    );
++                  })}
++                </div>
++              );
++            })()}
++          </div>
++        )}
++
+         {activeSection === 'serviceRequests' && <AdminServiceRequestsPage />}
+         {activeSection === 'movingPackages' && <MovingPackagesPage />}
+         {activeSection === 'agencyPackages' && <AgencyPackagesPage />}
+
+########## 2. messagingService.js ##########
+import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+const maskName = (name = '') => name
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean)
+  .map((part) => `${part[0]}•••`)
+  .join(' ') || 'MarketMix member';
+
+export const openPropertyConversation = async ({ property, currentUser, otherUserId, otherUserName = '' }) => {
+  if (!property?.id || !currentUser?.uid || !otherUserId || currentUser.uid === otherUserId) {
+    throw new Error('A valid property and another account are required to start a conversation.');
+  }
+
+  const participantIds = [currentUser.uid, otherUserId].sort();
+  const safeOtherName = currentUser.uid === property.userId ? maskName(otherUserName) : otherUserName;
+  const conversationId = `${property.id}_${participantIds.join('_')}`;
+  const participantNames = {
+    [currentUser.uid]: currentUser.displayName || currentUser.email?.split('@')[0] || 'MarketMix member',
+    [otherUserId]: safeOtherName || 'MarketMix member',
+  };
+
+  await setDoc(doc(db, 'conversations', conversationId), {
+    propertyId: property.id,
+    propertyTitle: property.title || 'Property listing',
+    participantIds,
+    participantNames,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  return conversationId;
+};
+
+export const getConversationMessages = (conversationId) =>
+  collection(db, 'conversations', conversationId, 'messages');
+
+export const getConversationRef = (conversationId) => doc(db, 'conversations', conversationId);
+
+export const getRoommateConversationMessages = (conversationId) =>
+  collection(db, 'roommateConversations', conversationId, 'messages');
+
+export const getRoommateConversationRef = (conversationId) =>
+  doc(db, 'roommateConversations', conversationId);
+
+########## 3. NotificationsPage.jsx ##########
+import React from 'react';
+import DashboardLayout from '../../components/dashboard/DashboardLayout';
+
+const NotificationsPage = () => {
+  return (
+    <DashboardLayout title="Notifications" subtitle="Your alerts and updates">
+      {/* Add notifications content */}
+    </DashboardLayout>
+  );
+};
+
+export default NotificationsPage;
+
+########## 4. MessagesPage.jsx ##########
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { ArrowLeft, Loader, MessageCircle, Send } from 'lucide-react';
+import toast from 'react-hot-toast';
+import DashboardLayout from '../../components/dashboard/DashboardLayout';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase/config';
+import { getPublicProperty } from '../../services/propertyService';
+import {
+  getConversationMessages,
+  getConversationRef,
+  getRoommateConversationMessages,
+  getRoommateConversationRef,
+  openPropertyConversation,
+} from '../../services/messagingService';
+
+const formatTime = (timestamp) => {
+  if (!timestamp?.toDate) return 'Sending…';
+  return timestamp.toDate().toLocaleString();
+};
+
+const MessagesPage = () => {
+  const { currentUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedConversationId = searchParams.get('conversationId') || '';
+  const requestedPropertyId = searchParams.get('propertyId') || '';
+  const requestedUserId = searchParams.get('userId') || '';
+  const [propertyConversations, setPropertyConversations] = useState([]);
+  const [roommateConversations, setRoommateConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(requestedConversationId);
+  const [messages, setMessages] = useState([]);
+  const [messageText, setMessageText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [startingConversation, setStartingConversation] = useState(false);
+  const [sending, setSending] = useState(false);
+  const endOfMessagesRef = useRef(null);
+  const conversations = useMemo(() => [...propertyConversations, ...roommateConversations].sort((a, b) => {
+    const timeA = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0;
+    const timeB = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0;
+    return timeB - timeA;
+  }), [propertyConversations, roommateConversations]);
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
+  const isRoommateConversation = activeConversation?.conversationType === 'roommate' || activeConversationId.startsWith('roommate_');
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setPropertyConversations([]);
+      setRoommateConversations([]);
+      setLoading(false);
+      return undefined;
+    }
+    const conversationsQuery = query(
+      collection(db, 'conversations'),
+      where('participantIds', 'array-contains', currentUser.uid)
+    );
+    const roommateQuery = query(
+      collection(db, 'roommateConversations'),
+      where('participantIds', 'array-contains', currentUser.uid)
+    );
+    let subscriptionsLoaded = 0;
+    const markLoaded = () => {
+      subscriptionsLoaded += 1;
+      if (subscriptionsLoaded >= 2) setLoading(false);
+    };
+    const unsubscribeProperties = onSnapshot(conversationsQuery, (snapshot) => {
+      setPropertyConversations(snapshot.docs.map((conversationDoc) => ({
+        id: conversationDoc.id,
+        ...conversationDoc.data(),
+      })));
+      markLoaded();
+    }, (error) => {
+      console.error('Error loading conversations:', error);
+      toast.error('Could not load your conversations');
+      markLoaded();
+    });
+    const unsubscribeRoommates = onSnapshot(roommateQuery, (snapshot) => {
+      setRoommateConversations(snapshot.docs.map((conversationDoc) => ({
+        id: conversationDoc.id,
+        ...conversationDoc.data(),
+      })));
+      markLoaded();
+    }, (error) => {
+      console.error('Error loading roommate conversations:', error);
+      toast.error('Could not load roommate conversations');
+      markLoaded();
+    });
+    return () => { unsubscribeProperties(); unsubscribeRoommates(); };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!requestedConversationId) return;
+    setActiveConversationId(requestedConversationId);
+  }, [requestedConversationId]);
+
+  useEffect(() => {
+    if (!currentUser?.uid || !requestedPropertyId || !requestedUserId || requestedConversationId) return undefined;
+    let cancelled = false;
+
+    const startConversation = async () => {
+      setStartingConversation(true);
+      try {
+        const property = await getPublicProperty(requestedPropertyId);
+        if (!property?.userId) throw new Error('This property has no available seller account.');
+
+        const isSeller = currentUser.uid === property.userId;
+        const otherUserId = isSeller ? requestedUserId : property.userId;
+        if (!isSeller && requestedUserId !== property.userId) {
+          throw new Error('This conversation does not match the property seller.');
+        }
+
+        let otherUserName = property.userName || 'MarketMix member';
+        if (isSeller) {
+          const viewerSnapshot = await getDoc(doc(db, 'propertyViews', `${property.id}_${otherUserId}`));
+          otherUserName = viewerSnapshot.data()?.viewerName || 'MarketMix member';
+        }
+
+        const conversationId = await openPropertyConversation({
+          property,
+          currentUser,
+          otherUserId,
+          otherUserName,
+        });
+        if (cancelled) return;
+        setActiveConversationId(conversationId);
+        setSearchParams({ conversationId }, { replace: true });
+      } catch (error) {
+        console.error('Unable to open conversation:', error);
+        toast.error(error.message || 'Could not open this conversation');
+      } finally {
+        if (!cancelled) setStartingConversation(false);
+      }
+    };
+
+    startConversation();
+    return () => { cancelled = true; };
+  }, [currentUser, requestedConversationId, requestedPropertyId, requestedUserId, setSearchParams]);
+
+  useEffect(() => {
+    if (!activeConversationId || !currentUser?.uid) {
+      setMessages([]);
+      return undefined;
+    }
+    const messagesCollection = isRoommateConversation
+      ? getRoommateConversationMessages(activeConversationId)
+      : getConversationMessages(activeConversationId);
+    return onSnapshot(
+      query(messagesCollection, orderBy('createdAt', 'asc')),
+      (snapshot) => setMessages(snapshot.docs.map((messageDoc) => ({ id: messageDoc.id, ...messageDoc.data() }))),
+      (error) => {
+        console.error('Error loading messages:', error);
+        toast.error('Could not load these messages');
+      }
+    );
+  }, [activeConversationId, currentUser, isRoommateConversation]);
+
+  useEffect(() => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const otherParticipantId = activeConversation?.participantIds?.find((uid) => uid !== currentUser?.uid);
+  const otherParticipantName = activeConversation?.participantNames?.[otherParticipantId] || 'MarketMix member';
+
+  const handleSend = async (event) => {
+    event.preventDefault();
+    const text = messageText.trim();
+    if (!text || !activeConversationId || !currentUser?.uid || sending) return;
+
+    setSending(true);
+    try {
+      const messagesCollection = isRoommateConversation
+        ? getRoommateConversationMessages(activeConversationId)
+        : getConversationMessages(activeConversationId);
+      const conversationRef = isRoommateConversation
+        ? getRoommateConversationRef(activeConversationId)
+        : getConversationRef(activeConversationId);
+      await addDoc(messagesCollection, {
+        senderId: currentUser.uid,
+        senderName: 'MarketMix member',
+        text,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(conversationRef, {
+        lastMessage: text.slice(0, 200),
+        updatedAt: serverTimestamp(),
+      });
+      setMessageText('');
+    } catch (error) {
+      console.error('Could not send message:', error);
+      toast.error('Message could not be sent');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const openConversation = (conversationId) => {
+    setActiveConversationId(conversationId);
+    setSearchParams({ conversationId });
+  };
+
+  return (
+    <DashboardLayout title="Messages" subtitle="Chat privately about properties and roommate matches">
+      <div className="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className={`${activeConversationId ? 'hidden md:block' : 'block'} border-b border-slate-200 md:border-b-0 md:border-r`}>
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="font-semibold text-slate-900">Conversations</h2>
+            <p className="mt-1 text-xs text-slate-500">Private property and roommate conversations</p>
+          </div>
+          {loading ? (
+            <div className="flex justify-center p-8"><Loader className="h-5 w-5 animate-spin text-emerald-600" /></div>
+          ) : conversations.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-slate-500">No messages yet. Start from a property page or accept a roommate connection.</div>
+          ) : (
+            <div className="max-h-[620px] overflow-y-auto p-2">
+              {conversations.map((conversation) => {
+                const otherId = conversation.participantIds?.find((uid) => uid !== currentUser?.uid);
+                return (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    onClick={() => openConversation(conversation.id)}
+                    className={`mb-1 w-full rounded-xl p-3 text-left transition ${activeConversationId === conversation.id ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'hover:bg-slate-50'}`}
+                  >
+                    <span className="block truncate text-sm font-semibold text-slate-900">
+                      {conversation.participantNames?.[otherId] || 'MarketMix member'}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">{conversation.title || conversation.propertyTitle || 'Property listing'}</span>
+                    {conversation.lastMessage && <span className="mt-1 block truncate text-xs text-slate-400">{conversation.lastMessage}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </aside>
+
+        <section className={`${activeConversationId ? 'flex' : 'hidden md:flex'} min-h-[620px] min-w-0 flex-col`}>
+          {startingConversation ? (
+            <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-500"><Loader className="h-5 w-5 animate-spin" />Opening conversation…</div>
+          ) : activeConversationId ? (
+            <>
+              <header className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 sm:px-6">
+                <button type="button" onClick={() => { setActiveConversationId(''); setSearchParams({}); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden" aria-label="Back to conversations">
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-100 text-emerald-700"><MessageCircle className="h-5 w-5" /></div>
+                <div className="min-w-0">
+                  <h2 className="truncate font-semibold text-slate-900">{activeConversation?.title || activeConversation?.propertyTitle || otherParticipantName}</h2>
+                  <p className="truncate text-xs text-slate-500">Chat with {otherParticipantName}</p>
+                </div>
+              </header>
+              <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
+                {messages.length === 0 && <p className="m-auto max-w-sm text-center text-sm text-slate-500">Say hello and start a private conversation.</p>}
+                {messages.map((message) => {
+                  const mine = message.senderId === currentUser?.uid;
+                  return (
+                    <article key={message.id} className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[75%] ${mine ? 'ml-auto rounded-br-md bg-emerald-600 text-white' : 'mr-auto rounded-bl-md border border-slate-200 bg-white text-slate-800'}`}>
+                      {!mine && <p className="mb-1 text-[11px] font-semibold text-emerald-700">{message.senderName || otherParticipantName}</p>}
+                      <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+                      <time className={`mt-1 block text-right text-[10px] ${mine ? 'text-emerald-100' : 'text-slate-400'}`}>{formatTime(message.createdAt)}</time>
+                    </article>
+                  );
+                })}
+                <div ref={endOfMessagesRef} />
+              </div>
+              <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-slate-100 p-3 sm:p-4">
+                <textarea
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
+                  maxLength={4000}
+                  rows={2}
+                  placeholder="Write a message…"
+                  className="max-h-32 min-h-11 flex-1 resize-y rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                />
+                <button type="submit" disabled={!messageText.trim() || sending} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Send message">
+                  {sending ? <Loader className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="m-auto max-w-sm px-6 text-center">
+              <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-700"><MessageCircle className="h-6 w-6" /></div>
+              <h2 className="font-semibold text-slate-900">Your conversations</h2>
+              <p className="mt-2 text-sm text-slate-500">Choose a conversation or start one from a property or roommate profile.</p>
+            </div>
+          )}
+        </section>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+export default MessagesPage;
+
+########## 5. transportNotify.js ##########
+// src/services/transportNotify.js
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+
+/**
+ * Fire-and-forget notification helper for transport requests.
+ * Fails silently so user experience is never blocked.
+ */
+export const notifyTransportRequest = async ({ requestId, email }) => {
+  if (!requestId || !email) return false;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/moving/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, email }),
+    });
+    const data = await response.json();
+    return data.success || false;
+  } catch (error) {
+    console.warn('Non-blocking transport notification warning:', error);
+    return false;
+  }
+};
+
+########## 6. driverService.js ##########
+// src/services/driverService.js
+import { auth } from '../firebase/config';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+
+const getAuthHeaders = async () => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const token = await user.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+};
+
+export async function listDriverOffers() {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/offers`, { headers });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to fetch offers');
+  return data.offers || [];
+}
+
+export async function acceptDriverOffer(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/accept`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to accept offer');
+  return data;
+}
+
+export async function declineDriverOffer(requestId, reason = '') {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/decline`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId, reason })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to decline offer');
+  return data;
+}
+
+export async function startTrip(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/start-trip`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to start trip');
+  return data;
+}
+
+export async function completeTrip(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/complete`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to complete trip');
+  return data;
+}
+
+export async function submitDriverOnboarding(payload) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/onboard`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Onboarding submission failed');
+  return data;
+}
+
+########## 7. BACKEND CALLS IN FRONTEND ##########
+src/constants/roles.js:72:// Driver is included but stays as a plain user until /api/driver/decision approves.
+src/lib/api.js:7:  fetch(`${BACKEND}/api/real-estate/notify`, {
+src/pages/admin/TransportRequestsPage.jsx:53:      fetch(`${BACKEND}/api/moving/notify`, {
+src/pages/admin/WhatsAppControl.jsx:52:      const r = await api("/api/real-estate/whatsapp/status");
+src/pages/admin/WhatsAppControl.jsx:63:        const q = await api("/api/real-estate/whatsapp/qr");
+src/pages/admin/WhatsAppControl.jsx:103:      const r = await api("/api/real-estate/whatsapp/send-test", {
+src/pages/admin/WhatsAppControl.jsx:163:          onClick={() => call("/api/real-estate/whatsapp/start", "Start")}
+src/pages/admin/WhatsAppControl.jsx:170:          onClick={() => call("/api/real-estate/whatsapp/restart", "Restart")}
+src/pages/admin/WhatsAppControl.jsx:177:          onClick={() => call("/api/real-estate/whatsapp/stop", "Stop")}
+src/pages/driver/DriverTripView.jsx:72:      const res = await fetch(`${BACKEND}/api/moving/driver-cancel`, {
+src/services/driverService.js:18:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/offers`, { headers });
+src/services/driverService.js:26:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/accept`, {
+src/services/driverService.js:38:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/decline`, {
+src/services/driverService.js:50:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/start-trip`, {
+src/services/driverService.js:62:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/complete`, {
+src/services/driverService.js:74:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/onboard`, {
+src/services/paymentService.js:9:  const seedRes = await fetch(`${BACKEND}/api/real-estate/seed`, {
+src/services/paymentService.js:35:  const stkRes = await fetch(`${BACKEND}/api/stk-push`, {
+src/services/paymentService.js:70:  const res = await fetch(`${BACKEND}/api/stk-push`, {
+src/services/realEstatePayment.js:15:  const seed = await fetch(`${BACKEND}/api/real-estate/seed`, {
+src/services/realEstatePayment.js:41:  const stk = await fetch(`${BACKEND}/api/stk-push`, {
+src/services/transportNotify.js:11:    const response = await fetch(`${BACKEND_URL}/api/moving/notify`, {
+
+########## 8. FIRESTORE COLLECTIONS FOR MESSAGES/NOTIFICATIONS ##########
+src/pages/user/MessagesPage.jsx:65:      collection(db, 'conversations'),
+
+########## 9. ROUTING OF NotificationsPage / MessagesPage ##########
+src/App.jsx:71:const MessagesPage = lazy(() => import('./pages/user/MessagesPage'));
+src/App.jsx:72:const NotificationsPage = lazy(() => import('./pages/user/NotificationsPage'));
+src/App.jsx:215:                          <MessagesPage />
+src/App.jsx:221:                          <NotificationsPage />
+
+########## 10. BACKEND SERVER ROUTES ##########
+31:app.get('/health', (req, res) => {

@@ -1,0 +1,363 @@
+===== 1. Every frontend fetch to a backend notify endpoint =====
+src/components/dashboards/AdminDashboard.jsx:35:  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+src/constants/roles.js:72:// Driver is included but stays as a plain user until /api/driver/decision approves.
+src/lib/api.js:3:  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+src/lib/api.js:7:  fetch(`${BACKEND}/api/real-estate/notify`, {
+src/pages/admin/TransportRequestsPage.jsx:10:  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+src/pages/admin/TransportRequestsPage.jsx:53:      fetch(`${BACKEND}/api/moving/notify`, {
+src/pages/admin/WhatsAppControl.jsx:4:  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+src/pages/admin/WhatsAppControl.jsx:52:      const r = await api("/api/real-estate/whatsapp/status");
+src/pages/admin/WhatsAppControl.jsx:63:        const q = await api("/api/real-estate/whatsapp/qr");
+src/pages/admin/WhatsAppControl.jsx:103:      const r = await api("/api/real-estate/whatsapp/send-test", {
+src/pages/admin/WhatsAppControl.jsx:163:          onClick={() => call("/api/real-estate/whatsapp/start", "Start")}
+src/pages/admin/WhatsAppControl.jsx:170:          onClick={() => call("/api/real-estate/whatsapp/restart", "Restart")}
+src/pages/admin/WhatsAppControl.jsx:177:          onClick={() => call("/api/real-estate/whatsapp/stop", "Stop")}
+src/pages/driver/DriverTripView.jsx:70:      const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+src/pages/driver/DriverTripView.jsx:72:      const res = await fetch(`${BACKEND}/api/moving/driver-cancel`, {
+src/pages/ReceiptPage.jsx:6:const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+src/services/driverService.js:4:const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+src/services/driverService.js:18:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/offers`, { headers });
+src/services/driverService.js:26:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/accept`, {
+src/services/driverService.js:38:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/decline`, {
+src/services/driverService.js:50:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/start-trip`, {
+src/services/driverService.js:62:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/complete`, {
+src/services/driverService.js:74:  const res = await fetch(`${BACKEND_URL}/api/moving/driver/onboard`, {
+src/services/paymentService.js:3:const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+src/services/paymentService.js:9:  const seedRes = await fetch(`${BACKEND}/api/real-estate/seed`, {
+src/services/realEstatePayment.js:3:  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+src/services/realEstatePayment.js:15:  const seed = await fetch(`${BACKEND}/api/real-estate/seed`, {
+src/services/transportNotify.js:2:const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+src/services/transportNotify.js:11:    const response = await fetch(`${BACKEND_URL}/api/moving/notify`, {
+
+===== 2. What transportNotify.js calls =====
+// src/services/transportNotify.js
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+
+/**
+ * Fire-and-forget notification helper for transport requests.
+ * Fails silently so user experience is never blocked.
+ */
+export const notifyTransportRequest = async ({ requestId, email }) => {
+  if (!requestId || !email) return false;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/moving/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, email }),
+    });
+    const data = await response.json();
+    return data.success || false;
+  } catch (error) {
+    console.warn('Non-blocking transport notification warning:', error);
+    return false;
+  }
+};
+
+===== 3. What driverService.js calls =====
+// src/services/driverService.js
+import { auth } from '../firebase/config';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+
+const getAuthHeaders = async () => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const token = await user.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+};
+
+export async function listDriverOffers() {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/offers`, { headers });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to fetch offers');
+  return data.offers || [];
+}
+
+export async function acceptDriverOffer(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/accept`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to accept offer');
+  return data;
+}
+
+export async function declineDriverOffer(requestId, reason = '') {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/decline`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId, reason })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to decline offer');
+  return data;
+}
+
+export async function startTrip(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/start-trip`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to start trip');
+  return data;
+}
+
+export async function completeTrip(requestId) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/complete`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ requestId })
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Failed to complete trip');
+  return data;
+}
+
+export async function submitDriverOnboarding(payload) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BACKEND_URL}/api/moving/driver/onboard`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || 'Onboarding submission failed');
+  return data;
+}
+
+===== 4. What realEstatePayment / paymentService call =====
+// src/services/realEstatePayment.js
+const BACKEND =
+  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+
+export async function payRealEstate({
+  property,
+  landlord,
+  buyer,
+  paymentKind = "rent", // "rent" | "deposit" | "purchase"
+}) {
+  // 1. Build a unique ref that starts with PROP_ so the backend knows this is real estate
+  const ref = `PROP_${property.id}_${Date.now()}`;
+
+  // 2. Seed the order with everything the backend needs to send email + WhatsApp
+  const seed = await fetch(`${BACKEND}/api/real-estate/seed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ref,
+      amount: property.price,
+      email: buyer.email,
+      fullName: buyer.fullName,
+      phoneNumber: buyer.phoneNumber,
+      paymentKind,
+      property: {
+        id: property.id,
+        title: property.title,
+        location: property.location,
+        type: property.type,
+      },
+      landlord: {
+        name: landlord.name,
+        phone: landlord.phone,
+      },
+    }),
+  }).then((r) => r.json());
+
+  if (!seed.success) throw new Error(seed.message || "Failed to prepare order");
+
+  // 3. Trigger the M-Pesa STK prompt on the buyer's phone
+  const stk = await fetch(`${BACKEND}/api/stk-push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: property.price,
+      phoneNumber: buyer.phoneNumber,
+      fullName: buyer.fullName,
+      email: buyer.email,
+      orderId: ref,
+    }),
+  }).then((r) => r.json());
+
+  if (!stk.success) throw new Error(stk.message || "Failed to send M-Pesa prompt");
+
+  // 4. Poll until paid (or failed)
+  const finalTx = await pollUntilPaid(ref);
+  return finalTx;
+}
+
+function pollUntilPaid(ref, { intervalMs = 4000, timeoutMs = 180000 } = {}) {
+  const startedAt = Date.now();
+  return new Promise((resolve, reject) => {
+    const tick = async () => {
+      if (Date.now() - startedAt > timeoutMs) {
+        return reject(new Error("Payment timed out"));
+      }
+      try {
+        const res = await fetch(`${BACKEND}/api/ad-transaction/${ref}`);
+        if (res.status === 404) {
+          // Doc exists but not paid yet — keep polling
+          return setTimeout(tick, intervalMs);
+        }
+        const j = await res.json();
+        const ps = j?.data?.paymentStatus || j?.data?.status;
+        if (ps === "paid" || ps === "completed") return resolve(j.data);
+        if (ps === "failed" || ps === "cancelled") {
+          return reject(new Error(`Payment ${ps}`));
+        }
+      } catch (_) {
+        // network blip — ignore and retry
+// src/services/paymentService.js
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+
+export async function payRealEstate({ property, landlord, buyer, paymentKind = "rent" }) {
+  const ref = `PROP_${property.id || 'LISTING'}_${Date.now()}`;
+
+  // STEP 1: seed the order doc with all the metadata
+  const seedRes = await fetch(`${BACKEND}/api/real-estate/seed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ref,
+      amount: property.price,
+      email: buyer.email,
+      fullName: buyer.fullName,
+      phoneNumber: buyer.phoneNumber,
+      paymentKind,
+      property: {
+        id: property.id,
+        title: property.title,
+        location: property.location,
+        type: property.type,
+      },
+      landlord: {
+        name: landlord?.name || 'Agent/Landlord',
+        phone: landlord?.phone || '',
+      },
+    }),
+  }).then((r) => r.json());
+
+  if (!seedRes.success) throw new Error(seedRes.message || "Failed to seed order");
+
+  // STEP 2: trigger STK push
+  const stkRes = await fetch(`${BACKEND}/api/stk-push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: property.price,
+      phoneNumber: buyer.phoneNumber,
+      fullName: buyer.fullName,
+      email: buyer.email,
+      orderId: ref,
+    }),
+  }).then((r) => r.json());
+
+  if (!stkRes.success) throw new Error(stkRes.message || "STK push failed");
+
+  // STEP 3: poll until paid
+  const paidData = await pollUntilPaid(ref);
+  return { ...paidData, orderId: ref };
+}
+
+async function pollUntilPaid(ref, { intervalMs = 4000, timeoutMs = 180000 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    const res = await fetch(`${BACKEND}/api/ad-transaction/${ref}`);
+    if (res.status === 404) continue;
+    const j = await res.json();
+    const ps = j?.data?.paymentStatus || j?.data?.status;
+    if (ps === "paid" || ps === "completed") return j.data;
+    if (ps === "failed" || ps === "cancelled") throw new Error("Payment " + ps);
+  }
+  throw new Error("Payment timed out");
+}
+
+export async function initiateTestPayment(data) {
+  const ref = data.orderId || `TEST_${Date.now()}`;
+  const res = await fetch(`${BACKEND}/api/stk-push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...data, orderId: ref }),
+  }).then((r) => r.json());
+  if (!res.success) throw new Error(res.message || "Test payment failed");
+  return { ...res, orderId: ref };
+}
+
+export async function checkTransactionStatus(ref) {
+  const res = await fetch(`${BACKEND}/api/ad-transaction/${ref}`);
+
+===== 5. Does anything call /api/real-estate/notify (booking notify)? =====
+src/lib/api.js:7:  fetch(`${BACKEND}/api/real-estate/notify`, {
+
+===== 6. Does anything call /api/moving/notify (moving notify)? =====
+src/pages/admin/TransportRequestsPage.jsx:53:      fetch(`${BACKEND}/api/moving/notify`, {
+src/services/transportNotify.js:11:    const response = await fetch(`${BACKEND_URL}/api/moving/notify`, {
+
+===== 7. Does anything call /api/driver/decision (driver approve notify)? =====
+src/constants/roles.js:72:// Driver is included but stays as a plain user until /api/driver/decision approves.
+
+===== 8. Does anything write to Firestore 'notifications' collection? =====
+src/App.jsx:219:                      <Route path="/notifications" element={
+src/components/dashboard/DashboardLayout.jsx:31:      { icon: <Bell />, label: 'Notifications', path: '/notifications' },
+src/components/dashboards/DashboardLayout.jsx:31:      { icon: <Bell />, label: 'Notifications', path: '/notifications' },
+src/components/Navbar.jsx:24:  const notificationsRef = useRef(null);
+src/components/Navbar.jsx:29:  const [notificationsOpen, setNotificationsOpen] = useState(false);
+src/components/Navbar.jsx:44:      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+src/components/Navbar.jsx:83:  const [notifications, setNotifications] = useState([
+src/components/Navbar.jsx:131:      console.error("Error loading dynamic notifications:", err);
+src/components/Navbar.jsx:139:  const unreadNotifications = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+src/components/Navbar.jsx:174:      { name: 'Notifications', path: '/notifications', icon: <Bell className="w-4 h-4" /> },
+src/components/Navbar.jsx:315:      {notificationsOpen && (
+src/components/Navbar.jsx:317:          ref={notificationsRef}
+src/components/Navbar.jsx:333:            {notifications.map((notification) => (
+src/components/Navbar.jsx:365:              to="/notifications"
+src/components/Navbar.jsx:426:                <div className="relative" ref={notificationsRef}>
+src/components/Navbar.jsx:428:                    onClick={() => setNotificationsOpen(!notificationsOpen)}
+src/firebase/schema.js:64:        notifications: 'Array',
+src/pages/admin/WhatsAppControl.jsx:131:        Manage WhatsApp notifications for property inquiries and payment
+src/pages/Dashboard.jsx:268:  const notifications = [
+src/pages/Dashboard.jsx:291:  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+src/pages/Dashboard.jsx:322:    { id: 'notifications', label: 'Notifications', icon: <FaBell className="icon" />, badge: unreadCount },
+src/pages/Dashboard.jsx:362:                  {item.badge > 0 && item.id === 'notifications' && (
+src/pages/Dashboard.jsx:481:            {activeTab === 'notifications' && (
+src/pages/Dashboard.jsx:485:                    {notifications.map((n) => (
+src/pages/Dashboard.jsx:551:                                    <span>Email notifications for new properties</span>
+src/pages/user/NotificationsPage.jsx:7:      {/* Add notifications content */}
+
+===== 9. What MessagesPage.jsx actually reads/writes =====
+4:  addDoc,
+12:  updateDoc,
+64:    const conversationsQuery = query(
+65:      collection(db, 'conversations'),
+68:    const roommateQuery = query(
+69:      collection(db, 'roommateConversations'),
+159:      query(messagesCollection, orderBy('createdAt', 'asc')),
+188:      await addDoc(messagesCollection, {
+194:      await updateDoc(conversationRef, {
+
+===== 10. What NotificationsPage.jsx actually reads/writes =====
+import React from 'react';
+import DashboardLayout from '../../components/dashboard/DashboardLayout';
+
+const NotificationsPage = () => {
+  return (
+    <DashboardLayout title="Notifications" subtitle="Your alerts and updates">
+      {/* Add notifications content */}
+    </DashboardLayout>
+  );
+};
+
+export default NotificationsPage;
