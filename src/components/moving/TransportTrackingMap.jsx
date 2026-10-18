@@ -1,125 +1,1097 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import L from 'leaflet';
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import './TransportTrackingMap.css';
-import { MapPin } from 'lucide-react';
-import { getPoint } from '../../services/transportService';
-import { PanControls } from './CoordinateMapPicker';
 
-const markerIcon = (kind) => L.divIcon({
-  className: 'marketmix-map-marker',
-  html: `<span class="marketmix-map-marker__dot marketmix-map-marker__dot--${kind}">${kind === 'driver' ? 'M' : kind === 'pickup' ? 'P' : 'D'}</span>`,
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-});
-const ROUTE_BASE_URL = import.meta.env.VITE_OSRM_URL || 'https://router.project-osrm.org';
-const TILE_URL = import.meta.env.VITE_OSM_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import L from "leaflet";
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  TileLayer,
+  useMap,
+  useMapEvents,
+  CircleMarker,
+  Tooltip,
+} from "react-leaflet";
+import {
+  LocateFixed,
+  Navigation,
+  Route as RouteIcon,
+  MapPinned,
+  Compass,
+  Fuel,
+  ShoppingBag,
+  Store,
+  MapPin,
+  ArrowUpRight,
+  Clock3,
+  LoaderCircle,
+  AlertCircle,
+  ChevronRight,
+  Crosshair,
+} from "lucide-react";
+import "leaflet/dist/leaflet.css";
+import "./TransportTrackingMap.css";
+import { getPoint } from "../../services/transportService";
 
-const pickupIcon = markerIcon('pickup');
-const destinationIcon = markerIcon('destination');
-const driverIcon = markerIcon('driver');
+const OSRM_BASE =
+  import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 
-function AnimatedDriverMarker({ point }) {
-  const markerRef = useRef(null);
-  const initialPositionRef = useRef(point ? [point.lat, point.lng] : null);
+const OSM_TILES =
+  import.meta.env.VITE_OSM_TILE_URL ||
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-  useEffect(() => {
-    if (!point || !markerRef.current) return undefined;
-    const target = L.latLng(point.lat, point.lng);
-    const start = markerRef.current.getLatLng();
-    const startedAt = Date.now();
-    const duration = 1800;
-    const timer = window.setInterval(() => {
-      const progress = Math.min(1, (Date.now() - startedAt) / duration);
-      const eased = progress * (2 - progress);
-      markerRef.current?.setLatLng([
-        start.lat + (target.lat - start.lat) * eased,
-        start.lng + (target.lng - start.lng) * eased,
-      ]);
-      if (progress === 1) window.clearInterval(timer);
-    }, 40);
-    return () => window.clearInterval(timer);
-  }, [point?.lat, point?.lng]);
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
-  if (!point) return null;
-  return <Marker ref={markerRef} position={initialPositionRef.current || [point.lat, point.lng]} icon={driverIcon} />;
+const DEFAULT_CENTER = [-0.3031, 36.08]; // Nakuru fallback only
+
+const validNumber = (value) =>
+  value !== null &&
+  value !== undefined &&
+  value !== "" &&
+  Number.isFinite(Number(value));
+
+function normalizePoint(value) {
+  if (!value) return null;
+
+  let point = null;
+
+  try {
+    point = getPoint(value);
+  } catch {
+    point = null;
+  }
+
+  const source = point || value;
+
+  let lat =
+    source?.lat ??
+    source?.latitude ??
+    source?.coords?.lat ??
+    source?.coordinates?.lat;
+
+  let lng =
+    source?.lng ??
+    source?.lon ??
+    source?.longitude ??
+    source?.coords?.lng ??
+    source?.coords?.lon ??
+    source?.coordinates?.lng ??
+    source?.coordinates?.lon;
+
+  // GeoJSON coordinates are [longitude, latitude].
+  if (
+    Array.isArray(source?.coordinates) &&
+    source.coordinates.length >= 2
+  ) {
+    lng = source.coordinates[0];
+    lat = source.coordinates[1];
+  }
+
+  if (!validNumber(lat) || !validNumber(lng)) return null;
+
+  lat = Number(lat);
+  lng = Number(lng);
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return {
+    lat,
+    lng,
+    heading: validNumber(source?.heading)
+      ? Number(source.heading)
+      : validNumber(source?.bearing)
+        ? Number(source.bearing)
+        : validNumber(source?.course)
+          ? Number(source.course)
+          : null,
+    accuracy: validNumber(source?.accuracy)
+      ? Number(source.accuracy)
+      : null,
+  };
 }
 
-function FitBounds({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    if (points.length > 1) map.fitBounds(points.map((point) => [point.lat, point.lng]), { padding: [36, 36], maxZoom: 15 });
-    else if (points.length === 1) map.setView([points[0].lat, points[0].lng], 14);
-  }, [map, points]);
+function asLatLng(point) {
+  return [point.lat, point.lng];
+}
+
+function distanceMetres(a, b) {
+  if (!a || !b) return 0;
+
+  const rad = (n) => (n * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const lat1 = rad(a.lat);
+  const lat2 = rad(b.lat);
+
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function bearingBetween(a, b) {
+  if (!a || !b) return 0;
+
+  const rad = (n) => (n * Math.PI) / 180;
+  const deg = (n) => (n * 180) / Math.PI;
+  const lat1 = rad(a.lat);
+  const lat2 = rad(b.lat);
+  const dLng = rad(b.lng - a.lng);
+
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+  return (deg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function formatDistance(metres) {
+  if (!Number.isFinite(metres) || metres < 0) return "—";
+  if (metres < 1000) return `${Math.round(metres)} m`;
+  return `${(metres / 1000).toFixed(metres >= 10000 ? 0 : 1)} km`;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
+}
+
+function maneuverText(step) {
+  const maneuver = step?.maneuver || {};
+  const type = String(maneuver.type || "").toLowerCase();
+  const modifier = String(maneuver.modifier || "").toLowerCase();
+  const road = step?.name?.trim();
+  const roadText = road ? ` onto ${road}` : "";
+
+  if (type === "arrive") return "You have arrived";
+  if (type === "depart") return road ? `Head onto ${road}` : "Start driving";
+  if (type === "roundabout" || type === "rotary") {
+    const exit = maneuver.exit;
+
+    if (exit) {
+      return `At the roundabout, take exit ${exit}${roadText}`;
+    }
+
+    return `At the roundabout, follow the route${roadText}`;
+  }
+
+  if (type === "merge") return `Merge${modifier ? ` ${modifier}` : ""}${roadText}`;
+  if (type === "fork") return `Keep ${modifier || "to the indicated road"}${roadText}`;
+  if (type === "on ramp") return `Take the ramp${roadText}`;
+  if (type === "off ramp") return `Take the exit${roadText}`;
+  if (type === "continue") return road ? `Continue on ${road}` : "Continue ahead";
+  if (type === "new name") return road ? `Continue onto ${road}` : "Continue ahead";
+  if (type === "end of road") {
+    return `At the end of the road, turn ${modifier || "as indicated"}${roadText}`;
+  }
+
+  if (type === "turn") {
+    const direction = modifier || "ahead";
+    return `Turn ${direction}${roadText}`;
+  }
+
+  if (type === "notification") return road ? `Continue on ${road}` : "Continue on the route";
+
+  if (modifier.includes("left")) return `Keep left${roadText}`;
+  if (modifier.includes("right")) return `Keep right${roadText}`;
+
+  return road ? `Continue on ${road}` : "Continue on the route";
+}
+
+function iconForLandmark(tags = {}) {
+  if (tags.amenity === "fuel") return "fuel";
+  if (tags.shop === "supermarket" || tags.shop === "convenience") {
+    return "shopping";
+  }
+  if (tags.shop || tags.amenity === "marketplace") return "shop";
+  if (tags.amenity === "bank" || tags.amenity === "atm") return "bank";
+  if (tags.amenity === "hospital" || tags.amenity === "clinic") return "health";
+  return "place";
+}
+
+function landmarkIcon(kind) {
+  const symbols = {
+    fuel: "⛽",
+    shopping: "🛒",
+    shop: "▣",
+    bank: "¤",
+    health: "+",
+    place: "●",
+  };
+
+  return L.divIcon({
+    className: "mm-landmark-icon-shell",
+    html: `<span class="mm-landmark-pin mm-landmark-${kind}">${symbols[kind] || "●"}</span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+}
+
+function carIcon(heading = 0) {
+  return L.divIcon({
+    className: "mm-car-icon-shell",
+    html: `
+      <div class="mm-car-heading" style="transform:rotate(${heading}deg)">
+        <span class="mm-car-glow"></span>
+        <svg viewBox="0 0 48 60" aria-hidden="true">
+          <path d="M15 4 Q24 -1 33 4 L39 19 L43 30 L43 46 Q43 51 38 51 L10 51 Q5 51 5 46 L5 30 L9 19 Z"
+            fill="#111318" stroke="#ffffff" stroke-width="2.2"/>
+          <path d="M14 11 Q24 7 34 11 L37 22 L11 22 Z"
+            fill="#b9e4ff" stroke="#e9f7ff" stroke-width="1.2"/>
+          <path d="M10 28 L38 28 L38 42 Q24 46 10 42 Z"
+            fill="#262b35" stroke="#606a7a" stroke-width="1"/>
+          <path d="M8 17 L4 22 L4 29 L9 28 Z" fill="#ffe5a1"/>
+          <path d="M40 17 L44 22 L44 29 L39 28 Z" fill="#ffe5a1"/>
+          <path d="M10 46 L17 46 M31 46 L38 46"
+            stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M18 32 L30 32" stroke="#697487" stroke-width="1.2"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [48, 60],
+    iconAnchor: [24, 30],
+  });
+}
+
+function endpointIcon(kind, label) {
+  const colour = kind === "pickup" ? "#16865c" : "#d94949";
+
+  return L.divIcon({
+    className: "mm-endpoint-icon-shell",
+    html: `
+      <div class="mm-endpoint-wrap">
+        <span class="mm-endpoint-dot" style="background:${colour}"></span>
+        <span class="mm-endpoint-label">${label}</span>
+      </div>
+    `,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
+function MapInteraction({ onUserMove }) {
+  useMapEvents({
+    dragstart: () => onUserMove?.(),
+    zoomstart: () => onUserMove?.(),
+  });
+
   return null;
 }
 
-const TransportTrackingMap = ({ pickupLocation, destinationLocation, driverLocation, className = '' }) => {
-  const pickup = getPoint(pickupLocation);
-  const destination = getPoint(destinationLocation);
-  const driver = getPoint(driverLocation);
-  const [route, setRoute] = useState([]);
-  const [routeStatus, setRouteStatus] = useState('');
-  const lastRouteRequestRef = useRef(0);
-  const origin = driver || pickup;
+function MapController({
+  pickup,
+  destination,
+  driver,
+  followDriver,
+  overviewKey,
+}) {
+  const map = useMap();
+  const firstFit = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const requestRoute = async () => {
-      if (!origin || !destination) {
-        setRoute([]);
-        setRouteStatus('');
-        return;
-      }
-      const now = Date.now();
-      if (now - lastRouteRequestRef.current < 60000) return;
-      lastRouteRequestRef.current = now;
-      setRouteStatus('Updating route…');
-      try {
-        const pair = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-        const response = await fetch(`${ROUTE_BASE_URL}/route/v1/driving/${pair}?overview=full&geometries=geojson`, { signal: AbortSignal.timeout(10000) });
-        const data = await response.json();
-        const points = data.routes?.[0]?.geometry?.coordinates?.map(([lng, lat]) => ({ lat, lng })) || [];
-        if (!response.ok || !points.length) throw new Error('Route unavailable');
-        if (!cancelled) {
-          setRoute(points);
-          const minutes = Math.max(1, Math.ceil((data.routes[0].duration || 0) / 60));
-          const km = Math.max(0.1, data.routes[0].distance / 1000);
-          setRouteStatus(`${minutes} min · ${km.toFixed(1)} km driving estimate`);
-        }
-      } catch {
-        if (!cancelled) {
-          setRoute([]);
-          setRouteStatus('Route estimate unavailable right now');
-        }
-      }
+    if (!map) return;
+
+    const points = [pickup, destination].filter(Boolean);
+
+    if (points.length >= 2 && !firstFit.current) {
+      map.fitBounds(
+        L.latLngBounds(points.map(asLatLng)),
+        { padding: [60, 60], maxZoom: 16, animate: true }
+      );
+      firstFit.current = true;
+    } else if (points.length === 1 && !firstFit.current) {
+      map.setView(asLatLng(points[0]), 15);
+      firstFit.current = true;
+    } else if (!points.length && driver && !firstFit.current) {
+      map.setView(asLatLng(driver), 16);
+      firstFit.current = true;
+    }
+  }, [map, pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, driver?.lat, driver?.lng]);
+
+  useEffect(() => {
+    if (!map || !overviewKey) return;
+
+    const points = [pickup, destination].filter(Boolean);
+
+    if (points.length >= 2) {
+      map.fitBounds(
+        L.latLngBounds(points.map(asLatLng)),
+        { padding: [60, 60], maxZoom: 16, animate: true }
+      );
+    } else if (points.length === 1) {
+      map.setView(asLatLng(points[0]), 16, { animate: true });
+    }
+  }, [map, overviewKey]);
+
+  useEffect(() => {
+    if (!map || !followDriver || !driver) return;
+
+    map.setView(asLatLng(driver), Math.max(map.getZoom(), 16), {
+      animate: true,
+      duration: 0.45,
+    });
+  }, [map, followDriver, driver?.lat, driver?.lng]);
+
+  return null;
+}
+
+function DriverMarker({ point, fallbackHeading = 0 }) {
+  const markerRef = useRef(null);
+  const previousPoint = useRef(null);
+  const headingRef = useRef(fallbackHeading);
+  const animationRef = useRef(null);
+  const [heading, setHeading] = useState(fallbackHeading);
+
+  useEffect(() => {
+    if (!point) return;
+
+    const previous = previousPoint.current;
+    let nextHeading = point.heading;
+
+    if (nextHeading === null && previous) {
+      const moved = distanceMetres(previous, point);
+
+      // Ignore GPS jitter when deriving the direction of travel.
+      if (moved > 2) nextHeading = bearingBetween(previous, point);
+    }
+
+    if (nextHeading === null) nextHeading = headingRef.current ?? fallbackHeading;
+
+    nextHeading = ((nextHeading % 360) + 360) % 360;
+
+    // Keep the turn direction smooth when heading crosses 359° -> 0°.
+    const current = headingRef.current ?? nextHeading;
+    const delta = ((nextHeading - current + 540) % 360) - 180;
+    const smoothHeading = (current + delta * 0.65 + 360) % 360;
+
+    headingRef.current = smoothHeading;
+    setHeading(smoothHeading);
+    previousPoint.current = point;
+  }, [point?.lat, point?.lng, point?.heading, fallbackHeading]);
+
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-    requestRoute();
-    return () => { cancelled = true; };
-  }, [origin?.lat, origin?.lng, destination?.lat, destination?.lng]);
+  }, []);
 
-  const points = useMemo(() => [pickup, destination, driver].filter(Boolean), [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, driver?.lat, driver?.lng]);
-  const routePoints = useMemo(() => [pickup, destination].filter(Boolean), [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng]);
-  if (!points.length) {
-    return <div className={`flex min-h-64 items-center justify-center rounded-3xl border border-white/50 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 text-center ${className}`}><div><div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white shadow"><MapPin className="mx-auto h-5 w-5 text-emerald-800"/></div><p className="font-semibold text-slate-800">Map pin waiting for locations</p><p className="mt-1 max-w-sm text-sm text-slate-500">Add a pickup pin and select a property with map coordinates to see the live trip.</p></div></div>;
-  }
+  if (!point) return null;
 
-  return <div className={`overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_20px_60px_rgba(25,50,43,.13)] ${className}`}>
-    <div className="relative h-64 touch-none sm:h-80">
-      <MapContainer center={[points[0].lat, points[0].lng]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-        <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url={TILE_URL} />
-        {pickup && <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon} />}
-        {destination && <Marker position={[destination.lat, destination.lng]} icon={destinationIcon} />}
-        {driver && <AnimatedDriverMarker point={driver} />}
-        {route.length > 1 && <Polyline positions={route.map((point) => [point.lat, point.lng])} pathOptions={{ color: '#28745d', weight: 5, opacity: 0.86, dashArray: driver ? undefined : '8 9' }} />}
-        <FitBounds points={routePoints} />
-        <PanControls />
-      </MapContainer>
-      <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur">{driver ? 'Live driver location' : 'Trip route'}</div>
-    </div>
-    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-600"><span>{routeStatus || (driver ? 'Driver location sharing' : 'Route preview')}</span><span>Drag or use the arrows to pan</span><span>Map &#169; OpenStreetMap - Route by OSRM</span></div>
-  </div>;
-};
+  return (
+    <>
+      {point.accuracy && point.accuracy < 250 && (
+        <CircleMarker
+          center={asLatLng(point)}
+          radius={Math.min(24, Math.max(7, point.accuracy / 5))}
+          pathOptions={{
+            color: "#2785f7",
+            fillColor: "#2785f7",
+            fillOpacity: 0.08,
+            weight: 1,
+            opacity: 0.3,
+          }}
+        />
+      )}
+      <Marker
+        ref={markerRef}
+        position={asLatLng(point)}
+        icon={carIcon(heading)}
+        zIndexOffset={1000}
+        keyboard={false}
+        title="Driver location"
+      />
+    </>
+  );
+}
 
-export default TransportTrackingMap;
+function LandmarkMarker({ landmark }) {
+  const kind = iconForLandmark(landmark.tags);
+
+  return (
+    <Marker
+      position={[landmark.lat, landmark.lng]}
+      icon={landmarkIcon(kind)}
+      zIndexOffset={100}
+      title={landmark.name}
+    >
+      <Tooltip direction="top" offset={[0, -10]} opacity={0.96}>
+        <strong>{landmark.name}</strong>
+        {landmark.category && (
+          <div className="mm-landmark-tooltip-category">{landmark.category}</div>
+        )}
+      </Tooltip>
+    </Marker>
+  );
+}
+
+function sampleRoutePoints(coordinates, maxPoints = 5) {
+  if (!coordinates?.length) return [];
+
+  const count = Math.min(maxPoints, coordinates.length);
+
+  if (count === 1) return [coordinates[0]];
+
+  return Array.from({ length: count }, (_, index) => {
+    const position = Math.round(
+      (index * (coordinates.length - 1)) / (count - 1)
+    );
+    return coordinates[position];
+  });
+}
+
+function landmarkQuery(coordinates) {
+  const samples = sampleRoutePoints(coordinates, 5);
+
+  if (!samples.length) return null;
+
+  const blocks = samples
+    .map(([lng, lat]) => {
+      const y = Number(lat).toFixed(6);
+      const x = Number(lng).toFixed(6);
+
+      return `
+        nwr(around:350,${y},${x})["name"]["shop"];
+        nwr(around:350,${y},${x})["name"]["amenity"~"fuel|bank|hospital|clinic|marketplace"];
+        nwr(around:350,${y},${x})["name"]["tourism"~"hotel|attraction"];
+      `;
+    })
+    .join("\n");
+
+  return `
+    [out:json][timeout:18];
+    (
+      ${blocks}
+    );
+    out center tags;
+  `;
+}
+
+function getLandmarkPosition(element) {
+  const lat = element.lat ?? element.center?.lat;
+  const lng = element.lon ?? element.center?.lon;
+
+  if (!validNumber(lat) || !validNumber(lng)) return null;
+
+  return { lat: Number(lat), lng: Number(lng) };
+}
+
+function getLandmarkCategory(tags = {}) {
+  if (tags.amenity === "fuel") return "Petrol station";
+  if (tags.shop === "supermarket") return "Supermarket";
+  if (tags.shop === "convenience") return "Convenience shop";
+  if (tags.amenity === "marketplace") return "Market";
+  if (tags.amenity === "bank" || tags.amenity === "atm") return "Bank / ATM";
+  if (tags.amenity === "hospital") return "Hospital";
+  if (tags.amenity === "clinic") return "Clinic";
+  if (tags.shop) return tags.shop.replaceAll("_", " ");
+  if (tags.tourism === "hotel") return "Hotel";
+  if (tags.tourism === "attraction") return "Attraction";
+  return tags.amenity || "Landmark";
+}
+
+const FUN_MESSAGES = [
+  "Checking traffic lights along your route...",
+  "Polishing the driver's steering wheel...",
+  "Finding the quickest shortcuts around town...",
+  "Connecting with local street mapping...",
+  "Almost ready to roll!"
+];
+
+export default function TransportTrackingMap({
+  pickupLocation,
+  destinationLocation,
+  driverLocation,
+  className = "",
+  pickupLabel = "Pickup",
+  destinationLabel = "Destination",
+}) {
+  const pickup = useMemo(
+    () => normalizePoint(pickupLocation),
+    [pickupLocation]
+  );
+
+  const destination = useMemo(
+    () => normalizePoint(destinationLocation),
+    [destinationLocation]
+  );
+
+  const driver = useMemo(
+    () => normalizePoint(driverLocation),
+    [driverLocation]
+  );
+
+  const [route, setRoute] = useState(null);
+  const [routeStatus, setRouteStatus] = useState("idle");
+  const [routeError, setRouteError] = useState("");
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [funMessageIndex, setFunMessageIndex] = useState(0);
+
+  const funMessages = [
+    "Checking traffic lights along your route...",
+    "Polishing the driver's steering wheel...",
+    "Finding the quickest shortcuts around town...",
+    "Connecting with local street mapping...",
+    "Almost ready to roll!"
+  ];
+
+  useEffect(() => {
+    let interval = null;
+    let msgInterval = null;
+    if (routeStatus === "loading") {
+      setLoadingProgress(0);
+      const startTime = Date.now();
+      const duration = 90000; // 90 seconds
+      interval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(99, Math.round((elapsed / duration) * 100));
+        setLoadingProgress(pct);
+      }, 500);
+
+      msgInterval = setInterval(() => {
+        setFunMessageIndex(prev => (prev + 1) % FUN_MESSAGES.length);
+      }, 4000);
+    } else {
+      setLoadingProgress(100);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+      if (msgInterval) clearInterval(msgInterval);
+    };
+  }, [routeStatus]);
+  const [landmarks, setLandmarks] = useState([]);
+  const [landmarkStatus, setLandmarkStatus] = useState("idle");
+  const [followDriver, setFollowDriver] = useState(Boolean(driver));
+  const [overviewKey, setOverviewKey] = useState(0);
+  const [showLandmarks, setShowLandmarks] = useState(true);
+  const [activeStep, setActiveStep] = useState(0);
+
+  const routeKey = pickup && destination
+    ? `${pickup.lat.toFixed(6)},${pickup.lng.toFixed(6)}:${destination.lat.toFixed(6)},${destination.lng.toFixed(6)}`
+    : "";
+
+  const routeCoordinates = route?.geometry?.coordinates || [];
+
+  const routeLine = useMemo(
+    () => routeCoordinates.map(([lng, lat]) => [lat, lng]),
+    [routeCoordinates]
+  );
+
+  const routeSteps = useMemo(() => {
+    const legs = route?.legs || [];
+    return legs.flatMap((leg) => leg.steps || []);
+  }, [route]);
+
+  const tripDistance = route?.distance ?? null;
+  const tripDuration = route?.duration ?? null;
+
+  const currentStep = routeSteps[activeStep] || null;
+  const nextStep = routeSteps[activeStep + 1] || null;
+
+  const origin = pickup || driver || destination;
+  const mapCenter = origin ? asLatLng(origin) : DEFAULT_CENTER;
+
+  const roadName = currentStep?.name?.trim();
+  const instruction = currentStep
+    ? maneuverText(currentStep)
+    : routeStatus === "loading"
+      ? "Finding the best route…"
+      : routeStatus === "error"
+        ? "Route directions are unavailable"
+        : pickup && destination
+          ? "Route ready when directions load"
+          : "Waiting for pickup and destination";
+
+  const loadRoute = useCallback(async (signal) => {
+    if (!pickup || !destination) {
+      setRoute(null);
+      setRouteStatus("idle");
+      setRouteError("");
+      return;
+    }
+
+    if (distanceMetres(pickup, destination) < 8) {
+      setRoute(null);
+      setRouteStatus("error");
+      setRouteError("Pickup and destination are almost the same point.");
+      return;
+    }
+
+    setRouteStatus("loading");
+    setRouteError("");
+    setActiveStep(0);
+
+    try {
+      const base = OSRM_BASE.replace(/\/+$/, "");
+      const url =
+        `${base}/route/v1/driving/` +
+        `${pickup.lng},${pickup.lat};${destination.lng},${destination.lat}` +
+        `?overview=full&geometries=geojson&steps=true&alternatives=false`;
+
+      const response = await fetch(url, { signal });
+
+      if (!response.ok) throw new Error(`Routing service returned ${response.status}`);
+
+      const data = await response.json();
+
+      if (data.code !== "Ok" || !data.routes?.length) {
+        throw new Error("No drivable route was returned for these points.");
+      }
+
+      setRoute(data.routes[0]);
+      setRouteStatus("ready");
+    } catch (error) {
+      if (signal.aborted) return;
+
+      setRoute(null);
+      setRouteStatus("error");
+      setRouteError(
+        error?.message || "Could not load driving directions. Try again."
+      );
+    }
+  }, [routeKey]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = setTimeout(() => {
+      setRoute(null);
+      setRouteStatus("error");
+      setRouteError(
+        "We're having trouble finding your route. Please try again."
+      );
+      controller.abort();
+    }, 22000);
+
+    loadRoute(controller.signal);
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [loadRoute, routeKey]);
+
+  useEffect(() => {
+    if (!routeCoordinates.length) {
+      setLandmarks([]);
+      setLandmarkStatus("idle");
+      return;
+    }
+
+    const controller = new AbortController();
+    const query = landmarkQuery(routeCoordinates);
+
+    if (!query) return undefined;
+
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    async function loadLandmarks() {
+      setLandmarkStatus("loading");
+
+      try {
+        const response = await fetch(OVERPASS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body: query,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Landmark service returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        const unique = new Map();
+
+        for (const element of data.elements || []) {
+          const name = element.tags?.name?.trim();
+          const point = getLandmarkPosition(element);
+
+          if (!name || !point) continue;
+
+          const key = `${name.toLowerCase()}:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`;
+
+          if (!unique.has(key)) {
+            unique.set(key, {
+              id: String(element.id),
+              name,
+              lat: point.lat,
+              lng: point.lng,
+              tags: element.tags || {},
+              category: getLandmarkCategory(element.tags || {}),
+            });
+          }
+        }
+
+        setLandmarks([...unique.values()].slice(0, 80));
+        setLandmarkStatus("ready");
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setLandmarks([]);
+          setLandmarkStatus("error");
+        }
+      }
+    }
+
+    loadLandmarks();
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [routeCoordinates]);
+
+  useEffect(() => {
+    if (!routeSteps.length) return;
+
+    // Move the instruction forward once the driver is near the next step.
+    // This is only a distance-based estimate, not map-matched GPS navigation.
+    if (!driver) return;
+
+    const candidates = routeSteps
+      .map((step, index) => {
+        const location = step?.maneuver?.location;
+
+        if (!Array.isArray(location) || location.length < 2) return null;
+
+        const point = { lat: location[1], lng: location[0] };
+
+        return {
+          index,
+          distance: distanceMetres(driver, point),
+        };
+      })
+      .filter(Boolean);
+
+    if (!candidates.length) return;
+
+    const nearest = candidates.reduce((best, candidate) =>
+      candidate.distance < best.distance ? candidate : best
+    );
+
+    if (nearest.distance < 80) {
+      setActiveStep((previous) => Math.max(previous, nearest.index));
+    }
+  }, [driver?.lat, driver?.lng, routeSteps]);
+
+  const handleLocate = useCallback(() => {
+    if (driver) {
+      setFollowDriver(true);
+      return;
+    }
+
+    if (pickup) {
+      setOverviewKey((value) => value + 1);
+    }
+  }, [driver, pickup]);
+
+  const handleOverview = useCallback(() => {
+    setFollowDriver(false);
+    setOverviewKey((value) => value + 1);
+  }, []);
+
+  const mapPoints = [pickup, destination].filter(Boolean);
+  const hasTrip = Boolean(pickup && destination);
+
+  return (
+    <section className={`mm-nav ${className}`}>
+      {routeStatus === "loading" && (
+        <div
+          className="mm-route-loading-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="mm-route-loading-card">
+            <div className="mm-route-loading-animation">
+              <div className="mm-route-loading-road">
+                <span />
+                <span />
+                <span />
+              </div>
+
+              <div className="mm-route-loading-car">🚘</div>
+            </div>
+
+            <h3>Planning your journey ({loadingProgress}%)</h3>
+
+            <p>
+              {funMessages[funMessageIndex]}
+            </p>
+
+            <div className="mm-route-loading-progress">
+              <span style={{ width: `${loadingProgress}%`, transition: 'width 0.5s ease-out' }} />
+            </div>
+
+            <small>Please keep this screen open.</small>
+          </div>
+        </div>
+      )}
+      <div className="mm-nav-map">
+        <MapContainer
+          center={mapCenter}
+          zoom={13}
+          scrollWheelZoom
+          zoomControl
+          preferCanvas
+          className="mm-nav-leaflet"
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+            url={OSM_TILES}
+            maxZoom={19}
+          />
+
+          <MapController
+            pickup={pickup}
+            destination={destination}
+            driver={driver}
+            followDriver={followDriver}
+            overviewKey={overviewKey}
+          />
+
+          <MapInteraction
+            onUserMove={() => {
+              if (followDriver) setFollowDriver(false);
+            }}
+          />
+
+          {routeLine.length > 1 && (
+            <>
+              <Polyline
+                positions={routeLine}
+                pathOptions={{
+                  color: "#ffffff",
+                  weight: 10,
+                  opacity: 0.92,
+                  lineCap: "round",
+                  lineJoin: "round",
+                }}
+              />
+              <Polyline
+                positions={routeLine}
+                pathOptions={{
+                  color: "#1877f2",
+                  weight: 6,
+                  opacity: 0.98,
+                  lineCap: "round",
+                  lineJoin: "round",
+                }}
+              />
+            </>
+          )}
+
+          {pickup && (
+            <Marker
+              position={asLatLng(pickup)}
+              icon={endpointIcon("pickup", "A")}
+              zIndexOffset={500}
+              title={pickupLabel}
+            >
+              <Tooltip direction="top" offset={[0, -8]}>
+                <strong>{pickupLabel}</strong>
+              </Tooltip>
+            </Marker>
+          )}
+
+          {destination && (
+            <Marker
+              position={asLatLng(destination)}
+              icon={endpointIcon("destination", "B")}
+              zIndexOffset={500}
+              title={destinationLabel}
+            >
+              <Tooltip direction="top" offset={[0, -8]}>
+                <strong>{destinationLabel}</strong>
+              </Tooltip>
+            </Marker>
+          )}
+
+          {driver && (
+            <DriverMarker
+              point={driver}
+              fallbackHeading={
+                routeCoordinates.length > 1
+                  ? bearingBetween(
+                      { lat: routeCoordinates[0][1], lng: routeCoordinates[0][0] },
+                      { lat: routeCoordinates[1][1], lng: routeCoordinates[1][0] }
+                    )
+                  : 0
+              }
+            />
+          )}
+
+          {showLandmarks && landmarks.map((landmark) => (
+            <LandmarkMarker key={landmark.id} landmark={landmark} />
+          ))}
+        </MapContainer>
+
+        <div className="mm-map-topline">
+          <div className="mm-map-live">
+            <span className={`mm-live-dot ${driver ? "is-live" : ""}`} />
+            <span>{driver ? "Driver location" : "Trip map"}</span>
+          </div>
+          <div className="mm-map-attribution">MAP DATA · OPENSTREETMAP</div>
+        </div>
+
+        <div className="mm-map-actions">
+          <button
+            type="button"
+            className={`mm-map-action ${followDriver ? "is-active" : ""}`}
+            onClick={handleLocate}
+            title={driver ? "Follow driver" : "Show trip"}
+            aria-label={driver ? "Follow driver" : "Show trip"}
+          >
+            {followDriver ? <Navigation size={18} /> : <LocateFixed size={18} />}
+          </button>
+          <button
+            type="button"
+            className="mm-map-action"
+            onClick={handleOverview}
+            title="Show full route"
+            aria-label="Show full route"
+          >
+            <MapPinned size={18} />
+          </button>
+          <button
+            type="button"
+            className={`mm-map-action ${showLandmarks ? "is-active" : ""}`}
+            onClick={() => setShowLandmarks((value) => !value)}
+            title={showLandmarks ? "Hide landmarks" : "Show landmarks"}
+            aria-label={showLandmarks ? "Hide landmarks" : "Show landmarks"}
+          >
+            <Store size={18} />
+          </button>
+        </div>
+
+        {routeStatus === "loading" && (
+          <div className="mm-map-loading">
+            <LoaderCircle className="mm-spin" size={16} />
+            <span>Finding road route…</span>
+          </div>
+        )}
+
+        {routeStatus === "error" && (
+          <div className="mm-map-error">
+            <AlertCircle size={16} />
+            <span>{routeError || "Driving route unavailable."}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="mm-nav-bottom">
+        <div className="mm-nav-summary">
+          <div className="mm-nav-summary-icon">
+            {routeStatus === "ready" ? (
+              <Navigation size={20} />
+            ) : (
+              <RouteIcon size={20} />
+            )}
+          </div>
+          <div className="mm-nav-summary-main">
+            <span className="mm-nav-eyebrow">
+              {routeStatus === "ready" ? "DRIVING ROUTE" : "TRIP OVERVIEW"}
+            </span>
+            <strong>
+              {tripDistance !== null ? formatDistance(tripDistance) : "Route details"}
+            </strong>
+            <span className="mm-nav-subtitle">
+              {tripDuration !== null
+                ? `Estimated drive · ${formatDuration(tripDuration)}`
+                : hasTrip
+                  ? "Waiting for route estimate"
+                  : "Waiting for trip locations"}
+            </span>
+          </div>
+          <div className="mm-nav-estimate">
+            <Clock3 size={15} />
+            <span>{tripDuration !== null ? formatDuration(tripDuration) : "—"}</span>
+          </div>
+        </div>
+
+        <div className="mm-nav-stops">
+          <div className="mm-stop-line">
+            <span className="mm-stop-dot mm-stop-pickup" />
+            <div className="mm-stop-copy">
+              <span>FROM</span>
+              <strong>{pickupLabel}</strong>
+              <small>
+                {pickup
+                  ? `${pickup.lat.toFixed(5)}, ${pickup.lng.toFixed(5)}`
+                  : "Pickup location not set"}
+              </small>
+            </div>
+          </div>
+          <div className="mm-stop-line">
+            <span className="mm-stop-dot mm-stop-destination" />
+            <div className="mm-stop-copy">
+              <span>TO</span>
+              <strong>{destinationLabel}</strong>
+              <small>
+                {destination
+                  ? `${destination.lat.toFixed(5)}, ${destination.lng.toFixed(5)}`
+                  : "Destination not set"}
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <div className="mm-nav-instruction">
+          <div className="mm-instruction-symbol">
+            <Compass size={22} />
+          </div>
+          <div className="mm-instruction-copy">
+            <span className="mm-nav-eyebrow">
+              {currentStep ? `NEXT DIRECTION${roadName ? ` · ${roadName}` : ""}` : "NAVIGATION"}
+            </span>
+            <strong>{instruction}</strong>
+            {currentStep && (
+              <small>
+                {formatDistance(currentStep.distance || 0)}
+                {nextStep?.name ? ` · Then ${nextStep.name}` : ""}
+              </small>
+            )}
+          </div>
+          {currentStep && (
+            <button
+              type="button"
+              className="mm-step-next"
+              onClick={() => setActiveStep((value) => Math.min(value + 1, routeSteps.length - 1))}
+              aria-label="Next direction"
+              title="Preview next direction"
+            >
+              <ChevronRight size={20} />
+            </button>
+          )}
+        </div>
+
+        <div className="mm-nav-foot">
+          <div className="mm-landmark-status">
+            <span className={`mm-status-dot ${landmarkStatus === "ready" ? "is-ready" : ""}`} />
+            {landmarkStatus === "loading"
+              ? "Loading nearby landmarks…"
+              : landmarkStatus === "error"
+                ? "Landmark names temporarily unavailable"
+                : landmarks.length
+                  ? `${landmarks.length} mapped landmarks along the route`
+                  : "Landmarks appear where map data is available"}
+          </div>
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+            className="mm-data-link"
+          >
+            Map data details <ArrowUpRight size={13} />
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}

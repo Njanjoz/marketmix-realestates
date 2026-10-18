@@ -141,30 +141,36 @@ const Navbar = () => {
   // Dashboard Links
   const dashboardLinks = useMemo(() => {
     const userType = userProfile?.userType || userProfile?.role || 'user';
+    const isDriver = userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved || userProfile?.driverStatus;
     let dashboardName = 'My Dashboard';
     let badge = null;
     
-    switch (userType) {
-      case 'admin':
-        dashboardName = 'Admin Dashboard';
-        badge = 'Admin';
-        break;
-      case 'agent':
-        dashboardName = 'Agent Dashboard';
-        badge = 'Agent';
-        break;
-      case 'seller':
-      case 'landlord':
-        dashboardName = 'Seller Dashboard';
-        badge = 'Seller';
-        break;
-      case 'investor':
-        dashboardName = 'Investor Dashboard';
-        badge = 'Investor';
-        break;
-      default:
-        dashboardName = 'My Dashboard';
-        break;
+    if (isDriver) {
+      dashboardName = 'Driver Dashboard';
+      badge = 'Driver';
+    } else {
+      switch (userType) {
+        case 'admin':
+          dashboardName = 'Admin Dashboard';
+          badge = 'Admin';
+          break;
+        case 'agent':
+          dashboardName = 'Agent Dashboard';
+          badge = 'Agent';
+          break;
+        case 'seller':
+        case 'landlord':
+          dashboardName = 'Seller Dashboard';
+          badge = 'Seller';
+          break;
+        case 'investor':
+          dashboardName = 'Investor Dashboard';
+          badge = 'Investor';
+          break;
+        default:
+          dashboardName = 'My Dashboard';
+          break;
+      }
     }
     
     const baseLinks = [
@@ -252,12 +258,14 @@ const Navbar = () => {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     userProfile?.userType === 'admin' ? 'bg-red-500/25 text-red-800' : 
                     userProfile?.userType === 'agent' ? 'bg-blue-500/25 text-blue-800' :
+                    userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'bg-emerald-500/25 text-emerald-800' :
                     userProfile?.userType === 'seller' ? 'bg-amber-500/25 text-amber-800' :
                     userProfile?.userType === 'investor' ? 'bg-purple-500/25 text-purple-800' :
                     'bg-emerald-500/25 text-emerald-800'
                   }`}>
                     {userProfile?.userType === 'admin' ? 'Administrator' : 
                      userProfile?.userType === 'agent' ? 'Verified Agent' :
+                     userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'Transport Driver' :
                      userProfile?.userType === 'seller' ? 'Property Seller' :
                      userProfile?.userType === 'investor' ? 'Investor' :
                      'Premium Member'}
@@ -457,7 +465,11 @@ const Navbar = () => {
                         {userProfile?.name?.split(' ')[0] || currentUser.email?.split('@')[0] || 'User'}
                       </div>
                       <div className="text-xs text-emerald-600 capitalize">
-                        {userProfile?.userType || 'User'}
+                        {userProfile?.userType === 'admin' ? 'Administrator' : 
+                         userProfile?.userType === 'agent' ? 'Agent' :
+                         userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'Transport Driver' :
+                         userProfile?.userType === 'seller' ? 'Seller' :
+                         userProfile?.userType === 'investor' ? 'Investor' : 'Member'}
                       </div>
                     </div>
                     <ChevronDown className={`w-4 h-4 text-gray-700 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />

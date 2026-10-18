@@ -1270,18 +1270,27 @@ const AdminDashboard = () => {
                     const badge = status === 'approved' ? { bg: greenLight, color: green, label: 'Approved' } : status === 'rejected' ? { bg: redLight, color: red, label: 'Rejected' } : { bg: yellowLight, color: yellow, label: 'Pending review' };
                     return (
                       <div key={driver.id} style={{ background: 'rgba(255,255,255,0.55)', border: `1px solid ${rule}`, borderRadius: 16, padding: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: `linear-gradient(135deg, ${red}, #ef4444)`, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20, flex: '0 0 auto' }}>
-                          {(driver.name || driver.email || 'D').charAt(0).toUpperCase()}
-                        </div>
+                        {profile.photoUrl ? (
+                          <a href={profile.photoUrl} target="_blank" rel="noreferrer" style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', border: `1px solid ${rule}`, flex: '0 0 auto', display: 'block' }}>
+                            <img src={profile.photoUrl} alt="Vehicle" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </a>
+                        ) : (
+                          <div style={{ width: 56, height: 56, borderRadius: '50%', background: `linear-gradient(135deg, ${red}, #ef4444)`, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20, flex: '0 0 auto' }}>
+                            {(driver.name || driver.email || 'D').charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: 600, fontSize: 15 }}>{driver.name || 'No name'}</span>
                             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: badge.bg, color: badge.color, textTransform: 'uppercase', letterSpacing: 0.4 }}>{badge.label}</span>
+                            {profile.vehicleTemplate && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#047857', textTransform: 'uppercase' }}>Template: {profile.vehicleTemplate}</span>
+                            )}
                           </div>
                           <div style={{ fontSize: 12, color: ink2, marginTop: 3 }}>{driver.email || '—'} · {profile.phone || driver.phone || driver.phoneNumber || '—'}</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 12 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 12 }}>
                             <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>
-                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Vehicle</div>
+                              <div style={{ fontSize: 10, color: ink3, textTransform: 'uppercase', letterSpacing: 0.4 }}>Vehicle Type</div>
                               <div style={{ fontSize: 13, fontWeight: 500 }}>{profile.vehicleId || '—'}</div>
                             </div>
                             <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px 10px', borderRadius: 10 }}>

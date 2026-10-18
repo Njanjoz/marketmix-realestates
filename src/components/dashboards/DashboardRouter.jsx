@@ -9,13 +9,13 @@ const AgentDashboard = lazy(() => import('./AgentDashboard'));
 const SellerDashboard = lazy(() => import('./SellerDashboard'));
 const InvestorDashboard = lazy(() => import('./InvestorDashboard'));
 const UserDashboard = lazy(() => import('./UserDashboard'));
+const DriverDashboard = lazy(() => import('../../pages/driver/DriverDashboard'));
 
 // Preload all dashboards on component mount
 const preloadDashboards = () => {
-  const dashboards = [AdminDashboard, AgentDashboard, SellerDashboard, InvestorDashboard, UserDashboard];
+  const dashboards = [AdminDashboard, AgentDashboard, SellerDashboard, InvestorDashboard, UserDashboard, DriverDashboard];
   dashboards.forEach(dashboard => {
     if (dashboard && typeof dashboard === 'object') {
-      // Trigger lazy load
       dashboard._preload?.();
     }
   });
@@ -45,8 +45,14 @@ const DashboardRouter = () => {
   // Get role with fallback
   const role = userProfile?.role || userProfile?.userType || 'user';
 
+  // Check if user is a driver (either by role or driver intent/approval)
+  const isDriver = role === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved || userProfile?.driverStatus;
+
   // Render appropriate dashboard
   const renderDashboard = () => {
+    if (isDriver) {
+      return <DriverDashboard />;
+    }
     switch (role) {
       case 'admin':
         return <AdminDashboard />;

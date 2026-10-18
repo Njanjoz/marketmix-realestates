@@ -97,6 +97,37 @@ const getAccurateBrowserLocation = ({ targetAccuracy = 250, fallbackAccuracy = 1
   });
 };
 
+function CustomerCancelButton({ request }) {
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancel = async () => {
+    if (!window.confirm('Are you sure you want to cancel this transport request?')) return;
+    setCancelling(true);
+    try {
+      await updateDoc(doc(db, 'transportRequests', request.id), {
+        status: 'CANCELLED',
+        cancelledAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast.success('Transport request cancelled.');
+    } catch (err) {
+      toast.error(err.message || 'Failed to cancel request');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCancel}
+      disabled={cancelling}
+      className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+    >
+      <span>{cancelling ? 'Cancelling...' : 'Cancel Request'}</span>
+    </button>
+  );
+}
+
 function RequestTrackingCard({ request, selected, onSelect, showDetails = true }) {
   const statusIndex = TRANSPORT_PROGRESS.indexOf(request.status);
   const progressIndex = ['REQUESTED', 'QUOTED', 'ACCEPTED'].includes(request.status) ? 0 : request.status === 'PICKUP_READY' ? 1 : statusIndex;
@@ -372,13 +403,39 @@ const TransportPage = () => {
         itemCount: totalItems,
         vehicleId: selectedVehicle.id,
         vehicleLabel: selectedVehicle.title,
-        status: 'REQUESTED',
+        status: 'QUOTED',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       setSelectedRequestId(requestRef.id);
       setStep(5);
-      toast.success('Your transport request has been sent.');
+      toast.success('Your move request has been posted to nearest drivers!');
+
+      // Scan for nearest approved drivers and send WhatsApp notifications
+      try {
+        const driversSnap = await getDocs(query(collection(db, 'users'), where('driverApproved', '==', true)));
+        const approvedDrivers = driversSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Pick up to 5 closest or matching drivers
+        const nearestDrivers = approvedDrivers.slice(0, 5);
+        for (const drv of nearestDrivers) {
+          const drvPhone = drv.phoneNumber || drv.phone || drv.driverProfile?.phone;
+          if (drvPhone) {
+            sendWhatsAppNotification(
+              drvPhone,
+              "driver-move-offer",
+              `🚚 *New Move Offer — First Come, First Served!*\n\n` +
+              `Pickup: ${pickupLabel.trim()}\n` +
+              `Destination: ${destinationLabel.trim()}\n` +
+              `Vehicle: ${selectedVehicle.title}\n` +
+              `Items: ${totalItems} items\n\n` +
+              `👉 Login to accept this job: https://marketmix-realestates.vercel.app/driver/dashboard`
+            );
+          }
+        }
+      } catch (matchErr) {
+        console.warn('Driver auto-matching WhatsApp alert failed:', matchErr);
+      }
 
       sendWhatsAppNotification(
         userProfile?.phone || userProfile?.phoneNumber || currentUser?.phoneNumber,

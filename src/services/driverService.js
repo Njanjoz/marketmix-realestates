@@ -1,5 +1,6 @@
 // src/services/driverService.js
-import { auth } from '../firebase/config';
+import { auth, db } from '../firebase/config';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
 
@@ -70,13 +71,30 @@ export async function completeTrip(requestId) {
 }
 
 export async function submitDriverOnboarding(payload) {
-  const headers = await getAuthHeaders();
-  const res = await fetch(`${BACKEND_URL}/api/moving/driver/onboard`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.message || 'Onboarding submission failed');
-  return data;
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+
+  const { vehicleId, vehicleTemplate, plate, licenseNumber, phone, photoUrl } = payload || {};
+  const userRef = doc(db, 'users', user.uid);
+
+  const driverProfile = {
+    vehicleId: vehicleId || 'pickup',
+    vehicleTemplate: vehicleTemplate || 'fronack',
+    plate: plate || '',
+    licenseNumber: licenseNumber || '',
+    phone: phone || '',
+    photoUrl: photoUrl || '',
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(userRef, {
+    driverIntent: true,
+    driverStatus: 'pending',
+    driverApproved: false,
+    phoneNumber: phone || '',
+    driverProfile,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  return { success: true, message: 'Driver onboarding submitted successfully' };
 }

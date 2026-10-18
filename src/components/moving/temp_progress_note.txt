@@ -1,0 +1,2 @@
+// src/components/moving/TransportTrackingMap.jsx (partial snippet for progress state & effect)
+// We will insert the progress state and timer effect into TransportTrackingMap.
