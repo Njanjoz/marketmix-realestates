@@ -177,6 +177,7 @@ const Navbar = () => {
       { name: 'My Profile', path: '/profile', icon: <UserCircle className="w-4 h-4" /> },
       { name: 'Favorites', path: '/favorites', icon: <Heart className="w-4 h-4" /> },
       { name: 'Messages', path: '/messages', icon: <MessageSquare className="w-4 h-4" /> },
+      { name: 'Customer Help', path: '/help', icon: <MessageSquare className="w-4 h-4" /> },
       { name: 'Notifications', path: '/notifications', icon: <Bell className="w-4 h-4" /> },
       { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
     ];
@@ -192,8 +193,10 @@ const Navbar = () => {
         { name: 'Moderate Property Ads', path: '/admin/properties', icon: <Building2 className="w-4 h-4" /> },
         { name: 'Move-in Requests', path: '/admin/service-requests', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'Moving Requests', path: '/admin/transport-requests', icon: <Briefcase className="w-4 h-4" /> },
+        { name: 'Viewing Availability', path: '/admin/sightseeing-bookings', icon: <Building2 className="w-4 h-4" /> },
         { name: 'Moving Package Posters', path: '/admin/moving-packages', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'WhatsApp Control', path: '/admin/whatsapp', icon: <MessageSquare className="w-4 h-4" /> },
+        { name: 'Customer Help Inbox', path: '/admin/customer-help', icon: <MessageSquare className="w-4 h-4" /> },
       ] : []),
       ...baseLinks
     ];

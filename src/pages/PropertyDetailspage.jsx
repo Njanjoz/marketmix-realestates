@@ -106,7 +106,7 @@ const YesNoChip = ({ value }) => {
 const PropertyDetailspage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
 
   const [publicProperty, setPublicProperty] = useState(null);
   const [loadingPublic, setLoadingPublic] = useState(true);
@@ -201,7 +201,7 @@ const PropertyDetailspage = () => {
         propertyTitle: publicProperty.title,
       });
 
-      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone;
+      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone || publicProperty.ownerPhone || publicProperty.agentPhone;
       sendWhatsAppNotification(
         landlordPhone,
         "new-enquiry",
@@ -244,7 +244,9 @@ const PropertyDetailspage = () => {
         notes: siteVisitForm.notes,
       });
 
-      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone;
+      const landlordPhone = publicProperty.landlordPhone || publicProperty.phone || publicProperty.sellerPhone || publicProperty.ownerPhone || publicProperty.agentPhone;
+      const customerPhone = userProfile?.phone || userProfile?.phoneNumber || currentUser?.phoneNumber;
+      const notificationResults = await Promise.all([
       sendWhatsAppNotification(
         landlordPhone,
         "viewing-booked-landlord",
@@ -253,18 +255,18 @@ const PropertyDetailspage = () => {
         `Property: ${publicProperty.title}\n` +
         `Tenant: ${currentUser?.displayName || currentUser?.email || 'Tenant'}\n` +
         `Date: ${siteVisitForm.date}\n` +
-        `Tenant phone: ${currentUser?.phoneNumber || 'N/A'}`
-      );
+        `Tenant phone: ${customerPhone || 'Not provided'}`
+      ),
       sendWhatsAppNotification(
-        currentUser?.phoneNumber,
+        customerPhone,
         "viewing-booked-tenant",
         `🏠 MarketMix Real Estates\n` +
-        `Your viewing is confirmed\n` +
+        `Your viewing request was received and is awaiting confirmation\n` +
         `${publicProperty.title}\n` +
         `${publicProperty.location || ''}\n` +
-        `Date: ${siteVisitForm.date}\n` +
+        `Date: ${siteVisitForm.date} at ${siteVisitForm.time}\n` +
         `Landlord: ${publicProperty.landlordName || 'Landlord'} — ${landlordPhone || ''}`
-      );
+      )]);
 
       setSiteVisitForm({
         date: '',
@@ -275,7 +277,11 @@ const PropertyDetailspage = () => {
         notes: '',
       });
       setSiteVisitOpen(false);
-      toast.success('Site visit request sent to the agent');
+      if (!customerPhone || !landlordPhone || notificationResults.some((sent) => !sent)) {
+        toast('Site visit saved. WhatsApp could not be queued for one or both parties; verify both phone numbers.', { icon: '⚠️' });
+      } else {
+        toast.success('Site visit request sent and both parties notified on WhatsApp');
+      }
     } catch (error) {
       console.error('Site visit error:', error);
       toast.error('Failed to request site visit');
@@ -562,6 +568,13 @@ const PropertyDetailspage = () => {
             <div className="text-right">
               <p className="text-2xl font-bold text-emerald-600">{KSh(costs.rent)}</p>
               <p className="text-xs text-gray-500">{val(p.paymentFrequency, 'Monthly')}</p>
+              <button
+                type="button"
+                onClick={() => navigate(`/site-seeing?propertyId=${id}`)}
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-emerald-800 lg:hidden"
+              >
+                <Compass className="h-4 w-4" /> Book Site Seeing Tour
+              </button>
             </div>
           </div>
 
@@ -897,7 +910,7 @@ const PropertyDetailspage = () => {
               <button
                 type="button"
                 onClick={() => navigate(`/site-seeing?propertyId=${id}`)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 text-white rounded-lg font-bold hover:bg-emerald-800 shadow"
+                className="hidden w-full items-center justify-center gap-2 py-2.5 bg-emerald-700 text-white rounded-lg font-bold hover:bg-emerald-800 shadow lg:flex"
               >
                 <Compass className="w-4 h-4" /> Book Site Seeing Tour
               </button>

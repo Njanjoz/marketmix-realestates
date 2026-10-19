@@ -17,6 +17,8 @@ import { getNetworkStatus, subscribeToNetwork } from './services/networkService'
 
 // Lazy load pages
 const HomePage = lazy(() => import('./pages/HomePage'));
+const DownloadPage = lazy(() => import('./pages/DownloadPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
@@ -31,6 +33,8 @@ const PropertyDetailsPage = lazy(() => import('./pages/PropertyDetailspage'));
 const LuxuryPage = lazy(() => import('./pages/LuxuryPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const TransportPage = lazy(() => import('./pages/TransportPage'));
+const TransportLiveUpdatesPage = lazy(() => import('./pages/TransportLiveUpdatesPage'));
+const MyBookingsPage = lazy(() => import('./pages/MyBookingsPage'));
 const SiteSeeingPage = lazy(() => import('./pages/SiteSeeingPage'));
 const UrbanNestPage = lazy(() => import('./pages/UrbanNestPage'));
 const TransportDriverPage = lazy(() => import('./pages/TransportDriverPage'));
@@ -50,16 +54,29 @@ const AdminTransportRequestsPage = lazy(() => import('./pages/admin/TransportReq
 const MovingPackagesPage = lazy(() => import('./pages/admin/MovingPackagesPage'));
 const AgencyPackagesPage = lazy(() => import('./pages/admin/AgencyPackagesPage'));
 const SightseeingPackagesPage = lazy(() => import('./pages/admin/SightseeingPackagesPage'));
+const SightseeingBookingsPage = lazy(() => import('./pages/admin/SightseeingBookingsPage'));
+const ViewingMeetingDetailsPage = lazy(() => import('./pages/agent/ViewingMeetingDetailsPage'));
 const WhatsAppControl = lazy(() => import('./pages/admin/WhatsAppControl'));
+const CustomerHelpPage = lazy(() => import('./pages/CustomerHelpPage'));
+const CustomerHelpInbox = lazy(() => import('./pages/admin/CustomerHelpInbox'));
 
 function ScrollToTop() {
   const location = useLocation();
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+    const resetOnPageShow = () => window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    window.addEventListener('pageshow', resetOnPageShow);
+    return () => window.removeEventListener('pageshow', resetOnPageShow);
+  }, []);
   useLayoutEffect(() => {
     const root = document.documentElement;
     const previousBehavior = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
-    window.scrollTo(0, 0);
-    const frame = window.requestAnimationFrame(() => { root.style.scrollBehavior = previousBehavior; });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      root.style.scrollBehavior = previousBehavior;
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [location.pathname, location.search]);
   return null;
@@ -129,6 +146,8 @@ function App() {
                     <Routes>
                       {/* Public Routes */}
                       <Route path="/" element={<HomePage />} />
+                      <Route path="/download" element={<DownloadPage />} />
+                      <Route path="/terms" element={<TermsPage />} />
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/about" element={<AboutPage />} />
@@ -142,7 +161,12 @@ function App() {
                       <Route path="/urban-nest" element={<UrbanNestPage />} />
                       <Route path="/roommates" element={<ExplorePage />} />
                       <Route path="/transport" element={<TransportPage />} />
+                      <Route path="/my-bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
+                      <Route path="/transport/updates" element={<ProtectedRoute><TransportLiveUpdatesPage /></ProtectedRoute>} />
                       <Route path="/site-seeing" element={<SiteSeeingPage />} />
+                      <Route path="/site-seeing/checkout" element={<SiteSeeingPage />} />
+                      <Route path="/agent/viewing-details/:bookingId" element={<ProtectedRoute><ViewingMeetingDetailsPage /></ProtectedRoute>} />
+                      <Route path="/help" element={<ProtectedRoute><CustomerHelpPage /></ProtectedRoute>} />
                       <Route path="/sightseeing" element={<Navigate to="/site-seeing" replace />} />
                       <Route path="/receipt/:ref" element={<ReceiptPage />} />
                       <Route path="/driver/onboard" element={
@@ -195,7 +219,11 @@ function App() {
                       <Route path="/admin/sightseeing-packages" element={
                         <ProtectedRoute allowedRoles={['admin']}><SightseeingPackagesPage /></ProtectedRoute>
                       } />
+                      <Route path="/admin/sightseeing-bookings" element={
+                        <ProtectedRoute allowedRoles={['admin']}><SightseeingBookingsPage /></ProtectedRoute>
+                      } />
                       <Route path="/admin/whatsapp" element={<WhatsAppControl />} />
+                      <Route path="/admin/customer-help" element={<ProtectedRoute allowedRoles={['admin']}><CustomerHelpInbox /></ProtectedRoute>} />
 
                       {/* User Profile Routes */}
                       <Route path="/profile" element={

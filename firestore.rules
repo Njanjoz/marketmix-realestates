@@ -111,7 +111,9 @@ service cloud.firestore {
           'pickupLabel', 'pickupCounty', 'pickupSubCounty', 'pickupWard', 'pickupArea', 'pickupCoordinates',
           'destinationLabel', 'destinationCounty', 'destinationSubCounty', 'destinationWard', 'destinationArea', 'destinationCoordinates', 'destinationPrecision',
           'items', 'itemCount', 'vehicleId', 'vehicleLabel', 'packageId', 'packageTitle',
-          'status', 'createdAt', 'updatedAt'
+          'estimatedPrice', 'estimatedRouteKm', 'quotedPrice', 'quotedRouteKm', 'quotedRatePerKm',
+          'quotedDriverId', 'quotedDriverName', 'quoteModel',
+          'status', 'offerDriverIds', 'createdAt', 'updatedAt'
         ]) &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.userName is string && request.resource.data.userName.size() <= 120 &&
@@ -136,9 +138,18 @@ service cloud.firestore {
         request.resource.data.itemCount is number && request.resource.data.itemCount >= 1 && request.resource.data.itemCount <= 200 &&
         request.resource.data.vehicleId in ['motorbike', 'tuk', 'pickup', 'lorry'] &&
         request.resource.data.vehicleLabel is string && request.resource.data.vehicleLabel.size() <= 40 &&
+        (!('estimatedPrice' in request.resource.data) || request.resource.data.estimatedPrice == null || (request.resource.data.estimatedPrice is number && request.resource.data.estimatedPrice >= 0 && request.resource.data.estimatedPrice <= 100000000)) &&
+        (!('estimatedRouteKm' in request.resource.data) || request.resource.data.estimatedRouteKm == null || (request.resource.data.estimatedRouteKm is number && request.resource.data.estimatedRouteKm >= 0 && request.resource.data.estimatedRouteKm <= 10000)) &&
+        (!('quotedPrice' in request.resource.data) || request.resource.data.quotedPrice == null || (request.resource.data.quotedPrice is number && request.resource.data.quotedPrice >= 0 && request.resource.data.quotedPrice <= 100000000)) &&
+        (!('quotedRouteKm' in request.resource.data) || request.resource.data.quotedRouteKm == null || (request.resource.data.quotedRouteKm is number && request.resource.data.quotedRouteKm >= 0 && request.resource.data.quotedRouteKm <= 10000)) &&
+        (!('quotedRatePerKm' in request.resource.data) || request.resource.data.quotedRatePerKm == null || (request.resource.data.quotedRatePerKm is number && request.resource.data.quotedRatePerKm >= 0 && request.resource.data.quotedRatePerKm <= 1000000)) &&
+        (!('quotedDriverId' in request.resource.data) || (request.resource.data.quotedDriverId is string && request.resource.data.quotedDriverId.size() <= 128)) &&
+        (!('quotedDriverName' in request.resource.data) || (request.resource.data.quotedDriverName is string && request.resource.data.quotedDriverName.size() <= 120)) &&
+        (!('quoteModel' in request.resource.data) || (request.resource.data.quoteModel is string && request.resource.data.quoteModel.size() <= 60)) &&
         request.resource.data.packageId is string && request.resource.data.packageId.size() <= 128 &&
         request.resource.data.packageTitle is string && request.resource.data.packageTitle.size() <= 80 &&
-        request.resource.data.status == 'REQUESTED' &&
+        request.resource.data.status in ['REQUESTED', 'QUOTED'] &&
+        request.resource.data.offerDriverIds is list && request.resource.data.offerDriverIds.size() == 0 &&
         request.resource.data.createdAt is timestamp && request.resource.data.updatedAt is timestamp;
     }
 
@@ -365,12 +376,13 @@ service cloud.firestore {
     match /transportRequests/{requestId} {
       allow create: if isAuthenticated() && validTransportRequest();
       allow read: if isAuthenticated() && (
-        isAdmin() || resource.data.userId == request.auth.uid || resource.data.driverUserId == request.auth.uid
+        isAdmin() || resource.data.userId == request.auth.uid || resource.data.driverUserId == request.auth.uid ||
+        ('offerDriverIds' in resource.data && request.auth.uid in resource.data.offerDriverIds)
       );
       allow update: if (isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'quotedPrice', 'driverUserId', 'driverName', 'driverPhone',
-          'vehicleLabel', 'etaMinutes', 'updatedAt'
+          'vehicleLabel', 'etaMinutes', 'updatedAt', 'quoteDecision', 'quoteAppeal'
         ]) &&
         request.resource.data.status in ['REQUESTED', 'QUOTED', 'ACCEPTED', 'DRIVER_ASSIGNED', 'PICKUP_READY', 'ON_THE_WAY', 'LOADING', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'] &&
         (request.resource.data.quotedPrice == null || (request.resource.data.quotedPrice is number && request.resource.data.quotedPrice >= 0 && request.resource.data.quotedPrice <= 100000000)) &&
@@ -387,6 +399,23 @@ service cloud.firestore {
           (!('status' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.status in ['PICKUP_READY', 'ON_THE_WAY', 'LOADING', 'IN_TRANSIT', 'DELIVERED']) &&
           request.resource.data.updatedAt is timestamp);
       allow delete: if false;
+    }
+
+    // Private fallback alerts include nearby driver contact information and are admin-only.
+    match /transportCapacityAlerts/{alertId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow create: if false;
+      allow update: if isAuthenticated() && isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt']) &&
+        request.resource.data.status in ['PENDING', 'REVIEWED'];
+      allow delete: if false;
+    }
+
+    // Payout requests are created and changed only by the moving backend.
+    // MarketMix admins can review them; sellers see their status on the trip.
+    match /transportWithdrawals/{withdrawalId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow create, update, delete: if false;
     }
 
     // Private move-in and roommate requests are visible only to their owner and admins.
@@ -425,6 +454,96 @@ service cloud.firestore {
         request.resource.data.adminNote.size() <= 1000 &&
         request.resource.data.updatedAt is timestamp;
       allow delete: if false;
+    }
+
+    // Viewing requests are private to the customer, listing owner, and admins.
+    match /siteVisits/{visitId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.buyerId == request.auth.uid &&
+        request.resource.data.propertyId is string &&
+        request.resource.data.requestedDate is string &&
+        request.resource.data.requestedTime is string &&
+        request.resource.data.agentId == get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.userId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.keys().hasOnly([
+          'propertyId', 'buyerId', 'agentId', 'requestedDate', 'requestedTime',
+          'visitFee', 'transportFee', 'meetingPoint', 'notes', 'status', 'createdAt', 'updatedAt'
+        ]);
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.agentId == request.auth.uid);
+      allow update: if isAuthenticated() && (
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+        (resource.data.agentId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          ((resource.data.status == 'pending' && request.resource.data.status == 'confirmed') ||
+           (resource.data.status == 'confirmed' && request.resource.data.status == 'completed')))
+      ) && request.resource.data.status in ['pending', 'confirmed', 'completed'] &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
+    // Listing inquiries are visible to the buyer, the listing owner, and admins.
+    match /inquiries/{inquiryId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.buyerId == request.auth.uid &&
+        request.resource.data.propertyId is string &&
+        request.resource.data.agentId == get(/databases/$(database)/documents/properties/$(request.resource.data.propertyId)).data.userId &&
+        request.resource.data.message is string && request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 4000 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp && request.resource.data.updatedAt is timestamp &&
+        request.resource.data.keys().hasOnly(['propertyId', 'buyerId', 'agentId', 'propertyTitle', 'message', 'status', 'createdAt', 'updatedAt']);
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.agentId == request.auth.uid);
+      allow update: if isAuthenticated() &&
+        (isAdmin() || resource.data.agentId == request.auth.uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        request.resource.data.status in ['pending', 'contacted'] && request.resource.data.updatedAt is timestamp;
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
+    match /agentViewingWallets/{agentId} {
+      allow read: if isAuthenticated() && (request.auth.uid == agentId || isAdmin());
+      allow write: if false;
+    }
+
+    match /agentViewingEarnings/{earningId} {
+      allow read: if isAuthenticated() && (resource.data.agentId == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
+    match /sightseeingBookings/{bookingId} {
+      // Paid viewing reservations are created only by the trusted booking API.
+      allow create: if false;
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid || resource.data.agentId == request.auth.uid);
+      allow update: if isAuthenticated() && (
+        isAdmin() || (resource.data.agentId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          ((resource.data.status in ['queued', 'pending_confirmation'] && request.resource.data.status == 'confirmed') ||
+           (resource.data.status == 'confirmed' && request.resource.data.status == 'completed')))
+      ) && request.resource.data.status in ['confirmed', 'completed'] &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
+    // Customer support conversations are private to the customer and admins.
+    match /supportConversations/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.keys().hasOnly(['userId', 'userName', 'userEmail', 'status', 'createdAt', 'updatedAt', 'lastMessage']);
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'lastMessage']);
+      allow delete: if isAuthenticated() && isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 4000 &&
+          request.resource.data.createdAt is timestamp &&
+          request.resource.data.keys().hasOnly(['senderId', 'senderName', 'text', 'createdAt']);
+        allow update, delete: if false;
+      }
     }
 
     // In-app conversations are limited to the listing owner and one other account.

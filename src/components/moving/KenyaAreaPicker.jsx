@@ -2,13 +2,16 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { ChevronDown, MapPinned, Search, Loader2 } from 'lucide-react';
 import { formatKenyaArea, getKenyaSubCounties, getKenyaWards, KENYA_COUNTIES } from '../../utils/kenyaLocationOptions';
+import { searchKenyaLocations } from '../../utils/transportLocationLookup';
 
 const KenyaAreaPicker = ({ value = {}, onChange, areaLabel = 'Estate, neighbourhood or landmark', areaPlaceholder = 'Type a local place name', showSummary = true }) => {
   const [searchQuery, setSearchQuery] = useState(value.area || '');
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const dropdownRef = useRef(null);
+  const searchRequestId = useRef(0);
 
   const subCounties = useMemo(() => getKenyaSubCounties(value.county), [value.county]);
   const wards = useMemo(() => getKenyaWards(value.subCounty), [value.subCounty]);
@@ -25,28 +28,31 @@ const KenyaAreaPicker = ({ value = {}, onChange, areaLabel = 'Estate, neighbourh
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch OpenStreetMap Nominatim suggestions as user types
+  // Search Kenya places as the driver types; results are debounced, cached and
+  // rate-limited through the shared location lookup service.
   useEffect(() => {
     const q = searchQuery.trim();
+    const requestId = ++searchRequestId.current;
     if (q.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
+      setSearching(false);
       return;
     }
 
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q + ', Kenya')}&limit=5`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setSuggestions(data);
-          setShowDropdown(data.length > 0);
+        const results = await searchKenyaLocations(q);
+        if (requestId === searchRequestId.current) {
+          setSuggestions(results);
+          setShowDropdown(results.length > 0);
+          setActiveSuggestion(-1);
         }
       } catch (err) {
-        console.error('Location search error:', err);
+        if (requestId === searchRequestId.current) console.error('Location search error:', err);
       } finally {
-        setSearching(false);
+        if (requestId === searchRequestId.current) setSearching(false);
       }
     }, 350);
 
@@ -54,14 +60,39 @@ const KenyaAreaPicker = ({ value = {}, onChange, areaLabel = 'Estate, neighbourh
   }, [searchQuery]);
 
   const handleSelectSuggestion = (item) => {
-    const displayName = item.display_name || '';
-    const parts = displayName.split(',').map(p => p.trim());
-    const area = parts[0] || searchQuery;
-    const county = parts.find(p => KENYA_COUNTIES.includes(p)) || value.county || '';
-    
+    const area = item.area?.area || item.label || item.displayName?.split(',')[0]?.trim() || searchQuery;
+    const matchedArea = item.area || {};
+    const county = matchedArea.county || value.county || '';
     setSearchQuery(area);
-    onChange({ ...value, area, county: county || value.county });
+    onChange({
+      ...value,
+      ...matchedArea,
+      area,
+      county,
+      subCounty: matchedArea.subCounty || value.subCounty || '',
+      ward: matchedArea.ward || value.ward || '',
+    });
     setShowDropdown(false);
+    setActiveSuggestion(0);
+  };
+
+  const handleSearchKeyDown = (event) => {
+    if (event.key === 'ArrowDown' && suggestions.length) {
+      event.preventDefault();
+      setShowDropdown(true);
+      setActiveSuggestion((index) => (index < 0 ? 0 : (index + 1) % suggestions.length));
+    } else if (event.key === 'ArrowUp' && suggestions.length) {
+      event.preventDefault();
+      setShowDropdown(true);
+      setActiveSuggestion((index) => (index < 0 ? suggestions.length - 1 : (index - 1 + suggestions.length) % suggestions.length));
+    } else if (event.key === 'Enter') {
+      // This input lives inside the onboarding form: Enter selects a place,
+      // and never submits the entire form by accident.
+      event.preventDefault();
+      if (showDropdown && suggestions.length) handleSelectSuggestion(suggestions[Math.max(activeSuggestion, 0)]);
+    } else if (event.key === 'Escape') {
+      setShowDropdown(false);
+    }
   };
 
   return (
@@ -117,9 +148,17 @@ const KenyaAreaPicker = ({ value = {}, onChange, areaLabel = 'Estate, neighbourh
             value={searchQuery}
             onChange={(event) => {
               setSearchQuery(event.target.value);
+              setSuggestions([]);
+              setShowDropdown(false);
+              setActiveSuggestion(-1);
               setPart('area', event.target.value);
             }}
             onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
+            onKeyDown={handleSearchKeyDown}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={showDropdown && suggestions.length > 0}
+            aria-controls="kenya-area-suggestions"
             maxLength={120}
             placeholder={areaPlaceholder}
             className="mmx-glass-control w-full rounded-xl border pl-10 pr-9 py-3 text-sm font-medium text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-emerald-700 bg-white"
@@ -131,19 +170,28 @@ const KenyaAreaPicker = ({ value = {}, onChange, areaLabel = 'Estate, neighbourh
 
         {/* Live Suggestions Dropdown */}
         {showDropdown && suggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 max-h-60 overflow-y-auto divide-y divide-slate-100">
+          <div id="kenya-area-suggestions" role="listbox" className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
             {suggestions.map((item, idx) => (
               <button
                 key={idx}
                 type="button"
+                role="option"
+                aria-selected={idx === activeSuggestion}
+                onMouseEnter={() => setActiveSuggestion(idx)}
                 onClick={() => handleSelectSuggestion(item)}
-                className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 text-xs font-medium text-slate-800 transition-colors flex items-start gap-2"
+                className={`flex w-full items-start gap-2 px-4 py-3 text-left text-xs font-medium text-slate-800 transition-colors ${idx === activeSuggestion ? 'bg-emerald-50' : 'hover:bg-emerald-50'}`}
               >
                 <MapPinned className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span className="line-clamp-2">{item.display_name}</span>
+                <span className="min-w-0">
+                  <span className="block font-semibold">{item.label}</span>
+                  <span className="mt-0.5 block line-clamp-2 text-[11px] font-normal text-slate-500">{item.displayName}</span>
+                </span>
               </button>
             ))}
           </div>
+        )}
+        {searching && searchQuery.trim().length >= 3 && suggestions.length === 0 && (
+          <p role="status" className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-500">Searching available places…</p>
         )}
       </label>
 

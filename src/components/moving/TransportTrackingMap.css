@@ -683,143 +683,36 @@
   }
 }
 
-.mm-route-loading-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 99999;
+.mm-nav-actions {
   display: flex;
+  gap: 10px;
+}
+
+.mm-open-google-maps {
+  display: inline-flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background: rgba(9, 10, 14, 0.68);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #1877f2;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
-
-.mm-route-loading-card {
-  width: min(100%, 360px);
-  padding: 30px 24px;
-  text-align: center;
-  color: #f8f7f3;
-  background: #141519;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 24px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
-  animation: mm-loading-appear 220ms ease-out;
+.mm-open-google-maps:hover { background: #1266d6; }
+.mm-open-google-maps:disabled { cursor: not-allowed; opacity: .5; }
+.mm-view-directions {
+  border: 1px solid var(--mm-line);
+  background: #fff;
+  color: #202938;
 }
+.mm-view-directions:hover { background: #f5f7fa; }
 
-.mm-route-loading-card h3 {
-  margin: 20px 0 8px;
-  font-size: 21px;
-  font-weight: 650;
-}
-
-.mm-route-loading-card p {
-  margin: 0 auto;
-  max-width: 280px;
-  color: #b6b7be;
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.mm-route-loading-card small {
-  display: block;
-  margin-top: 15px;
-  color: #92949d;
-  font-size: 12px;
-}
-
-.mm-route-loading-animation {
-  position: relative;
-  width: 100%;
-  height: 64px;
-  overflow: hidden;
-  border-radius: 14px;
-  background: #202229;
-}
-
-.mm-route-loading-road {
-  position: absolute;
-  top: 31px;
-  left: 0;
-  width: 100%;
-  border-top: 2px dashed #747782;
-}
-
-.mm-route-loading-road span {
-  position: absolute;
-  top: -32px;
-  width: 5px;
-  height: 18px;
-  border-radius: 5px;
-  background: #c8a96b;
-  animation: mm-route-dashes 1.2s linear infinite;
-}
-
-.mm-route-loading-road span:nth-child(1) {
-  left: 15%;
-}
-
-.mm-route-loading-road span:nth-child(2) {
-  left: 45%;
-  animation-delay: -0.4s;
-}
-
-.mm-route-loading-road span:nth-child(3) {
-  left: 75%;
-  animation-delay: -0.8s;
-}
-
-.mm-route-loading-car {
-  position: absolute;
-  top: 12px;
-  left: 0;
-  font-size: 32px;
-  animation: mm-car-drive 1.8s ease-in-out infinite;
-}
-
-.mm-route-loading-progress {
-  height: 4px;
-  margin-top: 22px;
-  overflow: hidden;
-  border-radius: 10px;
-  background: #303139;
-}
-
-.mm-route-loading-progress span {
-  display: block;
-  width: 35%;
-  height: 100%;
-  border-radius: inherit;
-  background: #c8a96b;
-  animation: mm-progress-move 1.5s ease-in-out infinite;
-}
-
-@keyframes mm-loading-appear {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes mm-route-dashes {
-  from { transform: translateX(20px); }
-  to { transform: translateX(-20px); }
-}
-
-@keyframes mm-car-drive {
-  0%, 100% { transform: translateX(12px); }
-  50% { transform: translateX(70px); }
-}
-
-@keyframes mm-progress-move {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(310%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mm-route-loading-card,
-  .mm-route-loading-car,
-  .mm-route-loading-road span,
-  .mm-route-loading-progress span {
-    animation: none;
-  }
+@media (max-width: 420px) {
+  .mm-nav-actions { flex-direction: column; }
 }

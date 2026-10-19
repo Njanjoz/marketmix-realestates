@@ -753,28 +753,29 @@ const ExplorePage = () => {
 
           {nearbyOnly && <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Showing properties within {radiusKm < 1 ? `${radiusKm * 1000} m` : `${radiusKm} km`} by straight-line distance from your device.</p>}
           {loadingProperties ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"><div className="col-span-full flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Loading homes…</div></div> : properties.length === 0 ? <div className="mmx-glass-surface rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-14 text-center"><Home className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-bold text-slate-900">No homes match those filters</h3><p className="mt-1 text-sm text-slate-500">Try a wider area or clear your filters.</p></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4">
-            {properties.map((property) => <article key={property.id} className="mmx-glass-surface group min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+            {properties.map((property) => <article key={property.id} className="mmx-glass-surface group min-w-0 overflow-hidden rounded-[1.35rem] border border-emerald-950/10 bg-white shadow-[0_8px_28px_rgba(15,39,31,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_42px_rgba(15,39,31,0.16)]">
               <Link to={`/property/${property.id}`} className="block text-slate-900">
-                <div className="relative aspect-[4/3] overflow-hidden bg-slate-200">
+                <div className="relative aspect-[4/3] overflow-hidden bg-emerald-950">
                   <img src={resolvePropertyImage(property) || '/images/property-hero.svg'} alt={property.title || 'Property'} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                  <span className="absolute left-2 top-2 rounded-full bg-slate-900/85 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">{propertyStatus(property) === 'sale' ? 'For sale' : propertyStatus(property) === 'rent' ? 'For rent' : 'Listing type'}</span>
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/50 via-transparent to-slate-950/20" />
+                  <span className="absolute left-3 top-3 rounded-full border border-white/25 bg-emerald-950/80 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[.16em] text-white shadow-lg backdrop-blur-md">{propertyStatus(property) === 'sale' ? 'For sale' : propertyStatus(property) === 'rent' ? 'For rent' : 'Listing type'}</span>
                   {property.exploreDistance != null && <span className="absolute bottom-2 left-2 rounded-full bg-slate-950/75 px-2 py-1 text-[10px] font-semibold text-white">{property.exploreDistance < 1 ? `${Math.round(property.exploreDistance * 1000)} m` : `${property.exploreDistance.toFixed(1)} km`} away</span>}
                 </div>
-                <div className="p-3 sm:p-4">
-                  <p className="truncate text-xs font-semibold text-slate-500">{property.propertyType || property.unitType || 'Property'}</p>
-                  <h3 className="mt-1 line-clamp-1 text-sm font-bold text-slate-900 sm:text-base">{property.title || 'Property listing'}</h3>
-                  <p className="mt-1 text-sm font-extrabold text-emerald-800">{formatMoney(propertyPrice(property))}{propertyStatus(property) === 'rent' ? <span className="font-medium text-slate-500"> / mo</span> : null}</p>
-                  <p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0" />{getPublicPropertyLocation(property)}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="p-3.5 sm:p-4">
+                  <p className="truncate text-[10px] font-bold uppercase tracking-[.15em] text-emerald-800">{property.propertyType || property.unitType || 'Property'}</p>
+                  <h3 className="mt-1.5 line-clamp-1 text-sm font-bold tracking-tight text-slate-950 sm:text-base">{property.title || 'Property listing'}</h3>
+                  <p className="mt-2 text-base font-extrabold tracking-tight text-emerald-950">{formatMoney(propertyPrice(property))}{propertyStatus(property) === 'rent' ? <span className="ml-1 text-xs font-medium text-slate-500">/ mo</span> : null}</p>
+                  <p className="mt-1.5 flex items-center gap-1 truncate text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-800" />{getPublicPropertyLocation(property)}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {(property.approvalStatus === 'approved' || property.verificationStatus === 'approved') && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" /> Verified</span>}
                     {property.bedrooms != null && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600"><BedDouble className="h-3 w-3" />{property.bedrooms} bed</span>}
                   </div>
                 </div>
               </Link>
-              <div className="flex gap-2 border-t border-slate-100 p-2.5 bg-slate-50/50">
-                <Link to={`/property/${property.id}`} className="flex-1 rounded-lg bg-slate-900 px-2 py-2 text-center text-xs font-bold text-white hover:bg-slate-800">View</Link>
-                <button type="button" onClick={() => shareProperty(property)} aria-label={`Share ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-white"><Share2 className="h-4 w-4" /></button>
-                <button type="button" onClick={() => setActionProperty(property)} aria-label={`More actions for ${property.title || 'property'}`} className="rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-white"><MoreHorizontal className="h-4 w-4" /></button>
+              <div className="flex gap-2 border-t border-emerald-950/10 bg-emerald-50/50 p-2.5">
+                <Link to={`/property/${property.id}`} className="flex-1 rounded-xl bg-emerald-950 px-2 py-2.5 text-center text-[11px] font-bold uppercase tracking-[.12em] text-white transition hover:bg-emerald-800">View property</Link>
+                <button type="button" onClick={() => shareProperty(property)} aria-label={`Share ${property.title || 'property'}`} className="rounded-xl border border-emerald-950/10 bg-white px-3 text-slate-600 transition hover:border-emerald-800/30 hover:text-emerald-900"><Share2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setActionProperty(property)} aria-label={`More actions for ${property.title || 'property'}`} className="rounded-xl border border-emerald-950/10 bg-white px-3 text-slate-600 transition hover:border-emerald-800/30 hover:text-emerald-900"><MoreHorizontal className="h-4 w-4" /></button>
               </div>
             </article>)}
           </div>}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -9,15 +9,18 @@ import { useAuth } from '../context/AuthContext';
 import { sendWhatsAppNotification } from '../lib/api';
 import { getPoint, TRANSPORT_PROGRESS, TRANSPORT_STATUS_LABELS } from '../services/transportService';
 import { notifyTransportRequest } from '../services/transportNotify';
+import { dispatchTransportQuote, dispatchTransportRequest, findMatchingTransportDrivers, respondToTransportQuote, startTransportPayment } from '../services/driverService';
 import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import MovingIllustration from '../components/moving/MovingIllustration';
 import TransportTrackingMap from '../components/moving/TransportTrackingMap';
+import QuoteReceiptButton from '../components/moving/QuoteReceiptButton';
 import CoordinateMapPicker from '../components/moving/CoordinateMapPicker';
 import KenyaAreaPicker from '../components/moving/KenyaAreaPicker';
 import KenyaLocationSearch from '../components/moving/KenyaLocationSearch';
 import '../components/moving/LiquidGlass.css';
 import { formatKenyaArea } from '../utils/kenyaLocationOptions';
 import { reverseGeocodeKenyaPoint } from '../utils/transportLocationLookup';
+import { estimateTransportQuote } from '../utils/transportQuote';
 
 const ITEMS = [
   { id: 'bed', label: 'Bed', detail: 'Frame and base' }, { id: 'mattress', label: 'Mattress', detail: 'Single or double' },
@@ -128,7 +131,82 @@ function CustomerCancelButton({ request }) {
   );
 }
 
-function RequestTrackingCard({ request, selected, onSelect, showDetails = true }) {
+function CustomerQuoteActions({ request }) {
+  const [counterOffer, setCounterOffer] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [appealing, setAppealing] = useState(false);
+  const respond = async (action) => {
+    if (action === 'appeal' && !(Number(counterOffer) > 0)) return toast.error('Enter the amount you want to offer.');
+    if (action === 'decline' && !window.confirm('Decline this driver quote?')) return;
+    setBusy(true);
+    try {
+      const result = await respondToTransportQuote({ requestId: request.id, action, counterOffer: Number(counterOffer) });
+      if (action === 'accept' && result.driverPhone) {
+        const fee = Math.round(Number(result.quotedPrice || request.quotedPrice || 0) * 0.08);
+        const onlinePaymentNote = result.driverAcceptsOnlinePayments
+          ? `The buyer can pay online through MarketMix; the 8% platform fee is KSh ${fee.toLocaleString()}.`
+          : 'Would you like to accept payment through the MarketMix website? Enable website payments in Driver Settings to receive online checkout requests.';
+        const message = `MarketMix: ${result.driverName}, your KSh ${Number(result.quotedPrice || request.quotedPrice || 0).toLocaleString()} quote was accepted. Pickup: ${result.pickupLabel || request.pickupLabel}. Destination: ${result.destinationLabel || request.destinationLabel || request.destinationTitle}. ${onlinePaymentNote} https://marketmix-realestates.vercel.app/transport`;
+        const queued = await sendWhatsAppNotification(result.driverPhone, 'Accepted transport quote · website payment', message);
+        if (!queued) toast('Quote accepted, but the driver WhatsApp message could not be queued.', { icon: '⚠️' });
+      }
+      toast.success(action === 'appeal' ? 'Counter-offer sent to MarketMix admin.' : action === 'accept' ? 'Quote accepted. The driver is assigned.' : 'Quote declined.');
+    } catch (error) {
+      toast.error(error.message || 'Could not respond to the quote.');
+    } finally {
+      setBusy(false);
+      if (action === 'appeal') setAppealing(false);
+    }
+  };
+
+  if (request.quoteDecision === 'APPEALED') return <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-900">Your counter-offer of {money(request.quoteAppeal?.customerOffer)} is with MarketMix admin.</p>;
+  if (request.quoteDecision === 'ACCEPTED') return null;
+  return <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-extrabold text-slate-900">Driver quote · {money(request.quotedPrice)}</p><p className="text-xs text-slate-600">{request.quotedRouteKm || request.estimatedRouteKm} km · {request.quotedDriverName || 'Selected driver'}</p></div>
+    {appealing ? <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input type="number" min="1" step="50" value={counterOffer} onChange={(event) => setCounterOffer(event.target.value)} placeholder="Your counter-offer (KSh)" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"/><button type="button" disabled={busy} onClick={() => respond('appeal')} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Sending…' : 'Send appeal'}</button><button type="button" onClick={() => setAppealing(false)} className="rounded-xl border px-3 py-2 text-sm font-bold">Cancel</button></div> : <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => respond('accept')} className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">Accept quote</button><button type="button" disabled={busy} onClick={() => setAppealing(true)} className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-bold text-amber-900 disabled:opacity-60">Appeal with my amount</button><button type="button" disabled={busy} onClick={() => respond('decline')} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-60">Decline</button></div>}
+  </div>;
+}
+
+function TransportPaymentAction({ request }) {
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  if (request.paymentStatus === 'paid') return <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-900">Paid online · M-Pesa confirmed</p>;
+  if (request.paymentStatus === 'pending') return <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">M-Pesa prompt sent. Payment will show as complete after IntaSend confirms it.</p>;
+  if (!request.driverAcceptsOnlinePayments) return <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">This driver has not enabled website payments. Contact them directly to agree on payment.</p>;
+  const checkout = async () => {
+    setBusy(true);
+    setNotice('');
+    try {
+      const result = await startTransportPayment({ requestId: request.id, phoneNumber });
+      setNotice(`M-Pesa prompt sent for KSh ${Number(result.amount).toLocaleString()}. Enter your PIN on your phone.`);
+    } catch (error) {
+      setNotice(error.message || 'Could not start M-Pesa payment.');
+    } finally { setBusy(false); }
+  };
+  return <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+    <p className="text-sm font-extrabold text-emerald-950">Pay this accepted quote online</p>
+    <p className="mt-1 text-xs text-emerald-900">KSh {Number(request.quotedPrice || 0).toLocaleString()} via M-Pesa. The driver receives 92% after the move is completed; MarketMix retains an 8% platform fee.</p>
+    <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="M-Pesa number e.g. 07XXXXXXXX" className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm"/><button type="button" disabled={busy || !phoneNumber.trim()} onClick={checkout} className="rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Sending prompt…' : 'Pay by M-Pesa'}</button></div>
+    {notice && <p role="status" className="mt-2 text-xs font-semibold text-emerald-950">{notice}</p>}
+  </div>;
+}
+
+function DriverRateCardSelector({ drivers, loading, error, selectedId, onSelect, sort, onSort }) {
+  const selectedDriver = drivers.find((driver) => driver.id === selectedId);
+  return <section className="mmx-glass-surface mt-4 rounded-3xl border p-4 sm:p-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><p className="text-xs font-bold uppercase tracking-wider text-emerald-800">Compare driver quotes</p><h3 className="mt-1 text-lg font-extrabold text-slate-900">Matching vehicles near pickup</h3><p className="mt-1 text-xs text-slate-500">Each quote includes the driver’s kilometre rate plus any item-specific fees.</p></div>
+      <label className="text-xs font-bold text-slate-600">Sort by<select value={sort} onChange={(event) => onSort(event.target.value)} className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-2"><option value="price">Lowest quote</option><option value="distance">Nearest driver</option></select></label>
+    </div>
+    {loading ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Finding approved drivers and rate cards…</p> : error ? <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{error}</p> : drivers.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No nearby approved driver has listed a compatible vehicle and rate card for these belongings yet. You can still post the request for an area quote.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">{drivers.map((driver) => <button key={driver.id} type="button" onClick={() => onSelect(driver.id)} aria-pressed={driver.id === selectedId} className={`rounded-2xl border p-4 text-left transition ${driver.id === selectedId ? 'border-emerald-700 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:border-emerald-300'}`}>
+      <div className="flex items-start gap-3">{driver.photoUrl ? <img src={driver.photoUrl} alt="" className="h-14 w-16 rounded-xl object-cover"/> : <span className="grid h-14 w-16 place-items-center rounded-xl bg-slate-100 text-2xl">🚚</span>}<span className="min-w-0 flex-1"><span className="block truncate font-extrabold text-slate-900">{driver.name}</span><span className="mt-1 block truncate text-xs text-slate-600">{driver.vehicleTemplate}{driver.plate ? ` · ${driver.plate}` : ''}</span><span className="mt-1 block text-[11px] text-slate-500">{driver.online ? 'Online now' : 'Registered nearby'}{driver.driverDistanceKm != null ? ` · ${driver.driverDistanceKm} km from pickup` : ''}</span></span><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-emerald-800">{driver.id === selectedId ? 'Selected' : 'Choose'}</span></div>
+      <div className="mt-3 flex items-end justify-between gap-2 border-t border-slate-200/70 pt-3"><span className="text-xs text-slate-600">KSh {Number(driver.ratePerKm).toLocaleString()} / km × {driver.routeKm} km{driver.itemFeeTotal > 0 ? ` + KSh ${Number(driver.itemFeeTotal).toLocaleString()} item fees` : ''}</span><span className="text-lg font-extrabold text-emerald-800">KSh {Number(driver.quote).toLocaleString()}</span></div>
+    </button>)}</div>}
+    {selectedDriver?.itemFeeTotal > 0 && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-950">Item fees in this quote: {Object.entries(selectedDriver.itemFeeBreakdown || {}).filter(([, fee]) => Number(fee) > 0).map(([id, fee]) => `${ITEMS.find((item) => item.id === id)?.label || id} KSh ${Number(fee).toLocaleString()}`).join(' · ')}. These are added to the distance fare.</p>}
+  </section>;
+}
+export function RequestTrackingCard({ request, selected, onSelect, showDetails = true }) {
   const statusIndex = TRANSPORT_PROGRESS.indexOf(request.status);
   const progressIndex = ['REQUESTED', 'QUOTED', 'ACCEPTED'].includes(request.status) ? 0 : request.status === 'PICKUP_READY' ? 1 : statusIndex;
   return <article className={`mmx-glass-surface overflow-hidden rounded-3xl border shadow-sm transition ${selected ? 'border-emerald-700 ring-2 ring-emerald-100' : 'border-slate-200'}`}>
@@ -145,7 +223,10 @@ function RequestTrackingCard({ request, selected, onSelect, showDetails = true }
             const complete = progressIndex >= index && request.status !== 'CANCELLED';
             return <div key={status} className="relative text-center"><div className={`mx-auto grid h-7 w-7 place-items-center rounded-full border ${complete ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>{complete ? <Check className="h-3.5 w-3.5" /> : <span className="text-[10px] font-bold">{index + 1}</span>}</div><p className="mt-1.5 text-[9px] leading-3 text-slate-500 sm:text-[10px]">{TRANSPORT_STATUS_LABELS[status]}</p>{index < TRANSPORT_PROGRESS.length - 1 && <span className={`absolute left-[calc(50%+16px)] top-3.5 hidden h-px w-[calc(100%-28px)] sm:block ${progressIndex > index ? 'bg-emerald-500' : 'bg-slate-200'}`} />}</div>;
           })}</div>
-          <div className="mt-5 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm"><p><span className="font-semibold text-slate-800">Pickup:</span> <span className="text-slate-600">{request.pickupLabel}</span></p><p><span className="font-semibold text-slate-800">Destination:</span> <span className="text-slate-600">{request.destinationTitle || request.destinationLabel}</span></p><p><span className="font-semibold text-slate-800">Vehicle:</span> <span className="text-slate-600">{request.vehicleLabel || 'Waiting for provider'}</span></p>{request.driverName && <p><span className="font-semibold text-slate-800">Driver:</span> <span className="text-slate-600">{request.driverName}</span></p>}{request.quotedPrice != null && <p><span className="font-semibold text-slate-800">Provider quote:</span> <span className="text-slate-600">{money(request.quotedPrice)}</span></p>}{request.etaMinutes && <p><span className="font-semibold text-slate-800">Provider ETA:</span> <span className="text-slate-600">{request.etaMinutes} min</span></p>}</div>
+          <div className="mt-5 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm"><p><span className="font-semibold text-slate-800">Pickup:</span> <span className="text-slate-600">{request.pickupLabel}</span></p><p><span className="font-semibold text-slate-800">Destination:</span> <span className="text-slate-600">{request.destinationTitle || request.destinationLabel}</span></p><p><span className="font-semibold text-slate-800">Vehicle:</span> <span className="text-slate-600">{request.vehicleLabel || 'Waiting for provider'}</span></p>{request.driverName && <p><span className="font-semibold text-slate-800">Driver:</span> <span className="text-slate-600">{request.driverName}</span></p>}{request.quotedPrice != null ? <p><span className="font-semibold text-slate-800">Provider quote:</span> <span className="text-slate-600">{money(request.quotedPrice)}</span></p> : request.estimatedPrice != null && <p><span className="font-semibold text-slate-800">Indicative estimate ({request.estimatedRouteKm} km):</span> <span className="text-slate-600">{money(request.estimatedPrice)} · provider confirms</span></p>}{request.etaMinutes && <p><span className="font-semibold text-slate-800">Provider ETA:</span> <span className="text-slate-600">{request.etaMinutes} min</span></p>}</div>
+          {request.quotedPrice != null && <div className="mt-3"><QuoteReceiptButton quote={{ requestId: request.id, issuedAt: formatTime(request.createdAt), customerName: request.customerName || request.userName || 'MarketMix customer', pickupLabel: request.pickupLabel, destinationLabel: request.destinationTitle || request.destinationLabel, vehicleLabel: request.vehicleLabel, driverName: request.quotedDriverName || request.driverName, routeKm: request.quotedRouteKm || request.estimatedRouteKm, ratePerKm: request.quotedRatePerKm, itemFeeTotal: request.quotedItemFeeTotal, total: request.quotedPrice, items: request.items, itemCount: request.itemCount, status: request.quoteDecision === 'ACCEPTED' ? 'Accepted' : request.quoteDecision === 'DECLINED' ? 'Declined' : request.quoteDecision === 'APPEALED' ? 'Counter-offer under review' : 'Awaiting customer decision' }} /></div>}
+          {request.status === 'QUOTED' && request.quotedDriverId && <CustomerQuoteActions request={request} />}
+          {request.quoteDecision === 'ACCEPTED' && request.driverAcceptsOnlinePayments && <TransportPaymentAction request={request} />}
           {['REQUESTED', 'DRIVER_ASSIGNED', 'PAID'].includes(request.status) && (
             <div className="mt-3">
               <CustomerCancelButton request={request} />
@@ -154,21 +235,30 @@ function RequestTrackingCard({ request, selected, onSelect, showDetails = true }
           {request.driverPhone && <div className="mt-3 flex gap-2"><a href={`tel:${encodeURIComponent(request.driverPhone)}`} className="flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-bold text-white">Call driver</a><a href={`https://wa.me/${request.driverPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-bold text-emerald-900">WhatsApp</a></div>}
           <p className="mt-3 text-[11px] text-slate-500">Driver map sharing works while the assigned driver keeps this page open and location permission enabled.</p>
         </div>
-        <TransportTrackingMap pickupLocation={request.pickupCoordinates} destinationLocation={request.destinationCoordinates} driverLocation={request.driverLocation} />
+        <TransportTrackingMap
+          pickupLocation={request.pickupCoordinates}
+          destinationLocation={request.destinationCoordinates}
+          driverLocation={request.driverLocation}
+          pickupLabel={request.pickupLabel || 'Pickup'}
+          destinationLabel={request.destinationLabel || request.destinationTitle || 'Destination'}
+        />
       </div>
     </div>}
   </article>;
 }
 
 const TransportPage = () => {
-  const { currentUser, userProfile } = useAuth();
+  const { currentUser, userProfile, updateUserProfile } = useAuth();
   const [searchParams] = useSearchParams();
   const propertyId = searchParams.get('propertyId') || '';
+  const showMovesPanel = searchParams.get('view') !== 'quote';
   const [step, setStep] = useState(0);
   const [propertyOptions, setPropertyOptions] = useState([]);
   const [packages, setPackages] = useState([]);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedPackage, setSelectedPackage] = useState(null);
+  const [checkoutName, setCheckoutName] = useState('');
+  const [checkoutPhone, setCheckoutPhone] = useState('');
   const [items, setItems] = useState({});
   const [pickupLabel, setPickupLabel] = useState('');
   const [pickupArea, setPickupArea] = useState(emptyArea);
@@ -178,12 +268,27 @@ const TransportPage = () => {
   const [destinationArea, setDestinationArea] = useState(emptyArea);
   const [destinationCoordinates, setDestinationCoordinates] = useState(null);
   const [vehicle, setVehicle] = useState('');
+  const [quoteDrivers, setQuoteDrivers] = useState([]);
+  const [quoteDriversLoading, setQuoteDriversLoading] = useState(false);
+  const [quoteDriversError, setQuoteDriversError] = useState('');
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [driverSort, setDriverSort] = useState('price');
   const [lookupBusy, setLookupBusy] = useState('');
   const [pinningLocation, setPinningLocation] = useState('');
   const [saving, setSaving] = useState(false);
   const [requests, setRequests] = useState([]);
   const [selectedRequestId, setSelectedRequestId] = useState('');
   const locationLookupIds = useRef({ pickup: 0, destination: 0 });
+  const continueButtonRef = useRef(null);
+
+  useEffect(() => {
+    setCheckoutName((current) => current || userProfile?.name || userProfile?.fullName || currentUser?.displayName || '');
+    setCheckoutPhone((current) => current || userProfile?.phone || userProfile?.phoneNumber || currentUser?.phoneNumber || '');
+  }, [currentUser?.uid, currentUser?.displayName, currentUser?.phoneNumber, userProfile?.name, userProfile?.fullName, userProfile?.phone, userProfile?.phoneNumber]);
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [step]);
 
   useEffect(() => {
     let active = true;
@@ -245,6 +350,49 @@ const TransportPage = () => {
   const selectedRequest = useMemo(() => requests.find((request) => request.id === selectedRequestId), [requests, selectedRequestId]);
   const totalItems = quantityTotal(items);
   const selectedVehicle = VEHICLES.find((option) => option.id === vehicle);
+  const chooseVehicle = (vehicleId) => {
+    setVehicle(vehicleId);
+    window.requestAnimationFrame(() => continueButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
+  const routeEstimate = useMemo(
+    () => estimateTransportQuote(pickupCoordinates, destinationCoordinates),
+    [pickupCoordinates, destinationCoordinates],
+  );
+  const selectedQuoteDriver = quoteDrivers.find((driver) => driver.id === selectedDriverId) || null;
+  const quoteEstimate = selectedQuoteDriver
+    ? { estimatedPrice: selectedQuoteDriver.quote, estimatedRouteKm: selectedQuoteDriver.routeKm, itemFeeTotal: selectedQuoteDriver.itemFeeTotal || 0 }
+    : null;
+  const sortedQuoteDrivers = useMemo(() => [...quoteDrivers].sort((a, b) => driverSort === 'distance'
+    ? (a.driverDistanceKm ?? Number.MAX_SAFE_INTEGER) - (b.driverDistanceKm ?? Number.MAX_SAFE_INTEGER)
+    : a.quote - b.quote), [quoteDrivers, driverSort]);
+
+  useEffect(() => {
+    if (!vehicle || !pickupCoordinates || !destinationCoordinates) {
+      setQuoteDrivers([]);
+      setSelectedDriverId('');
+      setQuoteDriversError('');
+      setQuoteDriversLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setQuoteDriversLoading(true);
+    setQuoteDriversError('');
+    findMatchingTransportDrivers({ vehicleId: vehicle, pickupCoordinates, destinationCoordinates, pickupArea, itemCounts: items })
+      .then((drivers) => {
+        if (!active) return;
+        setQuoteDrivers(drivers);
+        setSelectedDriverId((current) => drivers.some((driver) => driver.id === current) ? current : drivers[0]?.id || '');
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.warn('Could not load driver rate cards:', error);
+        setQuoteDrivers([]);
+        setSelectedDriverId('');
+        setQuoteDriversError(error.message || 'Could not load local driver quotes.');
+      })
+      .finally(() => { if (active) setQuoteDriversLoading(false); });
+    return () => { active = false; };
+  }, [vehicle, pickupCoordinates?.lat, pickupCoordinates?.lng, destinationCoordinates?.lat, destinationCoordinates?.lng, pickupArea.county, pickupArea.subCounty, pickupArea.ward, pickupArea.area, JSON.stringify(items)]);
 
   const fillAreaFromCoordinates = async (kind, point) => {
     const requestId = ++locationLookupIds.current[kind];
@@ -287,6 +435,7 @@ const TransportPage = () => {
     setItems(Object.fromEntries((packageItem.itemIds || []).filter((id) => ITEMS.some((item) => item.id === id)).map((id) => [id, 1])));
     if (VEHICLES.some((option) => option.id === packageItem.vehicleId)) setVehicle(packageItem.vehicleId);
     setStep(0);
+    window.requestAnimationFrame(() => document.getElementById('move-request-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     toast.success(`${packageItem.title} added to your move.`);
   };
 
@@ -372,15 +521,25 @@ const TransportPage = () => {
       window.location.assign(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
+    if (!checkoutName.trim() || !checkoutPhone.trim()) {
+      toast.error('Add your name and phone number in the contact details section.');
+      return;
+    }
     if (!totalItems || !pickupLabel.trim() || !destinationLabel.trim() || !vehicle || !pickupCoordinates || !destinationCoordinates) {
       toast.error('Add your items, both named locations, map pins and a transport option first.');
       return;
     }
+    if (quoteDrivers.length && !selectedQuoteDriver) {
+      toast.error('Choose a driver and quote before submitting.');
+      return;
+    }
     setSaving(true);
     try {
+      await updateUserProfile({ name: checkoutName.trim(), phone: checkoutPhone.trim(), phoneNumber: checkoutPhone.trim() });
       const requestRef = await addDoc(collection(db, 'transportRequests'), {
         userId: currentUser.uid,
-        userName: (userProfile?.name || currentUser.displayName || currentUser.email || 'MarketMix customer').slice(0, 120),
+        userName: checkoutName.trim().slice(0, 120),
+        userPhone: checkoutPhone.trim().slice(0, 40),
         userEmail: String(currentUser.email || '').slice(0, 256),
         propertyId: selectedProperty?.id || '',
         destinationTitle: (selectedProperty?.title || '').slice(0, 160),
@@ -403,44 +562,44 @@ const TransportPage = () => {
         itemCount: totalItems,
         vehicleId: selectedVehicle.id,
         vehicleLabel: selectedVehicle.title,
-        status: 'QUOTED',
+        estimatedPrice: null,
+        estimatedRouteKm: routeEstimate?.estimatedRouteKm ?? null,
+        quotedPrice: selectedQuoteDriver?.quote ?? null,
+        quotedRouteKm: selectedQuoteDriver?.routeKm ?? null,
+        quotedRatePerKm: selectedQuoteDriver?.ratePerKm ?? null,
+        quotedItemRates: selectedQuoteDriver?.itemRates || {},
+        quotedItemFeeBreakdown: selectedQuoteDriver?.itemFeeBreakdown || {},
+        quotedItemFeeTotal: selectedQuoteDriver?.itemFeeTotal || 0,
+        quotedDistanceFare: selectedQuoteDriver?.distanceFare ?? null,
+        quotedDriverId: selectedQuoteDriver?.id || '',
+        quotedDriverName: selectedQuoteDriver?.name || '',
+        quoteModel: selectedQuoteDriver ? 'driver-distance-plus-item-rates-v2' : 'unmatched-driver-request',
+        status: selectedQuoteDriver ? 'QUOTED' : 'REQUESTED',
+        offerDriverIds: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       setSelectedRequestId(requestRef.id);
       setStep(5);
-      toast.success('Your move request has been posted to nearest drivers!');
+      toast.success(selectedQuoteDriver ? `Quote from ${selectedQuoteDriver.name} requested.` : 'Your move request has been posted to nearby drivers.');
 
-      // Scan for nearest approved drivers and send WhatsApp notifications
+      // Dispatch to online drivers working in the pickup area, then fall back
+      // to all approved drivers registered for that area.
       try {
-        const driversSnap = await getDocs(query(collection(db, 'users'), where('driverApproved', '==', true)));
-        const approvedDrivers = driversSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // Pick up to 5 closest or matching drivers
-        const nearestDrivers = approvedDrivers.slice(0, 5);
-        for (const drv of nearestDrivers) {
-          const drvPhone = drv.phoneNumber || drv.phone || drv.driverProfile?.phone;
-          if (drvPhone) {
-            sendWhatsAppNotification(
-              drvPhone,
-              "driver-move-offer",
-              `🚚 *New Move Offer — First Come, First Served!*\n\n` +
-              `Pickup: ${pickupLabel.trim()}\n` +
-              `Destination: ${destinationLabel.trim()}\n` +
-              `Vehicle: ${selectedVehicle.title}\n` +
-              `Items: ${totalItems} items\n\n` +
-              `👉 Login to accept this job: https://marketmix-realestates.vercel.app/driver/dashboard`
-            );
-          }
-        }
+        const dispatch = selectedQuoteDriver
+          ? await dispatchTransportQuote(requestRef.id)
+          : await dispatchTransportRequest(requestRef.id);
+        if (dispatch.capacityAlert) toast('No listed driver can carry all these items. MarketMix admin has been alerted and will check nearby driver contacts.', { icon: 'ℹ️' });
+        else if (!dispatch.drivers?.length) toast('No approved driver is registered for this pickup area yet. The request remains open.', { icon: 'ℹ️' });
       } catch (matchErr) {
-        console.warn('Driver auto-matching WhatsApp alert failed:', matchErr);
+        console.warn('Driver auto-matching failed:', matchErr);
+        toast.error('Your request was saved, but driver matching could not finish.');
       }
 
       sendWhatsAppNotification(
-        userProfile?.phone || userProfile?.phoneNumber || currentUser?.phoneNumber,
-        "transport-booked",
-        `🏠 MarketMix Real Estates\n` +
+        checkoutPhone.trim(),
+        "MarketMix Moving",
+        `🚚 MarketMix Moving\n` +
         `Transport request confirmed\n` +
         `Vehicle: ${selectedVehicle.title}\n` +
         `Pickup: ${pickupLabel.trim()}\n` +
@@ -466,6 +625,8 @@ const TransportPage = () => {
     if (step === 1 && (!pickupArea.county || (!pickupArea.area && !pickupArea.ward && !pickupArea.subCounty) || !pickupCoordinates)) return toast('Choose your pickup county and local area, then use GPS or place its map pin.');
     if (step === 2 && (!destinationArea.county || (!destinationArea.area && !destinationArea.ward && !destinationArea.subCounty) || !destinationCoordinates)) return toast('Choose a destination county and local area, then place its map pin if it is not already set.');
     if (step === 3 && !vehicle) return toast('Choose a transport option.');
+    if (step === 3 && quoteDriversLoading) return toast('Loading matching drivers and their quotes…');
+    if (step === 3 && quoteDrivers.length && !selectedQuoteDriver) return toast('Choose a driver quote to continue.');
     setStep((current) => Math.min(4, current + 1));
   };
 
@@ -488,7 +649,7 @@ const TransportPage = () => {
 
     {packages.length > 0 && <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8"><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">MarketMix moving packages</p><h2 className="mt-1 text-2xl font-bold text-slate-950">Start with a move that fits</h2><p className="mt-1 text-sm text-slate-600">Choose a package to prefill your list. You can adjust every item before requesting.</p></div></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{packages.map((packageItem) => <article key={packageItem.id} className={`mmx-glass-card group overflow-hidden rounded-[1.8rem] border shadow-[0_16px_45px_rgba(24,55,42,.09)] ${selectedPackage?.id === packageItem.id ? 'is-selected' : ''}`}><div className="mmx-glass-image relative h-48 overflow-hidden bg-[#172720]">{packageItem.coverImage ? <img src={packageItem.coverImage} alt={packageItem.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/> : <MovingIllustration kind={`vehicle:${packageItem.vehicleId || 'pickup'}`} className="h-full w-full transition duration-500 group-hover:scale-105"/>}<div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/10 to-transparent"/><div className="absolute inset-x-0 bottom-0 p-4 text-white"><p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-200">{packageItem.vehicleLabel || 'Moving package'}</p><h3 className="mt-1 text-xl font-extrabold">{packageItem.title}</h3><p className="mt-1 text-xs font-semibold text-white/80">{packageItem.priceLabel || 'Provider quote after request'}</p></div></div><div className="bg-white/20 p-4 backdrop-blur-xl"><p className="text-sm leading-5 text-slate-700">{packageItem.summary}</p><p className="mt-2 text-xs font-semibold text-slate-900">Best for {packageItem.suitableFor}</p>{packageItem.includes?.length > 0 && <ul className="mt-3 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">{packageItem.includes.slice(0, 4).map((line) => <li key={line} className="flex gap-1.5"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700"/>{line}</li>)}</ul>}<button type="button" onClick={() => choosePackage(packageItem)} className="mmx-liquid-primary mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white">{selectedPackage?.id === packageItem.id ? 'Package selected' : 'Start with this package'} <ArrowRight className="h-4 w-4"/></button></div></article>)}</div></section>}
 
-    <div className="mx-auto grid max-w-7xl gap-7 px-4 py-7 sm:px-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8 lg:py-9">
+    <div id="move-request-builder" className="mx-auto grid max-w-7xl scroll-mt-4 gap-7 px-4 py-7 sm:px-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8 lg:py-9">
       <section className="min-w-0">
         <div className="mb-5 mmx-glass-surface rounded-[1.7rem] border p-3 shadow-[0_18px_60px_rgba(20,55,42,.08)] backdrop-blur-xl sm:p-4">
           <div className="grid grid-cols-6 gap-1">{STEP_NAMES.map((name, index) => <button key={name} type="button" onClick={() => index <= step && setStep(index)} className={`rounded-2xl px-1 py-3 text-center transition sm:px-3 ${step === index ? 'mmx-glass-surface-dark text-white shadow-lg' : index < step ? 'mmx-glass-pill text-emerald-900' : 'text-slate-400'}`}><span className="mx-auto grid h-6 w-6 place-items-center rounded-full bg-white/15 text-[10px] font-bold">{index < step ? <Check className="h-3.5 w-3.5"/> : index + 1}</span><span className="mt-1 hidden text-xs font-bold sm:block">{name}</span></button>)}</div>
@@ -505,20 +666,29 @@ const TransportPage = () => {
 
             {step === 2 && <><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">03 · Destination</p>{propertyId && selectedProperty ? <><h2 className="mt-2 text-2xl font-bold sm:text-3xl">Moving into your new home</h2><div className="mt-5 overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50"><div className="grid items-center sm:grid-cols-[1fr_190px]"><div className="p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-[.15em] text-emerald-800">MarketMix property · destination selected</p><h3 className="mt-2 text-2xl font-bold text-slate-900">{selectedProperty.title || 'Selected property'}</h3><p className="mt-1 text-sm text-slate-600">{getPublicPropertyLocation(selectedProperty) || 'Destination confirmed'}</p><p className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-bold text-emerald-900 shadow-sm"><CheckCircle2 className="h-4 w-4"/>Destination confirmed</p></div><MovingIllustration kind="item:box" className="hidden w-full p-4 sm:block"/></div></div><div className="mt-5"><KenyaAreaPicker value={destinationArea} onChange={(area) => updateArea('destination', area)} areaLabel="Confirm estate, neighbourhood or local place" areaPlaceholder="Add an estate, landmark or street" /></div>{!destinationCoordinates && <div className="mt-4 rounded-2xl border border-slate-200 p-4"><p className="text-sm font-bold text-slate-800">This listing has no map coordinates yet.</p><p className="mt-1 text-xs leading-5 text-slate-500">The property stays selected as your destination. Place a pin near it to enable the route map.</p><button type="button" onClick={() => setPinningLocation(pinningLocation === 'destination' ? '' : 'destination')} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800"><MapPin className="h-4 w-4"/>Choose destination pin</button>{pinningLocation === 'destination' && <div className="mt-3"><CoordinateMapPicker point={destinationCoordinates} onPick={(point) => setManualMapPin('destination', point)} /></div>}</div>}</> : <><h2 className="mt-2 text-2xl font-bold sm:text-3xl">Where are your things going?</h2><p className="mt-2 text-sm text-slate-500">Choose a MarketMix home or enter a destination yourself.</p><label className="mt-6 block text-sm font-bold text-slate-700">MarketMix property<select value={selectedProperty?.id || ''} onChange={(event) => selectPropertyDestination(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-normal outline-none focus:border-emerald-700"><option value="">Enter a destination manually</option>{propertyOptions.map((property) => <option key={property.id} value={property.id}>{property.title} · {getPublicPropertyLocation(property)}</option>)}</select></label>{!selectedProperty && <><KenyaLocationSearch onSelect={selectDestinationLocation} /><div className="mt-4"><p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Or enter the area manually</p><KenyaAreaPicker value={destinationArea} onChange={(area) => updateArea('destination', area)} areaLabel="Estate, location name or landmark" areaPlaceholder="Building, estate, area or nearby landmark" /></div><button type="button" onClick={() => setPinningLocation(pinningLocation === 'destination' ? '' : 'destination')} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800">{destinationCoordinates ? 'Adjust destination pin' : 'Choose destination pin'}</button>{pinningLocation === 'destination' && <div className="mt-4"><CoordinateMapPicker point={destinationCoordinates} onPick={(point) => setManualMapPin('destination', point)} /></div>}</>}</>}</>}
 
-            {step === 3 && <><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">04 · Choose transport</p><h2 className="mt-2 text-2xl font-bold sm:text-3xl">What size move feels right?</h2><p className="mt-2 text-sm text-slate-500">A provider will confirm vehicle fit and availability before accepting. No estimated fare is shown until they quote.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{VEHICLES.map(({ id, title, detail, Icon }) => <button key={id} type="button" onClick={() => setVehicle(id)} aria-pressed={vehicle === id} className={`mmx-glass-card ${vehicle === id ? 'is-selected' : ''} overflow-hidden rounded-3xl border text-left transition-all duration-200 ${vehicle === id ? 'scale-[1.01] border-emerald-700 bg-emerald-50 shadow-[0_12px_35px_rgba(39,104,79,.15)] ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg'}`}><MovingIllustration kind={`vehicle:${id}`} className="w-full"/><span className="flex items-center justify-between gap-2 px-4 pb-4 pt-2"><span><span className="block text-base font-extrabold text-slate-900">{title}</span><span className="mt-1 block text-xs text-slate-500">{detail}</span></span><span className={`grid h-10 w-10 place-items-center rounded-2xl ${vehicle === id ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'}`}>{vehicle === id ? <Check className="h-5 w-5"/> : <Icon className="h-5 w-5"/>}</span></span></button>)}</div></>}
-
-            {step === 4 && <><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">05 · Review trip</p><h2 className="mt-2 text-2xl font-bold sm:text-3xl">Ready when you are.</h2><div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white"><div className="grid gap-0 sm:grid-cols-2"><div className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Pickup</p><p className="mt-1 font-bold text-slate-900">{pickupLabel}</p><p className="mt-1 text-xs text-slate-500">{pickupCoordinates ? `${pickupCoordinates.lat.toFixed(5)}, ${pickupCoordinates.lng.toFixed(5)} · map pin ready` : 'Map pin required'}</p></div><div className="border-t border-slate-100 p-5 sm:border-l sm:border-t-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Destination</p><p className="mt-1 font-bold text-slate-900">{selectedProperty?.title || destinationLabel}</p><p className="mt-1 text-xs text-slate-500">{destinationCoordinates ? `${destinationCoordinates.lat.toFixed(5)}, ${destinationCoordinates.lng.toFixed(5)} · map pin ready` : 'Map pin required'}</p></div></div><div className="border-t border-slate-100 p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Belongings · {totalItems} items</p><p className="mt-2 text-sm leading-6 text-slate-700">{Object.entries(items).map(([id, quantity]) => `${ITEMS.find((item) => item.id === id)?.label || id} × ${quantity}`).join(' · ')}</p></div><Package className="h-5 w-5 shrink-0 text-emerald-800"/></div></div>{selectedPackage && <div className="border-t border-slate-100 p-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Package</p><p className="mt-1 font-bold text-slate-900">{selectedPackage.title}</p></div>}<div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/80 p-5"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Transport option</p><p className="mt-1 font-bold text-slate-900">{selectedVehicle?.title}</p></div><p className="max-w-48 text-right text-xs leading-5 text-slate-500">Distance and price are confirmed by the provider</p></div></div><div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-950"><span className="font-bold">Saved trip pins are visible to your account, the assigned driver and MarketMix admins.</span> OpenStreetMap receives coordinates to find place names, and OSRM receives pinned points to draw the route and estimate driving time. The estimate does not include live traffic.</div></>}
+            {step === 3 && <>
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">04 · Choose transport</p>
+              <h2 className="mt-2 text-2xl font-bold sm:text-3xl">What size move feels right?</h2>
+              <p className="mt-2 text-sm text-slate-500">Choose a vehicle to compare matching local drivers, their rates and trip quotes.</p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {(vehicle ? VEHICLES.filter((option) => option.id === vehicle) : VEHICLES).map(({ id, title, detail, Icon }) => <button key={id} type="button" onClick={() => chooseVehicle(id)} aria-pressed={vehicle === id} className={`mmx-glass-card ${vehicle === id ? 'is-selected' : ''} overflow-hidden rounded-3xl border text-left transition-all duration-200 ${vehicle === id ? 'scale-[1.01] border-emerald-700 bg-emerald-50 shadow-[0_12px_35px_rgba(39,104,79,.15)] ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg'}`}><MovingIllustration kind={`vehicle:${id}`} className="w-full"/><span className="flex items-center justify-between gap-2 px-4 pb-4 pt-2"><span><span className="block text-base font-extrabold text-slate-900">{title}</span><span className="mt-1 block text-xs text-slate-500">{detail}</span></span><span className={`grid h-10 w-10 place-items-center rounded-2xl ${vehicle === id ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'}`}>{vehicle === id ? <Check className="h-5 w-5"/> : <Icon className="h-5 w-5"/>}</span></span></button>)}
+              </div>
+              {vehicle && <button type="button" onClick={() => setVehicle('')} className="mt-3 rounded-lg px-2 py-2 text-xs font-bold text-emerald-800 underline underline-offset-2">Choose a different vehicle</button>}
+            </>}
+ {step === 4 && <><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">05 · Review trip</p><h2 className="mt-2 text-2xl font-bold sm:text-3xl">Ready when you are.</h2><div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-4 sm:p-5"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-emerald-900">Contact details</p><p className="mt-1 text-xs leading-5 text-slate-600">These details will be used for your move and saved to your profile for next time.</p></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-slate-600">Your name<input type="text" autoComplete="name" value={checkoutName} onChange={(event) => setCheckoutName(event.target.value)} placeholder="Full name" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-emerald-700" /></label><label className="text-xs font-bold text-slate-600">Phone number<input type="tel" autoComplete="tel" value={checkoutPhone} onChange={(event) => setCheckoutPhone(event.target.value)} placeholder="07XXXXXXXX" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal text-slate-900 outline-none focus:border-emerald-700" /></label></div></div><div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white"><div className="grid gap-0 sm:grid-cols-2"><div className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Pickup</p><p className="mt-1 font-bold text-slate-900">{pickupLabel}</p><p className="mt-1 text-xs text-slate-500">{pickupCoordinates ? `${pickupCoordinates.lat.toFixed(5)}, ${pickupCoordinates.lng.toFixed(5)} · map pin ready` : 'Map pin required'}</p></div><div className="border-t border-slate-100 p-5 sm:border-l sm:border-t-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Destination</p><p className="mt-1 font-bold text-slate-900">{selectedProperty?.title || destinationLabel}</p><p className="mt-1 text-xs text-slate-500">{destinationCoordinates ? `${destinationCoordinates.lat.toFixed(5)}, ${destinationCoordinates.lng.toFixed(5)} · map pin ready` : 'Map pin required'}</p></div></div><div className="border-t border-slate-100 p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Belongings · {totalItems} items</p><p className="mt-2 text-sm leading-6 text-slate-700">{Object.entries(items).map(([id, quantity]) => `${ITEMS.find((item) => item.id === id)?.label || id} × ${quantity}`).join(' · ')}</p></div><Package className="h-5 w-5 shrink-0 text-emerald-800"/></div></div>{selectedPackage && <div className="border-t border-slate-100 p-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Package</p><p className="mt-1 font-bold text-slate-900">{selectedPackage.title}</p></div>}<div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/80 p-5"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Transport option</p><p className="mt-1 font-bold text-slate-900">{selectedVehicle?.title}</p></div><div className="text-right">{quoteEstimate && <><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Driver quote · {quoteEstimate.estimatedRouteKm} km</p><p className="mt-1 text-lg font-extrabold text-emerald-800">{money(quoteEstimate.estimatedPrice)}</p></>}<p className="max-w-56 text-xs leading-5 text-slate-500">Calculated from the selected driver rate card</p></div></div></div><div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-950"><span className="font-bold">Quote basis:</span> {selectedQuoteDriver ? `${selectedQuoteDriver.name} charges KSh ${Number(selectedQuoteDriver.ratePerKm).toLocaleString()} per km × ${selectedQuoteDriver.routeKm} km, rounded up to KSh 50.` : 'No matching driver rate card was found; the area driver will confirm the fare.'} Selected driver confirms this rate card quote{selectedQuoteDriver?.itemFeeTotal > 0 ? `, including KSh ${Number(selectedQuoteDriver.itemFeeTotal).toLocaleString()} item fees` : ""}. Saved trip pins are visible to your account, assigned driver and MarketMix admins.</div>{selectedQuoteDriver && <div className="mt-4"><QuoteReceiptButton quote={{ requestId: 'QUOTE-PREVIEW', customerName: userProfile?.name || userProfile?.fullName || currentUser?.displayName, pickupLabel, destinationLabel: selectedProperty?.title || destinationLabel, vehicleLabel: selectedVehicle?.title, driverName: selectedQuoteDriver.name, routeKm: selectedQuoteDriver.routeKm, ratePerKm: selectedQuoteDriver.ratePerKm, itemFeeTotal: selectedQuoteDriver.itemFeeTotal, total: selectedQuoteDriver.quote, items, itemCount: totalItems, status: 'Awaiting customer decision' }} /></div>}</>}
           </motion.section>
         </AnimatePresence>
 
-        {step < 4 && <div className="mt-4 flex items-center justify-between gap-3"><button type="button" disabled={step === 0} onClick={() => setStep((current) => Math.max(0, current - 1))} className="mmx-glass-action rounded-xl border px-5 py-3 text-sm font-bold text-slate-700 disabled:invisible">Back</button><button type="button" onClick={stepForward} className="mmx-liquid-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white">Continue <ArrowRight className="h-4 w-4"/></button></div>}
+        {step === 3 && vehicle && <DriverRateCardSelector drivers={sortedQuoteDrivers} loading={quoteDriversLoading} error={quoteDriversError} selectedId={selectedDriverId} onSelect={setSelectedDriverId} sort={driverSort} onSort={setDriverSort} />}
+
+        {step < 4 && <div className="mt-4 flex items-center justify-between gap-3"><button type="button" disabled={step === 0} onClick={() => setStep((current) => Math.max(0, current - 1))} className="mmx-glass-action rounded-xl border px-5 py-3 text-sm font-bold text-slate-700 disabled:invisible">Back</button><button type="button" ref={continueButtonRef} onClick={stepForward} className="mmx-liquid-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white">Continue <ArrowRight className="h-4 w-4"/></button></div>}
         {step === 4 && <div className="mt-4 flex flex-col-reverse justify-between gap-3 sm:flex-row"><button type="button" onClick={() => setStep(3)} className="mmx-glass-action rounded-xl border px-5 py-3 text-sm font-bold text-slate-700">Back to transport</button><button type="button" onClick={requestMove} disabled={saving} className="mmx-liquid-primary inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-bold text-white disabled:opacity-60">{saving ? 'Sending request…' : 'Request transport'} <ArrowRight className="h-4 w-4"/></button></div>}
         {step === 5 && (selectedRequest ? <RequestTrackingCard request={selectedRequest} selected showDetails onSelect={() => {}} /> : <div className="rounded-3xl border border-slate-200 bg-slate-50 p-12 text-center"><Truck className="mx-auto h-8 w-8 text-slate-400"/><p className="mt-3 font-bold text-slate-800">Opening your move updates…</p></div>)}
       </section>
 
       <aside className="space-y-5">
         <section className="mmx-glass-surface rounded-[1.7rem] border p-5 shadow-[0_18px_60px_rgba(20,55,42,.08)] backdrop-blur-xl"><p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[.13em] text-emerald-800"><CircleHelp className="h-4 w-4"/> How moving works</p><div className="mt-4 space-y-4">{['Choose the things going with you', 'Pin the two ends of your move', 'Select a vehicle size', 'Review the provider quote and driver updates'].map((line, index) => <div key={line} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-50 text-xs font-extrabold text-emerald-900">{index + 1}</span><p className="pt-1 text-sm leading-5 text-slate-600">{line}</p></div>)}</div><div className="mt-5 rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-800">About map time estimates</p><p className="mt-1 text-xs leading-5 text-slate-500">The route estimate is based on road distance and does not include live traffic. Ask your driver for a current arrival update.</p></div></section>
-        {currentUser && <section className="mmx-glass-surface rounded-[1.7rem] border p-5 shadow-[0_18px_60px_rgba(20,55,42,.08)] backdrop-blur-xl"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-[.13em] text-emerald-800">Your moves</p><h2 className="mt-1 font-bold text-slate-900">Live request updates</h2></div><Clock3 className="h-5 w-5 text-slate-500"/></div><div className="mt-4 space-y-3">{requests.length ? requests.map((request) => <RequestTrackingCard key={request.id} request={request} selected={request.id === selectedRequestId && step === 5} showDetails={false} onSelect={() => { setSelectedRequestId(request.id); setStep(5); }} />) : <p className="rounded-2xl bg-slate-50 p-4 text-sm leading-5 text-slate-500">Your requests and driver updates will appear here.</p>}</div></section>}
+        {currentUser && showMovesPanel && <section id="my-moves" className="mmx-glass-surface scroll-mt-5 rounded-[1.7rem] border p-5 shadow-[0_18px_60px_rgba(20,55,42,.08)] backdrop-blur-xl"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-[.13em] text-emerald-800">Your moves</p><h2 className="mt-1 font-bold text-slate-900">Live request updates</h2></div><Clock3 className="h-5 w-5 text-slate-500"/></div><div className="mt-4 space-y-3">{requests.length ? requests.map((request) => <RequestTrackingCard key={request.id} request={request} selected={request.id === selectedRequestId && step === 5} showDetails={false} onSelect={() => { setSelectedRequestId(request.id); setStep(5); }} />) : <p className="rounded-2xl bg-slate-50 p-4 text-sm leading-5 text-slate-500">Your requests and driver updates will appear here.</p>}</div></section>}
         <Link to="/roommates" className="mmx-glass-card group flex items-center justify-between gap-3 rounded-2xl border p-4 transition"><span><span className="block text-xs font-bold uppercase tracking-wider text-emerald-800">Sharing your new home?</span><span className="mt-1 block text-sm font-bold text-slate-900">Find a compatible roommate</span></span><ArrowRight className="h-5 w-5 text-emerald-800 transition group-hover:translate-x-1"/></Link>
       </aside>
     </div>

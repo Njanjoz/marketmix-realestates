@@ -38,7 +38,7 @@ export default function UserReferralsSection({ currentUser, userProfile }) {
   const acquired = properties.filter(p => p.propertyStatus === 'ACQUIRED' || p.propertyStatus === 'REWARD_PENDING' || p.propertyStatus === 'REWARD_PAID').length;
   const rewardsEarned = tokens.length;
   const rewardsPending = tokens.filter(t => t.status === 'PENDING' || t.status === 'VERIFIED').length;
-  const rewardsPaid = tokens.filter(t => t.status === 'PAID' || t.status === 'APPROVED').length;
+  const rewardsPaid = tokens.filter(t => t.status === 'PAID').length;
   const availableTokens = tokens.filter(t => t.status === 'APPROVED').length;
 
   const copyReferralLink = (propertyId, referralCode) => {
@@ -57,7 +57,7 @@ export default function UserReferralsSection({ currentUser, userProfile }) {
             Referral & Reward Program
           </div>
           <h2 className="text-2xl font-bold text-slate-900">My Property Referrals & Wallet</h2>
-          <p className="text-sm text-slate-600 mt-0.5">Submit properties you know about, earn reward tokens when acquired.</p>
+          <p className="text-sm text-slate-600 mt-0.5">Share property leads with your referral link. Rewards are reviewed and confirmed by MarketMix after a successful acquisition.</p>
         </div>
         <button
           onClick={() => setShowSubmitModal(true)}
@@ -93,7 +93,7 @@ export default function UserReferralsSection({ currentUser, userProfile }) {
               <Award className="w-3.5 h-3.5" /> Token Wallet
             </div>
             <h3 className="text-3xl font-bold tracking-tight">Reward Balance</h3>
-            <p className="text-slate-300 text-sm mt-1">Redeemable tokens from successful property acquisitions.</p>
+            <p className="text-slate-300 text-sm mt-1">Rewards from property referrals, subject to acquisition verification and approval.</p>
           </div>
           <div className="grid grid-cols-3 gap-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
             <div className="text-center px-3">

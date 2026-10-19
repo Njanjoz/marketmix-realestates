@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, getDocs, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDoc, getDocs, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import PromotePropertyModal from '../PromotePropertyModal';
 import { 
@@ -83,7 +83,9 @@ const AgentDashboard = () => {
 
   const updateSiteVisitStatus = async (id, nextStatus) => {
     try {
-      await updateDoc(doc(db, 'siteVisits', id), {
+      const appointment = appointments.find((item) => item.id === id);
+      const collectionName = appointment?.sourceCollection || 'siteVisits';
+      await updateDoc(doc(db, collectionName, id), {
         status: nextStatus,
         updatedAt: new Date(),
       });
@@ -91,6 +93,23 @@ const AgentDashboard = () => {
     } catch (error) {
       console.error('Error updating site visit status:', error);
     }
+  };
+
+  const updateViewingAvailability = async (apt, available) => {
+    try {
+      const availableUnits = available ? Number(window.prompt('How many units are currently available?', '1')) : 0;
+      if (available && (!Number.isInteger(availableUnits) || availableUnits < 1)) return;
+      const token = await currentUser.getIdToken();
+      const backend = import.meta.env.VITE_MOVING_BACKEND_URL || import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+      const response = await fetch(`${backend}/api/bookings/site-seeing/${encodeURIComponent(apt.id)}/availability`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ available, availableUnits }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.message || 'Could not update availability.');
+      setAppointments((prev) => prev.map((item) => item.id === apt.id ? { ...item, status: result.status, availabilityStatus: result.availabilityStatus } : item));
+      window.alert(available ? `Availability sent to admin. KSh ${result.agentEarning || 0} has been added to your withdrawable balance. Admin will confirm with you and notify the customer.` : 'Availability sent to admin. The admin will confirm with you and update the customer.');
+    } catch (error) { window.alert(error.message || 'Could not update property availability.'); }
   };
 
   useEffect(() => {
@@ -114,17 +133,43 @@ const AgentDashboard = () => {
 
         setListings(allListings);
 
-        const listingIds = new Set(allListings.map(item => item.id));
-        const inquirySnap = await getDocs(collection(db, 'inquiries'));
+        const inquirySnap = await getDocs(query(
+          collection(db, 'inquiries'),
+          where('agentId', '==', currentUser.uid)
+        ));
         const inquiryData = inquirySnap.docs
           .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
-          .filter(item => item.agentId === currentUser.uid || (item.propertyId && listingIds.has(item.propertyId)))
           .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
-        const siteVisitSnap = await getDocs(collection(db, 'siteVisits'));
+        const siteVisitSnap = await getDocs(query(
+          collection(db, 'siteVisits'),
+          where('agentId', '==', currentUser.uid)
+        ));
         const visitData = siteVisitSnap.docs
-          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
-          .filter(item => item.agentId === currentUser.uid || (item.propertyId && listingIds.has(item.propertyId)))
+          .map(docSnap => ({ id: docSnap.id, sourceCollection: 'siteVisits', ...docSnap.data() }));
+
+        const sightseeingBookingSnap = await getDocs(query(
+          collection(db, 'sightseeingBookings'),
+          where('agentId', '==', currentUser.uid)
+        ));
+        const sightseeingBookings = sightseeingBookingSnap.docs
+          .map(docSnap => {
+            const booking = docSnap.data();
+            return {
+              id: docSnap.id,
+              sourceCollection: 'sightseeingBookings',
+              customerPhone: booking.customerPhone,
+              availabilityStatus: booking.availabilityStatus,
+              propertyTitle: booking.propertyTitle,
+              buyerName: booking.customerName || booking.userEmail?.split('@')[0] || 'Customer',
+              type: `${booking.packageName || 'Guided viewing'} · ${booking.propertyLocation || ''}`,
+              requestedDate: booking.preferredViewingDate || 'Schedule pending',
+              requestedTime: booking.preferredViewingTime || 'Time to confirm',
+              status: booking.status,
+              createdAt: booking.createdAt,
+            };
+          });
+        const allAppointments = [...visitData, ...sightseeingBookings]
           .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
         const activeListings = allListings.filter(item => {
@@ -134,14 +179,21 @@ const AgentDashboard = () => {
 
         const totalViews = allListings.reduce((sum, item) => sum + Number(item.views || 0), 0);
         const inquiryCount = inquiryData.length;
+        let withdrawableCommission = 0;
+        try {
+          const walletSnap = await getDoc(doc(db, 'agentViewingWallets', currentUser.uid));
+          if (walletSnap.exists()) withdrawableCommission = Number(walletSnap.data().withdrawableBalance || 0);
+        } catch (walletError) {
+          console.warn('Could not load viewing commission balance:', walletError);
+        }
 
         setInquiries(inquiryData);
-        setAppointments(visitData);
+        setAppointments(allAppointments);
         setStats({
           activeListings,
           totalViews,
           inquiries: inquiryCount,
-          commission: '2.4M'
+          commission: withdrawableCommission.toLocaleString('en-KE')
         });
 
         setLeads(inquiryData.slice(0, 3).map((item) => ({
@@ -167,7 +219,7 @@ const AgentDashboard = () => {
     { label: 'Active Listings', value: stats.activeListings.toString(), delta: '+3', icon: <Building size={20} /> },
     { label: 'Total Views', value: stats.totalViews.toString(), delta: '+12%', icon: <Eye size={20} /> },
     { label: 'Inquiries', value: stats.inquiries.toString(), delta: '+18%', icon: <MessageSquare size={20} /> },
-    { label: 'Commission', value: `KES ${stats.commission}`, delta: '+8%', icon: <DollarSign size={20} /> },
+    { label: 'Withdrawable viewing credit', value: `KES ${stats.commission}`, delta: 'KSh 25 per availability check', icon: <DollarSign size={20} /> },
   ];
 
   return (
@@ -298,13 +350,16 @@ const AgentDashboard = () => {
                     {apt.meetingPoint || apt.type || 'Property viewing'} • {apt.requestedTime || 'As scheduled'}
                   </div>
                 </div>
-                <button
+                {apt.sourceCollection === 'sightseeingBookings' ? (apt.availabilityStatus === 'pending' ? <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" onClick={() => updateViewingAvailability(apt, true)} style={{ fontFamily: sans, fontSize: 10, color: '#166534', background: '#dcfce7', border: 'none', borderRadius: 8, padding: '7px 9px', cursor: 'pointer' }}>Available · notify admin</button>
+                  <button type="button" onClick={() => updateViewingAvailability(apt, false)} style={{ fontFamily: sans, fontSize: 10, color: '#991b1b', background: '#fee2e2', border: 'none', borderRadius: 8, padding: '7px 9px', cursor: 'pointer' }}>Unavailable</button>
+                </div> : <span style={{ fontFamily: sans, fontSize: 10, color: ink2 }}>{apt.status === 'awaiting_admin_confirmation' ? 'Waiting for admin confirmation' : apt.status === 'awaiting_admin_customer_update' ? 'Admin to update customer' : apt.availabilityStatus === 'available' ? 'Available' : apt.availabilityStatus === 'unavailable' ? 'Unavailable' : apt.status}</span>) : <button
                   type="button"
                   onClick={() => updateSiteVisitStatus(apt.id, apt.status === 'confirmed' ? 'completed' : 'confirmed')}
                   style={{ fontFamily: sans, fontSize: 11, color: agentBlue, background: 'none', border: 'none', cursor: 'pointer' }}
                 >
-                  {apt.status === 'confirmed' ? 'Complete' : 'Confirm'}
-                </button>
+                  {apt.status === 'confirmed' ? 'Complete' : apt.status === 'queued' ? 'Accept' : 'Confirm'}
+                </button>}
               </div>
             ))}
           </div>

@@ -156,6 +156,8 @@ const Footer = () => {
     { name: 'Agents', path: '/agents' },
     { name: 'About Us', path: '/about' },
     { name: 'Contact', path: '/contact' },
+    { name: 'Customer Help', path: '/help' },
+    { name: 'Download Android app', path: '/download' },
   ];
   
   const resourcesLinks = [

@@ -17,11 +17,8 @@ import {
   Route as RouteIcon,
   MapPinned,
   Compass,
-  Fuel,
-  ShoppingBag,
-  Store,
-  MapPin,
   ArrowUpRight,
+  ExternalLink,
   Clock3,
   LoaderCircle,
   AlertCircle,
@@ -31,6 +28,7 @@ import {
 import "leaflet/dist/leaflet.css";
 import "./TransportTrackingMap.css";
 import { getPoint } from "../../services/transportService";
+import { isAndroid } from "../../utils/platform";
 
 const OSRM_BASE =
   import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
@@ -38,8 +36,6 @@ const OSRM_BASE =
 const OSM_TILES =
   import.meta.env.VITE_OSM_TILE_URL ||
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 const DEFAULT_CENTER = [-0.3031, 36.08]; // Nakuru fallback only
 
@@ -204,35 +200,6 @@ function maneuverText(step) {
   if (modifier.includes("right")) return `Keep right${roadText}`;
 
   return road ? `Continue on ${road}` : "Continue on the route";
-}
-
-function iconForLandmark(tags = {}) {
-  if (tags.amenity === "fuel") return "fuel";
-  if (tags.shop === "supermarket" || tags.shop === "convenience") {
-    return "shopping";
-  }
-  if (tags.shop || tags.amenity === "marketplace") return "shop";
-  if (tags.amenity === "bank" || tags.amenity === "atm") return "bank";
-  if (tags.amenity === "hospital" || tags.amenity === "clinic") return "health";
-  return "place";
-}
-
-function landmarkIcon(kind) {
-  const symbols = {
-    fuel: "⛽",
-    shopping: "🛒",
-    shop: "▣",
-    bank: "¤",
-    health: "+",
-    place: "●",
-  };
-
-  return L.divIcon({
-    className: "mm-landmark-icon-shell",
-    html: `<span class="mm-landmark-pin mm-landmark-${kind}">${symbols[kind] || "●"}</span>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
 }
 
 function carIcon(heading = 0) {
@@ -412,99 +379,6 @@ function DriverMarker({ point, fallbackHeading = 0 }) {
   );
 }
 
-function LandmarkMarker({ landmark }) {
-  const kind = iconForLandmark(landmark.tags);
-
-  return (
-    <Marker
-      position={[landmark.lat, landmark.lng]}
-      icon={landmarkIcon(kind)}
-      zIndexOffset={100}
-      title={landmark.name}
-    >
-      <Tooltip direction="top" offset={[0, -10]} opacity={0.96}>
-        <strong>{landmark.name}</strong>
-        {landmark.category && (
-          <div className="mm-landmark-tooltip-category">{landmark.category}</div>
-        )}
-      </Tooltip>
-    </Marker>
-  );
-}
-
-function sampleRoutePoints(coordinates, maxPoints = 5) {
-  if (!coordinates?.length) return [];
-
-  const count = Math.min(maxPoints, coordinates.length);
-
-  if (count === 1) return [coordinates[0]];
-
-  return Array.from({ length: count }, (_, index) => {
-    const position = Math.round(
-      (index * (coordinates.length - 1)) / (count - 1)
-    );
-    return coordinates[position];
-  });
-}
-
-function landmarkQuery(coordinates) {
-  const samples = sampleRoutePoints(coordinates, 5);
-
-  if (!samples.length) return null;
-
-  const blocks = samples
-    .map(([lng, lat]) => {
-      const y = Number(lat).toFixed(6);
-      const x = Number(lng).toFixed(6);
-
-      return `
-        nwr(around:350,${y},${x})["name"]["shop"];
-        nwr(around:350,${y},${x})["name"]["amenity"~"fuel|bank|hospital|clinic|marketplace"];
-        nwr(around:350,${y},${x})["name"]["tourism"~"hotel|attraction"];
-      `;
-    })
-    .join("\n");
-
-  return `
-    [out:json][timeout:18];
-    (
-      ${blocks}
-    );
-    out center tags;
-  `;
-}
-
-function getLandmarkPosition(element) {
-  const lat = element.lat ?? element.center?.lat;
-  const lng = element.lon ?? element.center?.lon;
-
-  if (!validNumber(lat) || !validNumber(lng)) return null;
-
-  return { lat: Number(lat), lng: Number(lng) };
-}
-
-function getLandmarkCategory(tags = {}) {
-  if (tags.amenity === "fuel") return "Petrol station";
-  if (tags.shop === "supermarket") return "Supermarket";
-  if (tags.shop === "convenience") return "Convenience shop";
-  if (tags.amenity === "marketplace") return "Market";
-  if (tags.amenity === "bank" || tags.amenity === "atm") return "Bank / ATM";
-  if (tags.amenity === "hospital") return "Hospital";
-  if (tags.amenity === "clinic") return "Clinic";
-  if (tags.shop) return tags.shop.replaceAll("_", " ");
-  if (tags.tourism === "hotel") return "Hotel";
-  if (tags.tourism === "attraction") return "Attraction";
-  return tags.amenity || "Landmark";
-}
-
-const FUN_MESSAGES = [
-  "Checking traffic lights along your route...",
-  "Polishing the driver's steering wheel...",
-  "Finding the quickest shortcuts around town...",
-  "Connecting with local street mapping...",
-  "Almost ready to roll!"
-];
-
 export default function TransportTrackingMap({
   pickupLocation,
   destinationLocation,
@@ -531,46 +405,9 @@ export default function TransportTrackingMap({
   const [route, setRoute] = useState(null);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeError, setRouteError] = useState("");
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [funMessageIndex, setFunMessageIndex] = useState(0);
 
-  const funMessages = [
-    "Checking traffic lights along your route...",
-    "Polishing the driver's steering wheel...",
-    "Finding the quickest shortcuts around town...",
-    "Connecting with local street mapping...",
-    "Almost ready to roll!"
-  ];
-
-  useEffect(() => {
-    let interval = null;
-    let msgInterval = null;
-    if (routeStatus === "loading") {
-      setLoadingProgress(0);
-      const startTime = Date.now();
-      const duration = 90000; // 90 seconds
-      interval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const pct = Math.min(99, Math.round((elapsed / duration) * 100));
-        setLoadingProgress(pct);
-      }, 500);
-
-      msgInterval = setInterval(() => {
-        setFunMessageIndex(prev => (prev + 1) % FUN_MESSAGES.length);
-      }, 4000);
-    } else {
-      setLoadingProgress(100);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-      if (msgInterval) clearInterval(msgInterval);
-    };
-  }, [routeStatus]);
-  const [landmarks, setLandmarks] = useState([]);
-  const [landmarkStatus, setLandmarkStatus] = useState("idle");
   const [followDriver, setFollowDriver] = useState(Boolean(driver));
   const [overviewKey, setOverviewKey] = useState(0);
-  const [showLandmarks, setShowLandmarks] = useState(true);
   const [activeStep, setActiveStep] = useState(0);
 
   const routeKey = pickup && destination
@@ -679,76 +516,6 @@ export default function TransportTrackingMap({
   }, [loadRoute, routeKey]);
 
   useEffect(() => {
-    if (!routeCoordinates.length) {
-      setLandmarks([]);
-      setLandmarkStatus("idle");
-      return;
-    }
-
-    const controller = new AbortController();
-    const query = landmarkQuery(routeCoordinates);
-
-    if (!query) return undefined;
-
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-    async function loadLandmarks() {
-      setLandmarkStatus("loading");
-
-      try {
-        const response = await fetch(OVERPASS_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=UTF-8" },
-          body: query,
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Landmark service returned ${response.status}`);
-        }
-
-        const data = await response.json();
-        const unique = new Map();
-
-        for (const element of data.elements || []) {
-          const name = element.tags?.name?.trim();
-          const point = getLandmarkPosition(element);
-
-          if (!name || !point) continue;
-
-          const key = `${name.toLowerCase()}:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`;
-
-          if (!unique.has(key)) {
-            unique.set(key, {
-              id: String(element.id),
-              name,
-              lat: point.lat,
-              lng: point.lng,
-              tags: element.tags || {},
-              category: getLandmarkCategory(element.tags || {}),
-            });
-          }
-        }
-
-        setLandmarks([...unique.values()].slice(0, 80));
-        setLandmarkStatus("ready");
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setLandmarks([]);
-          setLandmarkStatus("error");
-        }
-      }
-    }
-
-    loadLandmarks();
-
-    return () => {
-      clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [routeCoordinates]);
-
-  useEffect(() => {
     if (!routeSteps.length) return;
 
     // Move the instruction forward once the driver is near the next step.
@@ -797,42 +564,37 @@ export default function TransportTrackingMap({
     setOverviewKey((value) => value + 1);
   }, []);
 
+  const openGoogleMaps = useCallback((startNavigation = false) => {
+    if (!pickup || !destination) return;
+    const params = new URLSearchParams({
+      api: "1",
+      destination: `${destination.lat},${destination.lng}`,
+      travelmode: "driving",
+    });
+    if (startNavigation) {
+      // Open the route preview so Google Maps displays its own Start control.
+      // `dir_action=navigate` can skip that preview and begin guidance directly.
+      if (driver) params.set("origin", `${driver.lat},${driver.lng}`);
+      else params.set("origin", `${pickup.lat},${pickup.lng}`);
+    } else {
+      params.set("origin", `${pickup.lat},${pickup.lng}`);
+    }
+    const mapsUrl = `https://www.google.com/maps/dir/?${params.toString()}`;
+
+    if (isAndroid()) {
+      const intentUrl = `intent://www.google.com/maps/dir/?${params.toString()}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(mapsUrl)};end`;
+      window.location.href = intentUrl;
+      return;
+    }
+
+    window.open(mapsUrl, "_blank", "noopener,noreferrer");
+  }, [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, driver?.lat, driver?.lng]);
+
   const mapPoints = [pickup, destination].filter(Boolean);
   const hasTrip = Boolean(pickup && destination);
 
   return (
     <section className={`mm-nav ${className}`}>
-      {routeStatus === "loading" && (
-        <div
-          className="mm-route-loading-overlay"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="mm-route-loading-card">
-            <div className="mm-route-loading-animation">
-              <div className="mm-route-loading-road">
-                <span />
-                <span />
-                <span />
-              </div>
-
-              <div className="mm-route-loading-car">🚘</div>
-            </div>
-
-            <h3>Planning your journey ({loadingProgress}%)</h3>
-
-            <p>
-              {funMessages[funMessageIndex]}
-            </p>
-
-            <div className="mm-route-loading-progress">
-              <span style={{ width: `${loadingProgress}%`, transition: 'width 0.5s ease-out' }} />
-            </div>
-
-            <small>Please keep this screen open.</small>
-          </div>
-        </div>
-      )}
       <div className="mm-nav-map">
         <MapContainer
           center={mapCenter}
@@ -896,6 +658,7 @@ export default function TransportTrackingMap({
             >
               <Tooltip direction="top" offset={[0, -8]}>
                 <strong>{pickupLabel}</strong>
+                <div>{pickup.lat.toFixed(5)}, {pickup.lng.toFixed(5)}</div>
               </Tooltip>
             </Marker>
           )}
@@ -909,6 +672,7 @@ export default function TransportTrackingMap({
             >
               <Tooltip direction="top" offset={[0, -8]}>
                 <strong>{destinationLabel}</strong>
+                <div>{destination.lat.toFixed(5)}, {destination.lng.toFixed(5)}</div>
               </Tooltip>
             </Marker>
           )}
@@ -927,9 +691,6 @@ export default function TransportTrackingMap({
             />
           )}
 
-          {showLandmarks && landmarks.map((landmark) => (
-            <LandmarkMarker key={landmark.id} landmark={landmark} />
-          ))}
         </MapContainer>
 
         <div className="mm-map-topline">
@@ -937,7 +698,7 @@ export default function TransportTrackingMap({
             <span className={`mm-live-dot ${driver ? "is-live" : ""}`} />
             <span>{driver ? "Driver location" : "Trip map"}</span>
           </div>
-          <div className="mm-map-attribution">MAP DATA · OPENSTREETMAP</div>
+          <div className="mm-map-attribution">OpenStreetMap · Live tracking</div>
         </div>
 
         <div className="mm-map-actions">
@@ -958,15 +719,6 @@ export default function TransportTrackingMap({
             aria-label="Show full route"
           >
             <MapPinned size={18} />
-          </button>
-          <button
-            type="button"
-            className={`mm-map-action ${showLandmarks ? "is-active" : ""}`}
-            onClick={() => setShowLandmarks((value) => !value)}
-            title={showLandmarks ? "Hide landmarks" : "Show landmarks"}
-            aria-label={showLandmarks ? "Hide landmarks" : "Show landmarks"}
-          >
-            <Store size={18} />
           </button>
         </div>
 
@@ -1013,6 +765,27 @@ export default function TransportTrackingMap({
             <Clock3 size={15} />
             <span>{tripDuration !== null ? formatDuration(tripDuration) : "—"}</span>
           </div>
+        </div>
+
+        <div className="mm-nav-actions">
+          <button
+            type="button"
+            className="mm-open-google-maps mm-view-directions"
+            onClick={() => openGoogleMaps(false)}
+            disabled={!hasTrip}
+          >
+            <ExternalLink size={17} />
+            <span>View directions</span>
+          </button>
+          <button
+            type="button"
+            className="mm-open-google-maps"
+            onClick={() => openGoogleMaps(true)}
+            disabled={!hasTrip}
+          >
+            <Navigation size={17} />
+            <span>Start navigation</span>
+          </button>
         </div>
 
         <div className="mm-nav-stops">
@@ -1073,14 +846,8 @@ export default function TransportTrackingMap({
 
         <div className="mm-nav-foot">
           <div className="mm-landmark-status">
-            <span className={`mm-status-dot ${landmarkStatus === "ready" ? "is-ready" : ""}`} />
-            {landmarkStatus === "loading"
-              ? "Loading nearby landmarks…"
-              : landmarkStatus === "error"
-                ? "Landmark names temporarily unavailable"
-                : landmarks.length
-                  ? `${landmarks.length} mapped landmarks along the route`
-                  : "Landmarks appear where map data is available"}
+            <span className={`mm-status-dot ${driver ? "is-ready" : ""}`} />
+            {driver ? "Driver location updates live" : routeStatus === "ready" ? "Route displayed" : "Waiting for live driver location"}
           </div>
           <a
             href="https://www.openstreetmap.org/copyright"

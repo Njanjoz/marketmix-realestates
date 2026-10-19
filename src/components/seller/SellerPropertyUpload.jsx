@@ -1133,6 +1133,7 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
   const [transitioning, setTransitioning] = useState(false);
   const [validationError, setValidationError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedPropertyId, setSubmittedPropertyId] = useState('');
 
   const contentRef = useRef(null);
   const closeBtnRef = useRef(null);
@@ -1533,14 +1534,16 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
       }
 
       const createdId = draftIdRef.current;
+      setSubmittedPropertyId(createdId);
       sendWhatsAppNotification(
         snapshot.phone || snapshot.sellerPhone || currentUser?.phoneNumber,
-        "listing-published",
+        "listing-submitted",
         `🏠 MarketMix Real Estates\n` +
-        `Your listing is live:\n` +
+        `Thank you for listing with MarketMix and being part of our community. Your property has been received and is awaiting review:\n` +
         `${snapshot.title || 'Property'}\n` +
         `${snapshot.location || 'Kenya'}\n` +
         `KES ${Number(snapshot.price || 0).toLocaleString()} ${snapshot.listingType === "rent" ? "/ month" : ""}\n` +
+        `Reference: ${createdId}\n` +
         `View: https://marketmix-realestates.vercel.app/property/${createdId}`
       );
 
@@ -1793,9 +1796,14 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
               >
                 <CheckCircle2 size={31} strokeWidth={1.6} />
               </div>
-              <div className="mt-5 text-[10px] font-bold uppercase tracking-[.25em]" style={{ color: GOLD }}>Listing complete</div>
-              <h3 className="mt-2 text-2xl font-semibold">Your property is ready for review</h3>
-              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/55">Your saved draft has been updated and submitted for review.</p>
+              <div className="mt-5 text-[10px] font-bold uppercase tracking-[.25em]" style={{ color: GOLD }}>Thank you for listing with us</div>
+              <h3 className="mt-2 text-2xl font-semibold">Welcome to the MarketMix community</h3>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/65">We’ve received <strong className="text-white">{readTitle(dataRef.current) || 'your property'}</strong>. Our team will review it before it appears to buyers.</p>
+              {submittedPropertyId && <p className="mt-3 text-xs text-white/45">Submission reference: {submittedPropertyId}</p>}
+              <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-white/10 bg-white/5 p-4 text-left text-xs leading-5 text-white/65">
+                <p className="font-semibold text-white">What happens next</p>
+                <p className="mt-1">You’ll hear from us when the review is complete. Keep your property details and contact number up to date so interested buyers can reach you.</p>
+              </div>
               <button
                 type="button"
                 onClick={onClose}

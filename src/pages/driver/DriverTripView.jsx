@@ -5,7 +5,7 @@ import { Truck, MapPin, CheckCircle, Play, ArrowLeft, Loader2, XCircle } from 'l
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../firebase/config';
-import { startTrip, completeTrip } from '../../services/driverService';
+import { startTrip, completeTrip, requestTransportPayout } from '../../services/driverService';
 import TransportTrackingMap from '../../components/moving/TransportTrackingMap';
 
 export default function DriverTripView() {
@@ -18,6 +18,8 @@ export default function DriverTripView() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  const [payoutRequested, setPayoutRequested] = useState(false);
 
   useEffect(() => {
     if (!requestId) return;
@@ -47,12 +49,22 @@ export default function DriverTripView() {
     try {
       await completeTrip(requestId);
       toast.success('Trip completed successfully!');
-      navigate('/driver/dashboard');
     } catch (err) {
       toast.error(err.message || 'Failed to complete trip');
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handlePayout = async () => {
+    setPayoutBusy(true);
+    try {
+      const result = await requestTransportPayout(requestId);
+      setPayoutRequested(true);
+      toast.success(`Payout requested: KSh ${Number(result.netAmount).toLocaleString()} after the 8% platform fee. Pending approval.`);
+    } catch (error) {
+      toast.error(error.message || 'Could not request payout.');
+    } finally { setPayoutBusy(false); }
   };
 
   const REASONS = [
@@ -145,7 +157,13 @@ export default function DriverTripView() {
           </div>
 
           <div className="mt-6 h-64 rounded-2xl overflow-hidden border border-slate-200">
-            <TransportTrackingMap pickupLocation={trip.pickupCoordinates} destinationLocation={trip.destinationCoordinates} driverLocation={trip.driverLocation} />
+            <TransportTrackingMap
+              pickupLocation={trip.pickupCoordinates}
+              destinationLocation={trip.destinationCoordinates}
+              driverLocation={trip.driverLocation}
+              pickupLabel={trip.pickupLabel || 'Pickup'}
+              destinationLabel={trip.destinationLabel || trip.destinationTitle || 'Destination'}
+            />
           </div>
 
           <div className="mt-6 flex gap-3">
@@ -182,6 +200,11 @@ export default function DriverTripView() {
               </button>
             )}
           </div>
+          {trip.status === 'DELIVERED' && trip.paymentStatus === 'paid' && trip.driverAcceptsOnlinePayments && <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-sm font-extrabold text-emerald-950">Online payment received</p>
+            <p className="mt-1 text-xs text-emerald-900">Gross KSh {Number(trip.quotedPrice || 0).toLocaleString()} · 8% fee KSh {Math.round(Number(trip.quotedPrice || 0) * 0.08).toLocaleString()} · your payout KSh {(Math.ceil(Number(trip.quotedPrice || 0)) - Math.round(Number(trip.quotedPrice || 0) * 0.08)).toLocaleString()}</p>
+            {['PENDING_APPROVAL', 'PROCESSING', 'PAYOUT_SENT'].includes(trip.withdrawalStatus) || payoutRequested ? <p className="mt-2 text-xs font-bold text-amber-900">Payout request sent; waiting for approval and payment-provider settlement.</p> : trip.withdrawalStatus === 'PAID' ? <p className="mt-2 text-xs font-bold text-emerald-900">M-Pesa payout completed.</p> : trip.withdrawalStatus === 'PAYOUT_FAILED' ? <p className="mt-2 text-xs font-bold text-rose-900">The M-Pesa payout failed. Contact MarketMix support with this move reference.</p> : <button type="button" onClick={handlePayout} disabled={payoutBusy} className="mt-3 rounded-xl bg-emerald-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{payoutBusy ? 'Sending request…' : 'Request M-Pesa payout'}</button>}
+          </div>}
         </div>
       </div>
 

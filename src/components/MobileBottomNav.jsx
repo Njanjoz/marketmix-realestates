@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { CirclePlus, Compass, Heart, Home, UserRound, X } from 'lucide-react';
+import { CirclePlus, Compass, Home, UserRound, ClipboardList, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const MobileBottomNav = () => {
@@ -18,7 +18,7 @@ const MobileBottomNav = () => {
   const items = [
     { label: 'Home', to: '/', icon: Home },
     { label: 'Explore', to: '/explore', icon: Compass },
-    { label: 'Saved', to: currentUser ? '/favorites' : '/login', icon: Heart },
+    { label: 'My Bookings', to: currentUser ? '/my-bookings' : '/login', icon: ClipboardList },
     { label: 'Account', to: currentUser ? '/dashboard' : '/login', icon: UserRound },
   ];
 
@@ -29,7 +29,7 @@ const MobileBottomNav = () => {
           <Link to={items[0].to} className={`flex flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname === '/' ? 'text-emerald-800' : 'text-slate-500'}`}><Home className="h-5 w-5" />Home</Link>
           <Link to={items[1].to} className={`flex flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname === '/explore' ? 'text-emerald-800' : 'text-slate-500'}`}><Compass className="h-5 w-5" />Explore</Link>
           <button type="button" onClick={() => setActionsOpen(true)} aria-label="Open quick actions" className="-mt-4 mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-700 text-white shadow-lg ring-4 ring-white"><CirclePlus className="h-6 w-6" /></button>
-          <Link to={items[2].to} className={`flex flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname === '/favorites' ? 'text-emerald-800' : 'text-slate-500'}`}><Heart className="h-5 w-5" />Saved</Link>
+          <Link to={items[2].to} aria-label="Open my bookings" className={`flex flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname === '/my-bookings' ? 'text-emerald-800' : 'text-slate-500'}`}><ClipboardList className="h-5 w-5" />My Bookings</Link>
           <Link to={items[3].to} className={`flex flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname === '/dashboard' ? 'text-emerald-800' : 'text-slate-500'}`}><UserRound className="h-5 w-5" />Account</Link>
         </div>
       </nav>
@@ -40,6 +40,7 @@ const MobileBottomNav = () => {
           <div className="space-y-2">{actions.map((action) => <button key={action.title} type="button" onClick={() => { setActionsOpen(false); navigate(action.to); }} className="w-full rounded-2xl border border-slate-200 p-4 text-left hover:border-emerald-300 hover:bg-emerald-50"><span className="block font-bold text-slate-900">{action.title}</span><span className="mt-1 block text-xs text-slate-600">{action.description}</span></button>)}</div>
         </section>
       </div>}
+
     </>
   );
 };

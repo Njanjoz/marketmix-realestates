@@ -63,17 +63,18 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
   if (viewMode === 'list') {
     return (
       <Link to={`/property/${property.id}`} className="block group">
-        <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 flex flex-col md:flex-row">
-          <div className="relative md:w-72 h-56 overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-emerald-950/10 bg-white shadow-[0_8px_30px_rgba(15,39,31,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,39,31,0.16)] flex flex-col md:flex-row">
+          <div className="relative md:w-80 h-56 overflow-hidden bg-emerald-950">
             <img 
               src={getPropertyImage(property) || '/images/property-hero.svg'}
               alt={property.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               onError={(event) => { event.currentTarget.src = '/images/property-hero.svg'; }}
             />
-            <div className="absolute top-3 left-3 flex flex-col gap-1">
-              <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${
-                    listingType === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/45 to-transparent" />
+            <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+              <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-[0.14em] font-bold shadow-lg backdrop-blur ${
+                    listingType === 'sale' ? 'bg-white/95 text-slate-900' : 'bg-emerald-950/90 text-white'
               }`}>
                 {listingType === 'sale' ? 'FOR SALE' : listingType === 'rent' ? 'FOR RENT' : 'LISTING TYPE UNAVAILABLE'}
               </span>
@@ -94,10 +95,10 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               </div>
             )}
           </div>
-          <div className="flex-1 p-5">
+          <div className="flex-1 p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
+                <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-1 group-hover:text-emerald-800 transition-colors">
                   {property.title}
                 </h3>
               </div>
@@ -110,13 +111,13 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
                 <Share2 className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex flex-wrap gap-4 mb-4 text-gray-600">
-              <span className="flex items-center gap-1"><Bed className="w-4 h-4" /> {property.bedrooms || 0} beds</span>
-              <span className="flex items-center gap-1"><Bath className="w-4 h-4" /> {property.bathrooms || 0} baths</span>
-              <span className="flex items-center gap-1"><Square className="w-4 h-4" /> {property.area || 0} sqft</span>
+            <div className="flex flex-wrap gap-4 mb-5 text-slate-500 text-sm">
+              <span className="flex items-center gap-1.5"><Bed className="w-4 h-4 text-emerald-800" /> {property.bedrooms || 0} beds</span>
+              <span className="flex items-center gap-1.5"><Bath className="w-4 h-4 text-emerald-800" /> {property.bathrooms || 0} baths</span>
+              <span className="flex items-center gap-1.5"><Square className="w-4 h-4 text-emerald-800" /> {property.area || 0} sqft</span>
             </div>
             <div className="flex justify-between items-center">
-              <div className="text-2xl font-bold text-emerald-600">
+              <div className="text-2xl font-bold tracking-tight text-emerald-900">
                 {formatPrice(property.price)}
                 {listingType === 'rent' && <span className="text-sm font-normal">/month</span>}
               </div>
@@ -132,17 +133,18 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
 
   return (
     <Link to={`/property/${property.id}`} className="block group">
-      <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
-        <div className="relative h-56 overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-emerald-950/10 bg-white shadow-[0_8px_30px_rgba(15,39,31,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(15,39,31,0.16)]">
+        <div className="relative h-56 overflow-hidden bg-emerald-950">
           <img 
             src={getPropertyImage(property) || '/images/property-hero.svg'}
             alt={property.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             onError={(event) => { event.currentTarget.src = '/images/property-hero.svg'; }}
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-slate-950/15 pointer-events-none" />
           <div className="absolute top-3 left-3">
-            <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${
-              listingType === 'sale' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+            <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-[0.14em] font-bold shadow-lg backdrop-blur ${
+              listingType === 'sale' ? 'bg-white/95 text-slate-900' : 'bg-emerald-950/90 text-white'
             }`}>
               {listingType === 'sale' ? 'FOR SALE' : listingType === 'rent' ? 'FOR RENT' : 'LISTING TYPE UNAVAILABLE'}
             </span>
@@ -157,7 +159,7 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               type="button"
               aria-label="Share property"
               onClick={handleShare}
-              className="p-2 bg-white/90 rounded-full hover:bg-white transition-colors text-gray-700 hover:text-emerald-600"
+              className="p-2.5 bg-white/90 rounded-full shadow-md backdrop-blur hover:bg-white transition-colors text-gray-700 hover:text-emerald-800"
             >
               <Share2 className="w-4 h-4" />
             </button>
@@ -165,35 +167,35 @@ const PropertyCard = ({ property, viewMode = 'grid', distance }) => {
               type="button"
               aria-label="Save property"
               onClick={toggleSaved}
-              className="p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+              className="p-2.5 bg-white/90 rounded-full shadow-md backdrop-blur hover:bg-white transition-colors"
             >
               <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-600 hover:text-red-500'}`} />
             </button>
           </div>
         </div>
-        <div className="p-4">
+        <div className="p-4 sm:p-5">
           <div className="flex flex-wrap gap-2 mb-2">
             {property.availabilityStatus && (
-              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-800">
                 {String(property.availabilityStatus).toUpperCase()}
               </span>
             )}
             {property.verificationStatus && (
-              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-800">
                 {String(property.verificationStatus).toUpperCase()}
               </span>
             )}
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors line-clamp-1">
+          <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-1 group-hover:text-emerald-800 transition-colors line-clamp-1">
             {property.title}
           </h3>
-          <div className="flex justify-between items-center mb-3 text-gray-600 text-sm">
-            <span className="flex items-center gap-1"><Bed className="w-4 h-4" /> {property.bedrooms || 0}</span>
-            <span className="flex items-center gap-1"><Bath className="w-4 h-4" /> {property.bathrooms || 0}</span>
-            <span className="flex items-center gap-1"><Square className="w-4 h-4" /> {property.area || 0}</span>
+          <div className="flex justify-between items-center mb-4 text-slate-500 text-sm">
+            <span className="flex items-center gap-1.5"><Bed className="w-4 h-4 text-emerald-800" /> {property.bedrooms || 0}</span>
+            <span className="flex items-center gap-1.5"><Bath className="w-4 h-4 text-emerald-800" /> {property.bathrooms || 0}</span>
+            <span className="flex items-center gap-1.5"><Square className="w-4 h-4 text-emerald-800" /> {property.area || 0}</span>
           </div>
-          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-            <div className="text-xl font-bold text-emerald-600">
+          <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+            <div className="text-xl font-bold tracking-tight text-emerald-900">
               {formatPrice(property.price)}
               {listingType === 'rent' && <span className="text-xs font-normal">/mo</span>}
             </div>
