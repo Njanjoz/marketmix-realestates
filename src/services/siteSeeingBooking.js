@@ -1,8 +1,9 @@
 import { auth } from '../firebase/config';
 
 const LEGACY_BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
-const BOOKING_BACKEND = import.meta.env.VITE_MOVING_BACKEND_URL
-  || LEGACY_BACKEND;
+// Checkout, STK initiation, callback status, and confirmation must use the
+// same backend/database. Splitting these across backend URLs loses payment links.
+const BOOKING_BACKEND = LEGACY_BACKEND;
 
 export function getSiteSeeingPackagePrice(pkg = {}) {
   const numeric = Number(pkg.price);
@@ -37,7 +38,7 @@ async function waitForPayment(paymentRef, { timeoutMs = 180000, intervalMs = 400
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(`${LEGACY_BACKEND}/api/ad-transaction/${encodeURIComponent(paymentRef)}`);
+      const response = await fetch(`${BOOKING_BACKEND}/api/ad-transaction/${encodeURIComponent(paymentRef)}`);
       if (response.ok) {
         const result = await response.json();
         const transaction = result?.data || {};
@@ -71,17 +72,13 @@ export async function bookSiteSeeingWithDeposit({ property, properties = [], pac
     tourPreferences,
     participantCount,
   });
-  // The availability check uses a KSh 1 test fee. Keep this
-  // explicit so an omitted/legacy amountDue field cannot reach /api/stk-push.
-  const amountToCharge = completionBookingId || bookingMode === 'direct_booking'
-    ? Number(prepared.amountDue)
-    : 1;
+  const amountToCharge = Number(prepared.amountDue);
   if (!Number.isFinite(amountToCharge) || amountToCharge <= 0) {
     throw new Error('The booking service returned an invalid payment amount. Please try again or contact support.');
   }
-  const promptResponse = await fetch(`${LEGACY_BACKEND}/api/stk-push`, {
+  const promptResponse = await fetch(`${BOOKING_BACKEND}/api/stk-push`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
     body: JSON.stringify({
       amount: amountToCharge,
       phoneNumber: mpesaPhone,

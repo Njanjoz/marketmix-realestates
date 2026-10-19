@@ -61,7 +61,30 @@ export default function MyBookingsPage() {
     return () => { stopTransport(); stopHouse(); stopPayments(); };
   }, [currentUser?.uid]);
 
-  const bookings = useMemo(() => type === 'house' ? houses : type === 'payments' ? payments : transport, [type, houses, payments, transport]);
+  const viewingPayments = useMemo(() => houses.flatMap((booking) => {
+    const rows = [];
+    const makeRow = (paymentRef, amount, paymentStatus, paymentKind, mpesaReference, createdAt) => {
+      if (!paymentRef) return;
+      rows.push({
+        id: paymentRef, paymentRef, orderType: 'real_estate',
+        paymentKind, paymentStatus: paymentStatus || booking.paymentStatus || 'pending',
+        totalAmount: Number(amount || 0), mpesaReference: mpesaReference || null,
+        propertyTitle: booking.propertyTitle, propertyLocation: booking.propertyLocation,
+        createdAt: createdAt || booking.createdAt,
+      });
+    };
+    makeRow(booking.availabilityPaymentReference, booking.availabilityPaymentAmount, booking.availabilityPaymentStatus, 'sightseeing_availability_check', booking.availabilityMpesaReference, booking.availabilityPaymentCreatedAt);
+    makeRow(booking.packagePaymentReference || booking.directPaymentReference, booking.packagePaymentAmount || booking.directPaymentAmount, booking.packagePaymentStatus || (booking.directPaymentReference ? booking.paymentStatus : null), 'sightseeing_package', booking.packagePaymentMpesaReference || booking.directMpesaReference, booking.packagePaymentCreatedAt || booking.createdAt);
+    // Existing bookings predate the separate payment fields; keep their latest receipt visible.
+    if (!rows.length && booking.paymentRef) makeRow(booking.paymentRef, booking.paidAmount || booking.depositAmount, booking.paymentStatus, 'site_seeing_payment', booking.mpesaReference, booking.confirmedAt || booking.createdAt);
+    return rows;
+  }), [houses]);
+  const paymentRows = useMemo(() => {
+    const byReference = new Map();
+    [...payments, ...viewingPayments].forEach((row) => byReference.set(row.paymentRef || row.id, row));
+    return [...byReference.values()].sort((a, b) => (b.createdAt?.toMillis?.() || new Date(b.createdAt || 0).getTime()) - (a.createdAt?.toMillis?.() || new Date(a.createdAt || 0).getTime()));
+  }, [payments, viewingPayments]);
+  const bookings = useMemo(() => type === 'house' ? houses : type === 'payments' ? paymentRows : transport, [type, houses, paymentRows, transport]);
   const chooseType = (nextType) => setSearchParams({ type: nextType });
 
   return <main className="mmx-liquid-canvas min-h-screen px-4 pb-28 pt-6 text-slate-900 sm:px-6 sm:pt-10">
@@ -104,6 +127,8 @@ export default function MyBookingsPage() {
               {location && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-800"/><span>{location}</span></p>}
               {date && <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-emerald-800"/><span>{formatDate(date)}{isHouse && booking.preferredViewingTime ? ` · ${booking.preferredViewingTime}` : ''}</span></p>}
               {isHouse && booking.paymentStatus && <p>Payment: {label(booking.paymentStatus)}</p>}
+              {isHouse && booking.availabilityPaymentReference && <p>Vacancy-check payment: KSh {Number(booking.availabilityPaymentAmount || 0).toLocaleString('en-KE')} · {label(booking.availabilityPaymentStatus)}{booking.availabilityMpesaReference ? ` · M-Pesa ${booking.availabilityMpesaReference}` : ''}</p>}
+              {isHouse && (booking.packagePaymentReference || booking.directPaymentReference) && <p>Viewing package payment: KSh {Number(booking.packagePaymentAmount || booking.directPaymentAmount || 0).toLocaleString('en-KE')} · {label(booking.packagePaymentStatus || booking.paymentStatus)}{booking.packagePaymentMpesaReference || booking.directMpesaReference ? ` · M-Pesa ${booking.packagePaymentMpesaReference || booking.directMpesaReference}` : ''}</p>}
               {isPayment && <><p>For: {label(booking.paymentKind || booking.paymentType || 'Property payment')}</p><p>Amount: KSh {Number(booking.totalAmount || 0).toLocaleString('en-KE')}</p>{booking.mpesaReference && <p>M-Pesa reference: {booking.mpesaReference}</p>}</>}
               {booking.quotedPrice != null && <p>Quote: KSh {Number(booking.quotedPrice).toLocaleString('en-KE')}</p>}
             </div>

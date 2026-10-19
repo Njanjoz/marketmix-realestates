@@ -56,6 +56,7 @@ const AgencyPackagesPage = lazy(() => import('./pages/admin/AgencyPackagesPage')
 const SightseeingPackagesPage = lazy(() => import('./pages/admin/SightseeingPackagesPage'));
 const SightseeingBookingsPage = lazy(() => import('./pages/admin/SightseeingBookingsPage'));
 const ViewingMeetingDetailsPage = lazy(() => import('./pages/agent/ViewingMeetingDetailsPage'));
+const ViewingAvailabilityPage = lazy(() => import('./pages/agent/ViewingAvailabilityPage'));
 const WhatsAppControl = lazy(() => import('./pages/admin/WhatsAppControl'));
 const CustomerHelpPage = lazy(() => import('./pages/CustomerHelpPage'));
 const CustomerHelpInbox = lazy(() => import('./pages/admin/CustomerHelpInbox'));
@@ -166,6 +167,7 @@ function App() {
                       <Route path="/site-seeing" element={<SiteSeeingPage />} />
                       <Route path="/site-seeing/checkout" element={<SiteSeeingPage />} />
                       <Route path="/agent/viewing-details/:bookingId" element={<ProtectedRoute><ViewingMeetingDetailsPage /></ProtectedRoute>} />
+                      <Route path="/agent/viewing-availability/:bookingId" element={<ProtectedRoute><ViewingAvailabilityPage /></ProtectedRoute>} />
                       <Route path="/help" element={<ProtectedRoute><CustomerHelpPage /></ProtectedRoute>} />
                       <Route path="/sightseeing" element={<Navigate to="/site-seeing" replace />} />
                       <Route path="/receipt/:ref" element={<ReceiptPage />} />

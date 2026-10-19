@@ -47,6 +47,7 @@ const AgentDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [withdrawalBusy, setWithdrawalBusy] = useState(false);
   const [promoteProperty, setPromoteProperty] = useState(null);
   const [stats, setStats] = useState({
     activeListings: 0,
@@ -95,21 +96,23 @@ const AgentDashboard = () => {
     }
   };
 
-  const updateViewingAvailability = async (apt, available) => {
+  const requestViewingWithdrawal = async () => {
+    const amount = Number(window.prompt(`Withdrawable balance: KSh ${stats.commission}. Enter a whole-shilling amount to withdraw.`));
+    if (!Number.isInteger(amount) || amount <= 0) return;
+    const profilePhone = userProfile?.mpesaPhone || userProfile?.phoneNumber || userProfile?.phone || '';
+    const phoneNumber = String(window.prompt('M-Pesa number to receive the withdrawal:', profilePhone) || '').trim();
+    if (!phoneNumber) return;
+    setWithdrawalBusy(true);
     try {
-      const availableUnits = available ? Number(window.prompt('How many units are currently available?', '1')) : 0;
-      if (available && (!Number.isInteger(availableUnits) || availableUnits < 1)) return;
       const token = await currentUser.getIdToken();
-      const backend = import.meta.env.VITE_MOVING_BACKEND_URL || import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
-      const response = await fetch(`${backend}/api/bookings/site-seeing/${encodeURIComponent(apt.id)}/availability`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ available, availableUnits }),
-      });
+      const backend = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+      const response = await fetch(`${backend}/api/site-seeing/agent-withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ amount, phoneNumber }) });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.success) throw new Error(result.message || 'Could not update availability.');
-      setAppointments((prev) => prev.map((item) => item.id === apt.id ? { ...item, status: result.status, availabilityStatus: result.availabilityStatus } : item));
-      window.alert(available ? `Availability sent to admin. KSh ${result.agentEarning || 0} has been added to your withdrawable balance. Admin will confirm with you and notify the customer.` : 'Availability sent to admin. The admin will confirm with you and update the customer.');
-    } catch (error) { window.alert(error.message || 'Could not update property availability.'); }
+      if (!response.ok || !result.success) throw new Error(result.message || 'Could not request the withdrawal.');
+      setStats((previous) => ({ ...previous, commission: Math.max(0, Number(previous.commission.replace(/,/g, '') || 0) - amount).toLocaleString('en-KE') }));
+      window.alert(`M-Pesa payout initiated: KSh ${result.netPayout}. Withdrawal fee: KSh ${result.withdrawalFee}. Reference: ${result.trackingId || result.withdrawalId}`);
+    } catch (error) { window.alert(error.message || 'Could not request the withdrawal.'); }
+    finally { setWithdrawalBusy(false); }
   };
 
   useEffect(() => {
@@ -158,7 +161,6 @@ const AgentDashboard = () => {
             return {
               id: docSnap.id,
               sourceCollection: 'sightseeingBookings',
-              customerPhone: booking.customerPhone,
               availabilityStatus: booking.availabilityStatus,
               propertyTitle: booking.propertyTitle,
               buyerName: booking.customerName || booking.userEmail?.split('@')[0] || 'Customer',
@@ -219,7 +221,7 @@ const AgentDashboard = () => {
     { label: 'Active Listings', value: stats.activeListings.toString(), delta: '+3', icon: <Building size={20} /> },
     { label: 'Total Views', value: stats.totalViews.toString(), delta: '+12%', icon: <Eye size={20} /> },
     { label: 'Inquiries', value: stats.inquiries.toString(), delta: '+18%', icon: <MessageSquare size={20} /> },
-    { label: 'Withdrawable viewing credit', value: `KES ${stats.commission}`, delta: 'KSh 25 per availability check', icon: <DollarSign size={20} /> },
+    { label: 'Withdrawable site-seeing balance', value: `KES ${stats.commission}`, delta: 'Tour balance after admin approval; vacancy credit is sent separately by M-Pesa', icon: <DollarSign size={20} /> },
   ];
 
   return (
@@ -287,6 +289,7 @@ const AgentDashboard = () => {
                 <div style={{ fontFamily: sans, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: ink3 }}>{s.label}</div>
                 <div style={{ fontFamily: serif, fontSize: s.value.length > 6 ? 22 : 32, fontWeight: 300, color: ink, letterSpacing: -1, lineHeight: 1, margin: '6px 0 4px' }}>{s.value}</div>
                 <div style={{ fontFamily: sans, fontSize: 11, color: up }}>{s.delta}</div>
+                {idx === 3 && <button type="button" onClick={requestViewingWithdrawal} disabled={withdrawalBusy || Number(stats.commission.replace(/,/g, '') || 0) <= 0} style={{ marginTop: 10, alignSelf: 'flex-start', fontFamily: sans, fontSize: 11, fontWeight: 700, color: '#fff', background: agentBlue, border: 'none', borderRadius: 9, padding: '8px 12px', cursor: withdrawalBusy ? 'wait' : 'pointer', opacity: withdrawalBusy ? 0.65 : 1 }}>{withdrawalBusy ? 'Requesting…' : 'Withdraw to M-Pesa'}</button>}
               </div>
             ))}
           </div>
@@ -350,10 +353,7 @@ const AgentDashboard = () => {
                     {apt.meetingPoint || apt.type || 'Property viewing'} • {apt.requestedTime || 'As scheduled'}
                   </div>
                 </div>
-                {apt.sourceCollection === 'sightseeingBookings' ? (apt.availabilityStatus === 'pending' ? <div style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" onClick={() => updateViewingAvailability(apt, true)} style={{ fontFamily: sans, fontSize: 10, color: '#166534', background: '#dcfce7', border: 'none', borderRadius: 8, padding: '7px 9px', cursor: 'pointer' }}>Available · notify admin</button>
-                  <button type="button" onClick={() => updateViewingAvailability(apt, false)} style={{ fontFamily: sans, fontSize: 10, color: '#991b1b', background: '#fee2e2', border: 'none', borderRadius: 8, padding: '7px 9px', cursor: 'pointer' }}>Unavailable</button>
-                </div> : <span style={{ fontFamily: sans, fontSize: 10, color: ink2 }}>{apt.status === 'awaiting_admin_confirmation' ? 'Waiting for admin confirmation' : apt.status === 'awaiting_admin_customer_update' ? 'Admin to update customer' : apt.availabilityStatus === 'available' ? 'Available' : apt.availabilityStatus === 'unavailable' ? 'Unavailable' : apt.status}</span>) : <button
+                {apt.sourceCollection === 'sightseeingBookings' ? (apt.availabilityStatus === 'pending' ? <button type="button" onClick={() => { window.location.href = `/agent/viewing-availability/${encodeURIComponent(apt.id)}`; }} style={{ fontFamily: sans, fontSize: 10, color: '#166534', background: '#dcfce7', border: 'none', borderRadius: 8, padding: '7px 9px', cursor: 'pointer' }}>Submit live availability evidence</button> : <span style={{ fontFamily: sans, fontSize: 10, color: ink2 }}>{apt.status === 'awaiting_admin_confirmation' ? 'Waiting for admin to review photos and video' : apt.status === 'awaiting_admin_customer_update' ? 'Admin to update customer' : apt.availabilityStatus === 'available' ? 'Available' : apt.availabilityStatus === 'unavailable' ? 'Unavailable' : apt.status}</span>) : <button
                   type="button"
                   onClick={() => updateSiteVisitStatus(apt.id, apt.status === 'confirmed' ? 'completed' : 'confirmed')}
                   style={{ fontFamily: sans, fontSize: 11, color: agentBlue, background: 'none', border: 'none', cursor: 'pointer' }}
