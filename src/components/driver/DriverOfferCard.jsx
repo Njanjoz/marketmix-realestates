@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { MapContainer, Marker, TileLayer } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { getCurrentLocation } from '../../services/locationService';
 
 const money = (val) => `KSh ${Number(val || 0).toLocaleString()}`;
 const ITEM_NAMES = { bed: 'Bed', mattress: 'Mattress', sofa: 'Sofa', table: 'Table', chair: 'Chair', wardrobe: 'Wardrobe', fridge: 'Fridge', tv: 'TV & electronics', washer: 'Washing machine', box: 'Boxes', other: 'Other items' };
@@ -37,17 +38,12 @@ function useDriverDistance(pickup) {
   useEffect(() => {
     setDistanceKm(null);
     if (!pickup) return;
-    if (!navigator.geolocation) return;
     let cancelled = false;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
+    getCurrentLocation({ enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }).then((pos) => {
         if (cancelled) return;
-        const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const me = { lat: pos.latitude, lng: pos.longitude };
         setDistanceKm(haversineKm(me, pickup));
-      },
-      () => {},
-      { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }
-    );
+      }).catch(() => {});
     return () => { cancelled = true; };
   }, [pickup?.lat, pickup?.lng]);
   return distanceKm;

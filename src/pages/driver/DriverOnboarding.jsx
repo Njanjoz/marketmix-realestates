@@ -9,6 +9,7 @@ import CloudflareImageUpload from '../../components/CloudflareImageUpload';
 import LiveCameraModal from '../../components/LiveCameraModal';
 import KenyaAreaPicker from '../../components/moving/KenyaAreaPicker';
 import CoordinateMapPicker from '../../components/moving/CoordinateMapPicker';
+import { getCurrentLocation } from '../../services/locationService';
 
 const CARRY_OPTIONS = [
   ['bed', 'Beds'], ['mattress', 'Mattresses'], ['sofa', 'Sofas'], ['table', 'Tables'],
@@ -67,16 +68,10 @@ export default function DriverOnboarding() {
     setPinningLocation(false);
   };
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
-      return;
-    }
+  const useCurrentLocation = async () => {
     setLookupBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+    try {
+        const { latitude: lat, longitude: lng } = await getCurrentLocation({ timeout: 10000, enableHighAccuracy: true });
         const point = { lat, lng };
         setForm(prev => ({ ...prev, workCoordinates: point }));
         try {
@@ -90,17 +85,13 @@ export default function DriverOnboarding() {
         } catch (e) {
           console.warn('Reverse geocode failed:', e);
           toast.success('GPS coordinates saved!');
-        } finally {
-          setLookupBusy(false);
         }
-      },
-      (err) => {
-        console.error('Geolocation error:', err);
-        toast.error('Could not retrieve your location. Please check permissions.');
-        setLookupBusy(false);
-      },
-      { timeout: 10000, enableHighAccuracy: true }
-    );
+    } catch (error) {
+      console.error('Geolocation error:', error);
+      toast.error(error.message || 'Could not retrieve your location. Please check permissions.');
+    } finally {
+      setLookupBusy(false);
+    }
   };
 
   const handleUploadComplete = (files) => {

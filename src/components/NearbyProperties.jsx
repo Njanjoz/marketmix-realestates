@@ -5,6 +5,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { getPropertyImage } from '../utils/formatPrice';
+import { getCurrentLocation as getDeviceLocation } from '../services/locationService';
 
 const NearbyProperties = () => {
   const [userLocation, setUserLocation] = useState(null);
@@ -23,31 +24,17 @@ const NearbyProperties = () => {
     return R * c;
   };
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setDetecting(true);
-    
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported");
+    try {
+      const { latitude, longitude } = await getDeviceLocation({ enableHighAccuracy: true, timeout: 10000 });
+      setUserLocation({ lat: latitude, lng: longitude });
+      await findNearbyProperties(latitude, longitude);
+    } catch (error) {
+      console.error('Unable to get location for nearby properties:', error);
+      toast.error(error.message || 'Please allow location access to find nearby properties.');
       setDetecting(false);
-      return;
     }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation({ lat: latitude, lng: longitude });
-        await findNearbyProperties(latitude, longitude);
-      },
-      (err) => {
-        let errorMessage = "Unable to get your location";
-        if (err.code === err.PERMISSION_DENIED) {
-          errorMessage = "Please allow location access to find nearby properties";
-        }
-        toast.error(errorMessage);
-        setDetecting(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
   };
 
   const findNearbyProperties = async (lat, lng) => {

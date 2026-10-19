@@ -142,7 +142,7 @@ function App() {
                 )}
                 <Navbar />
                 
-                <main className="pt-16">
+                <main className="pt-16 native-app-main">
                   <Suspense fallback={<LoadingSpinner />}>
                     <Routes>
                       {/* Public Routes */}

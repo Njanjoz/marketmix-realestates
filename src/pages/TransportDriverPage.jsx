@@ -6,6 +6,7 @@ import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import TransportTrackingMap from '../components/moving/TransportTrackingMap';
 import { getPoint, TRANSPORT_STATUS_LABELS, updateTransportDriverPosition } from '../services/transportService';
+import { clearLocationWatch, watchLocation } from '../services/locationService';
 import '../components/moving/LiquidGlass.css';
 
 const distanceMeters = (a, b) => {
@@ -26,6 +27,7 @@ const TransportDriverPage = () => {
   const [requests, setRequests] = useState([]);
   const [trackingId, setTrackingId] = useState('');
   const watchRef = useRef(null);
+  const watchGenerationRef = useRef(0);
   const writesRef = useRef({});
 
   useEffect(() => {
@@ -40,21 +42,30 @@ const TransportDriverPage = () => {
   }, [currentUser?.uid]);
 
   const stopSharing = useCallback(() => {
-    if (watchRef.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
+    watchGenerationRef.current += 1;
+    if (watchRef.current) clearLocationWatch(watchRef.current).catch((error) => console.warn('Could not stop GPS sharing:', error));
     watchRef.current = null;
     setTrackingId('');
   }, []);
 
   useEffect(() => () => {
-    if (watchRef.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
+    if (watchRef.current) clearLocationWatch(watchRef.current).catch((error) => console.warn('Could not stop GPS sharing:', error));
   }, []);
 
-  const startSharing = (request) => {
-    if (!navigator.geolocation) return toast.error('This device does not provide GPS location.');
+  const startSharing = async (request) => {
     stopSharing();
+    const generation = watchGenerationRef.current;
     const lastKnown = { point: getPoint(request.driverLocation), time: Date.now() };
     setTrackingId(request.id);
-    watchRef.current = navigator.geolocation.watchPosition(async (position) => {
+    try {
+      const watch = await watchLocation(async (position, locationError) => {
+      if (generation !== watchGenerationRef.current) return;
+      if (locationError || !position) {
+        console.error('Driver location permission error:', locationError);
+        stopSharing();
+        toast.error('Allow location while using this page to share the trip.');
+        return;
+      }
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       const elapsed = Date.now() - lastKnown.time;
       if (elapsed < 15000 && distanceMeters(lastKnown.point, point) < 35) return;
@@ -66,11 +77,15 @@ const TransportDriverPage = () => {
         console.error('Could not send driver position:', error);
         toast.error('Location update could not be sent. Check your connection.');
       }
-    }, (error) => {
+      }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+      if (generation !== watchGenerationRef.current) await clearLocationWatch(watch);
+      else watchRef.current = watch;
+    } catch (error) {
       console.error('Driver location permission error:', error);
       stopSharing();
-      toast.error('Allow location while using this page to share the trip.');
-    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+      toast.error(error.message || 'Allow location while using this page to share the trip.');
+      return;
+    }
     if (request.status === 'DRIVER_ASSIGNED' || request.status === 'ACCEPTED') {
       updateDoc(doc(db, 'transportRequests', request.id), { status: 'ON_THE_WAY', updatedAt: serverTimestamp() }).catch((error) => console.error('Could not update driver status:', error));
     }

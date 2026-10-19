@@ -12,6 +12,7 @@ import PropertyFilter from '../components/PropertyFilter.jsx';
 import { getPublicPropertyLocation } from '../utils/propertyMapping';
 import { getListingType } from '../utils/listingType';
 import toast from 'react-hot-toast';
+import { getCurrentLocation } from '../services/locationService';
 
 // Glassmorphism styles
 const glass = {
@@ -332,18 +333,10 @@ const PropertiesPage = () => {
   }, [applyFilters, nearMeActive]);
 
   // FIND PROPERTIES NEAR ME - GPS feature
-  const findNearMe = () => {
+  const findNearMe = async () => {
     setFindingNearby(true);
-    
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
-      setFindingNearby(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+    try {
+        const { latitude, longitude } = await getCurrentLocation({ enableHighAccuracy: true, timeout: 10000 });
         
         // Calculate distance for each property and filter within 10km
         const nearby = allProperties
@@ -369,18 +362,12 @@ const PropertiesPage = () => {
         } else {
           toast.success(`Found ${nearby.length} properties near you!`);
         }
-        setFindingNearby(false);
-      },
-      (err) => {
-        let errorMessage = "Unable to get your location";
-        if (err.code === err.PERMISSION_DENIED) {
-          errorMessage = "Please allow location access to find nearby properties";
-        }
-        toast.error(errorMessage);
-        setFindingNearby(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    } catch (error) {
+      console.error('Unable to get location for nearby properties:', error);
+      toast.error(error.message || 'Please allow location access to find nearby properties.');
+    } finally {
+      setFindingNearby(false);
+    }
   };
 
   // Show all properties (clear near me filter)

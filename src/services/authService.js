@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
   GoogleAuthProvider,
   signOut,
   updateProfile,
@@ -33,6 +34,13 @@ export const loginWithGoogle = async () => {
   await configureAuthPersistence();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
+  if (isCapacitor()) {
+    const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+    const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+    const idToken = result.credential?.idToken;
+    if (!idToken) throw new Error('Google sign-in did not return an identity token. Check the Android Firebase Google sign-in setup.');
+    return signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+  }
   return signInWithPopup(auth, provider);
 };
 
@@ -48,6 +56,14 @@ export const register = async (email, password, data = {}) => {
 };
 
 export const logout = async () => {
+  if (isCapacitor()) {
+    try {
+      const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+      await FirebaseAuthentication.signOut();
+    } catch (error) {
+      console.warn('Native Firebase sign-out was unavailable:', error);
+    }
+  }
   await signOut(auth);
 };
 

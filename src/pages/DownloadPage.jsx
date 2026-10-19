@@ -10,10 +10,10 @@ export default function DownloadPage() {
         <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">MarketMix for Android</p>
         <h1 className="mt-2 text-3xl font-extrabold text-slate-900">Take MarketMix with you</h1>
         <p className="mt-3 max-w-2xl text-slate-600">Browse homes, contact sellers, request a move, and follow your bookings from your Android phone.</p>
-        <button type="button" disabled className="mt-7 inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-300 px-5 py-3 font-bold text-slate-600">
-          <Download className="h-5 w-5" /> Android download coming soon
-        </button>
-        <p className="mt-2 text-xs text-slate-500">The install link will appear here after the website booking flow and release build are verified.</p>
+        <a href="/MarketMix-RealEstates-debug.apk" download className="mt-7 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white transition hover:bg-emerald-800">
+          <Download className="h-5 w-5" /> Download Android APK
+        </a>
+        <p className="mt-2 text-xs text-slate-500">Download the current Android app build directly to your device.</p>
         <div className="mt-7 flex items-start gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
           <p>Android may ask you to allow installation from your browser. Only install MarketMix APK files downloaded from this official website.</p>

@@ -35,3 +35,4 @@ server/uploads/
 server/.env
 youtube-server/.env
 server/test.mp4
+android/app/google-services.json

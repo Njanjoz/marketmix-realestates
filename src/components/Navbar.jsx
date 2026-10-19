@@ -392,7 +392,7 @@ const Navbar = () => {
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.3 }}
-        className="fixed top-0 left-0 right-0 z-50"
+        className="fixed top-0 left-0 right-0 z-50 native-app-navbar"
         style={glassNavbarStyle}
       >
         <div className="container mx-auto px-4">
@@ -514,7 +514,7 @@ const Navbar = () => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25 }}
-              className="fixed right-0 top-0 z-[90] h-[100dvh] max-h-[100dvh] w-80 max-w-[100vw] overscroll-contain overflow-y-auto bg-white/85 shadow-2xl backdrop-blur-xl"
+              className="fixed right-0 top-0 z-[90] h-[100dvh] max-h-[100dvh] w-80 max-w-[100vw] overscroll-contain overflow-y-auto bg-white/85 shadow-2xl backdrop-blur-xl native-app-menu"
             >
               <div className="p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
                 <div className="flex items-center justify-between mb-8">

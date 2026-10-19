@@ -33,10 +33,12 @@ export default function LiveCameraModal({ isOpen, onClose, onCaptured, vehicleTy
   const startCamera = async (mode) => {
     setPermissionError('');
     stopStream();
+    let nativePlatform = false;
     try {
       // 1. Check Capacitor native camera first if in APK
       const { Capacitor } = await import('@capacitor/core');
-      if (Capacitor.isNativePlatform()) {
+      nativePlatform = Capacitor.isNativePlatform();
+      if (nativePlatform) {
         const { Camera: CapCamera, CameraResultType, CameraSource } = await import('@capacitor/camera');
         const image = await CapCamera.getPhoto({
           quality: 85,
@@ -60,8 +62,16 @@ export default function LiveCameraModal({ isOpen, onClose, onCaptured, vehicleTy
         }
       }
     } catch (e) {
-      console.warn('Capacitor camera skipped or unavailable, using Web getUserMedia:', e);
+      console.warn('Capacitor camera unavailable:', e);
+      if (nativePlatform) {
+        setPermissionError('Could not open the phone camera. Allow camera access in Android settings and try again.');
+        setLoading(false);
+        return;
+      }
     }
+
+    // A cancelled native camera prompt should not trigger a second WebView camera prompt.
+    if (nativePlatform) return;
 
     // 2. Web browser getUserMedia (PC & Mobile Web)
     try {

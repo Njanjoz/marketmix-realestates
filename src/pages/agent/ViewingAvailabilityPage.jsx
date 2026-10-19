@@ -6,6 +6,8 @@ import { db } from '../../firebase/config';
 import { storage } from '../../firebase/config';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
+import { isCapacitor } from '../../utils/platform';
+import { pickImage } from '../../services/mediaService';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
 const YOUTUBE_BACKEND = (import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com').replace(/\/+$/, '');
@@ -42,6 +44,19 @@ export default function ViewingAvailabilityPage() {
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState([]);
   const [video, setVideo] = useState(null);
+
+  const captureAvailabilityPhoto = async () => {
+    if (photos.length >= 5) return toast.error('You can submit up to five vacancy photos.');
+    try {
+      const result = await pickImage({ source: 'camera', quality: 90 });
+      if (!result.file) throw new Error('The camera did not return a photo. Please try again.');
+      setPhotos((current) => [...current, result.file].slice(0, 5));
+      toast.success('Live vacancy photo captured.');
+    } catch (error) {
+      console.error('Could not capture vacancy photo:', error);
+      toast.error(error.message || 'Could not open the camera. Check camera permission and try again.');
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -109,7 +124,7 @@ export default function ViewingAvailabilityPage() {
             {[['yes', 'Available'], ['no', 'Unavailable']].map(([value, label]) => <button key={value} type="button" onClick={() => setAvailable(value)} className={`rounded-xl border px-4 py-3 text-sm font-bold ${available === value ? value === 'yes' ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : 'border-rose-700 bg-rose-50 text-rose-900' : 'border-slate-200 text-slate-700'}`}>{label}</button>)}
           </div>
         </fieldset>
-        {available === 'yes' && <><label className="block text-sm font-bold text-slate-800">Available units<input type="number" min="1" step="1" value={availableUnits} onChange={(event) => setAvailableUnits(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-normal" required /></label><label className="block text-sm font-bold text-slate-800">Live photos of the empty available unit<input type="file" accept="image/*" capture="environment" multiple required onChange={(event) => setPhotos(Array.from(event.target.files || []).slice(0, 5))} className="mt-2 block w-full text-sm" /></label><p className="-mt-3 text-xs text-slate-500">Capture up to five current photos with your phone camera. Admin must approve these and the video before the KSh 25 vacancy-confirmation credit is sent.</p><label className="block text-sm font-bold text-slate-800">Live video evidence of the empty unit<input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" capture="environment" required onChange={(event) => setVideo(event.target.files?.[0] || null)} className="mt-2 block w-full text-sm" /></label><p className="-mt-3 text-xs text-slate-500">The video will upload to the MarketMix YouTube channel. Keep the upload page open until YouTube confirms it is ready for admin review.</p></>}
+        {available === 'yes' && <><label className="block text-sm font-bold text-slate-800">Available units<input type="number" min="1" step="1" value={availableUnits} onChange={(event) => setAvailableUnits(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-normal" required /></label><div className="block text-sm font-bold text-slate-800">Live photos of the empty available unit{isCapacitor() ? <button type="button" onClick={captureAvailabilityPhoto} disabled={saving || photos.length >= 5} className="mt-2 block w-full rounded-xl border border-emerald-700 px-4 py-3 text-left font-semibold text-emerald-900 disabled:opacity-50">Open camera and capture photo ({photos.length}/5)</button> : <input type="file" accept="image/*" capture="environment" multiple required onChange={(event) => setPhotos(Array.from(event.target.files || []).slice(0, 5))} className="mt-2 block w-full text-sm" />}{photos.length > 0 && <p className="mt-2 text-xs font-medium text-slate-600">{photos.length} live photo{photos.length === 1 ? '' : 's'} ready to upload.</p>}</div><p className="-mt-3 text-xs text-slate-500">Capture up to five current photos with your phone camera. Admin must approve these and the video before the KSh 25 vacancy-confirmation credit is sent.</p><label className="block text-sm font-bold text-slate-800">Live video evidence of the empty unit<input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" capture="environment" required onChange={(event) => setVideo(event.target.files?.[0] || null)} className="mt-2 block w-full text-sm" /></label><p className="-mt-3 text-xs text-slate-500">The video will upload to the MarketMix YouTube channel. Keep the upload page open until YouTube confirms it is ready for admin review.</p></>}
         <label className="block text-sm font-bold text-slate-800">Changes or notes for the admin<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={1000} placeholder="Rent change, unit type, move-in date, owner instructions, or other updates" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-normal" /></label>
         <p className="rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-950">For an available unit, submit live photos and a YouTube video of the empty room. Admin reviews the evidence; after approval the customer gets the evidence links and a visit-booking link, and your KSh 25 vacancy-confirmation credit is sent by M-Pesa. An unavailable report earns no credit.</p>
         <button type="submit" disabled={saving} className="w-full rounded-xl bg-emerald-800 px-4 py-3.5 text-sm font-bold text-white disabled:opacity-60">{saving ? 'Submitting...' : 'Submit availability to MarketMix'}</button>

@@ -11,14 +11,24 @@ export const pickImage = async ({ source = 'gallery', quality = 80 } = {}) => {
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
       });
 
+      const photoUrl = photo.webPath || photo.path;
+      if (!photoUrl) throw new Error('The camera did not return an image.');
+      const response = await fetch(photoUrl);
+      if (!response.ok) throw new Error('Could not read the captured image.');
+      const blob = await response.blob();
+      const fileName = `mm-${Date.now()}.${photo.format || 'jpeg'}`;
+      const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+
       return {
-        fileName: `mm-${Date.now()}.jpg`,
-        localPreviewUrl: photo.webPath || photo.path || '',
+        file,
+        fileName,
+        localPreviewUrl: URL.createObjectURL(file),
         source: source === 'camera' ? 'camera' : 'gallery',
         native: true,
       };
     } catch (error) {
       console.warn('Capacitor camera/gallery was unavailable:', error);
+      if (source === 'camera') throw error;
     }
   }
 

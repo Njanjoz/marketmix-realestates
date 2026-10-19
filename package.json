@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/prerenderSeoPages.mjs",
+    "build-app": "node scripts/buildApp.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "init-firebase": "node scripts/initFirebase.js"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^7.3.0",
     "@capacitor/android": "^7.0.0",
     "@capacitor/camera": "^7.0.0",
     "@capacitor/cli": "^7.0.0",

@@ -1,8 +1,9 @@
 // src/firebase/config.js
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { Capacitor } from '@capacitor/core';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA0hXvFv8IOxLAjFm-3RGR7jcIoQueagKw",
@@ -18,7 +19,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize services
-const auth = getAuth(app);
+const auth = Capacitor.isNativePlatform()
+  ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+  : getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 

@@ -8,6 +8,7 @@ import { auth, db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { sendWhatsAppNotification } from '../lib/api';
 import { getPoint, TRANSPORT_PROGRESS, TRANSPORT_STATUS_LABELS } from '../services/transportService';
+import { clearLocationWatch, watchLocation } from '../services/locationService';
 import { notifyTransportRequest } from '../services/transportNotify';
 import { dispatchTransportQuote, dispatchTransportRequest, findMatchingTransportDrivers, respondToTransportQuote, startTransportPayment } from '../services/driverService';
 import { getPublicPropertyLocation } from '../utils/propertyMapping';
@@ -54,18 +55,16 @@ const propertyArea = (property) => ({
 });
 
 const getAccurateBrowserLocation = ({ targetAccuracy = 250, fallbackAccuracy = 1200, timeout = 25000 } = {}) => {
-  if (!navigator.geolocation) return Promise.reject(new Error('This browser does not provide location access.'));
-
   return new Promise((resolve, reject) => {
-    let watchId = null;
+    let watch = null;
     let timer = null;
     let bestPosition = null;
     let finished = false;
 
     const stop = () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (watch) clearLocationWatch(watch).catch((error) => console.warn('Could not stop GPS watch:', error));
       if (timer !== null) window.clearTimeout(timer);
-      watchId = null;
+      watch = null;
       timer = null;
     };
     const accept = (position) => {
@@ -85,13 +84,18 @@ const getAccurateBrowserLocation = ({ targetAccuracy = 250, fallbackAccuracy = 1
       reject(error);
     };
 
-    watchId = navigator.geolocation.watchPosition((position) => {
+    watchLocation((position, error) => {
+      if (error || !position) {
+        if (bestPosition && bestPosition.coords.accuracy <= fallbackAccuracy) accept(bestPosition);
+        else fail(error || new Error('This device did not return a location.'));
+        return;
+      }
       if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) bestPosition = position;
       if (position.coords.accuracy <= targetAccuracy) accept(position);
-    }, (error) => {
-      if (bestPosition && bestPosition.coords.accuracy <= fallbackAccuracy) accept(bestPosition);
-      else fail(error);
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout });
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout }).then((handle) => {
+      if (finished) clearLocationWatch(handle).catch((error) => console.warn('Could not stop GPS watch:', error));
+      else watch = handle;
+    }).catch(fail);
 
     timer = window.setTimeout(() => {
       if (bestPosition && bestPosition.coords.accuracy <= fallbackAccuracy) accept(bestPosition);

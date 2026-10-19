@@ -12,3 +12,17 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Android 15 enforces edge-to-edge for apps targeting API 35. Keep the fixed
+   website navigation and page content below the phone's status bar. */
+.native-android .native-app-navbar {
+  padding-top: max(env(safe-area-inset-top, 0px), 24px);
+}
+
+.native-android .native-app-main {
+  padding-top: calc(4rem + max(env(safe-area-inset-top, 0px), 24px));
+}
+
+.native-android .native-app-menu > div {
+  padding-top: calc(1.5rem + max(env(safe-area-inset-top, 0px), 24px));
+}

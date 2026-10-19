@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { bookSiteSeeingWithDeposit, getSiteSeeingPackagePrice } from '../services/siteSeeingBooking';
+import { getCurrentLocation } from '../services/locationService';
 import KenyaLocationSearch from '../components/moving/KenyaLocationSearch';
 import KenyaAreaPicker from '../components/moving/KenyaAreaPicker';
 import CoordinateMapPicker from '../components/moving/CoordinateMapPicker';
@@ -320,30 +321,21 @@ export default function SiteSeeingPage() {
   }, [checkoutMode, requestedPackageId, packages]);
 
   // Scan My Area (Geolocation)
-  const handleScanMyArea = () => {
-    if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
-      return;
-    }
+  const handleScanMyArea = async () => {
     setScanning(true);
     setScanResultText('Scanning your GPS location...');
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation({ latitude, longitude });
-        setScanning(false);
-        setScanResultText(`Location detected (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-        toast.success('Successfully scanned area around you!');
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        setScanning(false);
-        setScanResultText('Could not get precise GPS location. Try searching an area instead.');
-        toast.error('Location scan failed. Please enable location permissions.');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-    );
+    try {
+      const { latitude, longitude } = await getCurrentLocation({ enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+      setUserLocation({ latitude, longitude });
+      setScanResultText(`Location detected (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+      toast.success('Successfully scanned area around you!');
+    } catch (error) {
+      console.error('Geolocation error:', error);
+      setScanResultText('Could not get precise GPS location. Try searching an area instead.');
+      toast.error('Location scan failed. Please enable location permissions.');
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Filter properties based on search query, selected area, or proximity
