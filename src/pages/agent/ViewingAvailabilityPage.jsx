@@ -85,8 +85,10 @@ export default function ViewingAvailabilityPage() {
 
   const addPhotos = (files) => {
     const selected = Array.from(files || []);
-    if (selected.length > 5) toast('Only the first five photos will be used.');
-    setPhotos(selected.slice(0, 5));
+    if (!selected.length) return;
+    const remaining = Math.max(0, 5 - photos.length);
+    if (selected.length > remaining) toast(`You can submit up to five photos. Added ${remaining} photo${remaining === 1 ? '' : 's'}.`);
+    setPhotos((current) => [...current, ...selected.slice(0, Math.max(0, 5 - current.length))]);
   };
 
   const addCapturedPhoto = (file) => {
@@ -190,7 +192,7 @@ export default function ViewingAvailabilityPage() {
           <section className="rounded-2xl border border-slate-200 p-4">
             <h2 className="text-sm font-bold text-slate-800">Live photos of the empty available unit</h2>
             <p className="mt-1 text-xs leading-5 text-slate-600">Add up to five current photos. Choose photos already on your device, or take new photos with your camera.</p>
-            <input ref={photoPickerRef} type="file" accept="image/*" multiple onChange={(event) => addPhotos(event.target.files)} className="hidden" />
+            <input ref={photoPickerRef} type="file" accept="image/*" multiple onChange={(event) => { addPhotos(event.target.files); event.target.value = ''; }} className="hidden" />
             <input ref={photoCameraRef} type="file" accept="image/*" capture="environment" onChange={(event) => addCapturedPhoto(event.target.files?.[0])} className="hidden" />
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button type="button" onClick={() => photoPickerRef.current?.click()} disabled={saving || photos.length >= 5} className="rounded-xl border border-emerald-800 px-4 py-3 text-sm font-bold text-emerald-900 disabled:opacity-50">Choose photo files</button>
