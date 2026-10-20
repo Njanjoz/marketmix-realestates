@@ -11,6 +11,11 @@ import { pickImage } from '../../services/mediaService';
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
 const YOUTUBE_BACKEND = (import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com').replace(/\/+$/, '');
 
+const extractYouTubeId = (value = '') => {
+  const match = String(value).trim().match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return match?.[1] || '';
+};
+
 async function uploadAvailabilityVideo(file, bookingId, sellerName, onProgress, onProcessing) {
   const formData = new FormData();
   formData.append('video', file);
@@ -59,12 +64,26 @@ export default function ViewingAvailabilityPage() {
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState([]);
   const [video, setVideo] = useState(null);
+  // Match the seller property form: try the MarketMix YouTube upload first,
+  // then let the seller paste a YouTube URL if direct upload is unavailable.
+  const [videoMode, setVideoMode] = useState('upload');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [youtubeStatus, setYoutubeStatus] = useState('checking');
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadStage, setUploadStage] = useState('');
   const photoPickerRef = useRef(null);
   const photoCameraRef = useRef(null);
   const videoPickerRef = useRef(null);
   const videoCameraRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${YOUTUBE_BACKEND}/api/youtube/status`)
+      .then((response) => response.json())
+      .then((status) => { if (active) setYoutubeStatus(status?.connected ? 'connected' : status?.reason || 'disconnected'); })
+      .catch(() => { if (active) setYoutubeStatus('offline'); });
+    return () => { active = false; };
+  }, []);
 
   const captureAvailabilityPhoto = async () => {
     if (photos.length >= 5) return toast.error('You can submit up to five vacancy photos.');
@@ -122,7 +141,8 @@ export default function ViewingAvailabilityPage() {
     const units = available === 'yes' ? Number(availableUnits) : 0;
     if (available === 'yes' && (!Number.isInteger(units) || units < 1)) return toast.error('Enter a valid number of available units.');
     if (available === 'yes' && photos.length === 0) return toast.error('Add live photos showing the currently empty available unit.');
-    if (available === 'yes' && !video) return toast.error('Capture and upload a video of the empty available unit.');
+    if (available === 'yes' && videoMode === 'upload' && !video) return toast.error('Choose or record a video of the empty available unit.');
+    if (available === 'yes' && videoMode === 'paste' && !extractYouTubeId(videoUrl)) return toast.error('Paste a valid YouTube link for the empty available unit video.');
     setSaving(true);
     setUploadProgress(0);
     setUploadStage('Preparing your evidence…');
@@ -139,11 +159,22 @@ export default function ViewingAvailabilityPage() {
       })));
       let availabilityVideoUrl = '';
       if (available === 'yes') {
-        setUploadStage('Uploading vacancy video…');
-        availabilityVideoUrl = await uploadAvailabilityVideo(video, bookingId, currentUser.displayName,
-          (percent) => setUploadProgress(45 + Math.round(percent * 0.45)),
-          () => { setUploadStage('Video uploaded. YouTube is preparing it for review…'); setUploadProgress(92); }
-        );
+        if (videoMode === 'paste') {
+          availabilityVideoUrl = `https://youtu.be/${extractYouTubeId(videoUrl)}`;
+          setUploadStage('YouTube link added. Saving your report…');
+          setUploadProgress(90);
+        } else {
+          setUploadStage('Uploading vacancy video…');
+          try {
+            availabilityVideoUrl = await uploadAvailabilityVideo(video, bookingId, currentUser.displayName,
+              (percent) => setUploadProgress(45 + Math.round(percent * 0.45)),
+              () => { setUploadStage('Video uploaded. YouTube is preparing it for review…'); setUploadProgress(92); }
+            );
+          } catch (error) {
+            error.youtubeUploadFailed = true;
+            throw error;
+          }
+        }
       }
       setUploadStage('Saving your availability report…');
       setUploadProgress(97);
@@ -159,8 +190,14 @@ export default function ViewingAvailabilityPage() {
       toast.success('Availability sent to MarketMix for review.');
       navigate('/dashboard');
     } catch (error) {
-      setUploadStage('Upload failed. Your report was not submitted. Please try again.');
-      toast.error(error.message || 'Could not submit availability.');
+      if (available === 'yes' && videoMode === 'upload' && error.youtubeUploadFailed) {
+        setVideoMode('paste');
+        setUploadStage('YouTube upload failed. Paste a YouTube link to continue.');
+        toast.error(`${error.message || 'Direct YouTube upload failed'}. You can paste a YouTube URL instead.`);
+      } else {
+        setUploadStage('Upload failed. Your report was not submitted. Please try again.');
+        toast.error(error.message || 'Could not submit availability.');
+      }
     } finally {
       setSaving(false);
     }
@@ -202,20 +239,31 @@ export default function ViewingAvailabilityPage() {
           </section>
           <section className="rounded-2xl border border-slate-200 p-4">
             <h2 className="text-sm font-bold text-slate-800">Video of the empty available unit</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-600">Choose a video you already recorded, or record a new video now. It will upload to the MarketMix YouTube channel for admin review.</p>
-            <input ref={videoPickerRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" onChange={(event) => setVideo(event.target.files?.[0] || null)} className="hidden" />
-            <input ref={videoCameraRef} type="file" accept="video/*" capture="environment" onChange={(event) => setVideo(event.target.files?.[0] || null)} className="hidden" />
+            <p className="mt-1 text-xs leading-5 text-slate-600">Use the same options as the seller property form: upload directly when the MarketMix YouTube connection is ready, or paste a YouTube link.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <button type="button" onClick={() => videoPickerRef.current?.click()} disabled={saving} className="rounded-xl border border-emerald-800 px-4 py-3 text-sm font-bold text-emerald-900 disabled:opacity-50">Choose an existing video</button>
-              <button type="button" onClick={() => videoCameraRef.current?.click()} disabled={saving} className="rounded-xl bg-emerald-800 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Record a video now</button>
+              <button type="button" onClick={() => setVideoMode('upload')} disabled={saving} className={`rounded-xl border px-4 py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${videoMode === 'upload' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-slate-300 text-slate-700'}`}>Upload video to MarketMix</button>
+              <button type="button" onClick={() => setVideoMode('paste')} disabled={saving} className={`rounded-xl border px-4 py-3 text-sm font-bold ${videoMode === 'paste' ? 'border-emerald-800 bg-emerald-50 text-emerald-900' : 'border-slate-300 text-slate-700'}`}>Paste YouTube URL</button>
             </div>
-            <p className="mt-2 break-all text-xs font-medium text-slate-600">{video ? `Selected: ${video.name}` : 'No video selected yet.'}</p>
+            {youtubeStatus !== 'connected' && <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">The MarketMix YouTube connection needs attention ({youtubeStatus.replace(/_/g, ' ')}). You can still try direct upload; if it fails, this form switches to the same YouTube-link fallback as the seller property form. Upload through your YouTube account, set the video to unlisted, then paste its link.</p>}
+            {videoMode === 'paste' ? <div className="mt-3">
+              <label htmlFor="vacancy-youtube-url" className="block text-sm font-semibold text-slate-800">YouTube video link</label>
+              <input id="vacancy-youtube-url" type="url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+              {videoUrl && <p className={`mt-2 text-xs ${extractYouTubeId(videoUrl) ? 'text-emerald-700' : 'text-rose-700'}`}>{extractYouTubeId(videoUrl) ? `YouTube video recognized (${extractYouTubeId(videoUrl)}).` : 'Paste a valid YouTube watch, Shorts, embed, live, or youtu.be link.'}</p>}
+            </div> : <>
+              <input ref={videoPickerRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" onChange={(event) => { setVideo(event.target.files?.[0] || null); event.target.value = ''; }} className="hidden" />
+              <input ref={videoCameraRef} type="file" accept="video/*" capture="environment" onChange={(event) => { setVideo(event.target.files?.[0] || null); event.target.value = ''; }} className="hidden" />
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => videoPickerRef.current?.click()} disabled={saving} className="rounded-xl border border-emerald-800 px-4 py-3 text-sm font-bold text-emerald-900 disabled:opacity-50">Choose an existing video</button>
+                <button type="button" onClick={() => videoCameraRef.current?.click()} disabled={saving} className="rounded-xl bg-emerald-800 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Record a video now</button>
+              </div>
+              <p className="mt-2 break-all text-xs font-medium text-slate-600">{video ? `Selected: ${video.name}` : 'No video selected yet.'}</p>
+            </>}
           </section>
           <p className="-mt-2 text-xs text-slate-500">Admin must approve the live photos and video before the KSh 25 vacancy-confirmation credit is sent.</p>
         </>}
         <label className="block text-sm font-bold text-slate-800">Changes or notes for the admin<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={1000} placeholder="Rent change, unit type, move-in date, owner instructions, or other updates" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-normal" /></label>
         <p className="rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-950">For an available unit, submit live photos and a YouTube video of the empty room. Admin reviews the evidence; after approval the customer gets the evidence links and a visit-booking link, and your KSh 25 vacancy-confirmation credit is sent by M-Pesa. An unavailable report earns no credit.</p>
-        {uploadProgress !== null && <div className={`rounded-2xl border p-4 ${uploadStage.startsWith('Upload failed') ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}`} aria-live="polite">
+        {uploadProgress !== null && <div className={`rounded-2xl border p-4 ${uploadStage.includes('failed') ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}`} aria-live="polite">
           <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-800"><span>{uploadStage}</span><span>{uploadProgress}%</span></div>
           <div className="mt-2 h-3 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Evidence upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}>
             <div className={`h-full rounded-full transition-all duration-500 ${uploadStage.startsWith('Upload failed') ? 'bg-rose-600' : 'bg-emerald-700'} ${uploadStage.startsWith('Video uploaded') ? 'animate-pulse' : ''}`} style={{ width: `${uploadProgress}%` }} />

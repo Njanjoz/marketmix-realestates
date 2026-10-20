@@ -3,7 +3,9 @@ import { promises as fsPromises } from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 
-const TOKEN_PATH = path.join(process.cwd(), 'tokens.json');
+// On Render, point this at a mounted persistent disk (for example
+// /var/data/tokens.json). The default remains useful for local development.
+const TOKEN_PATH = process.env.YOUTUBE_TOKEN_PATH || path.join(process.cwd(), 'tokens.json');
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
 let config = {};
@@ -34,8 +36,10 @@ const getStoredTokens = async () => {
   }
 
   return {
-    access_token: process.env.YOUTUBE_ACCESS_TOKEN || fileTokens.access_token || undefined,
-    refresh_token: process.env.YOUTUBE_REFRESH_TOKEN || fileTokens.refresh_token || config.refreshToken || undefined,
+    // Prefer the token file so a newly authorized token replaces stale values
+    // left in Render environment variables.
+    access_token: fileTokens.access_token || process.env.YOUTUBE_ACCESS_TOKEN || undefined,
+    refresh_token: fileTokens.refresh_token || process.env.YOUTUBE_REFRESH_TOKEN || config.refreshToken || undefined,
     expiry_date: fileTokens.expiry_date || undefined,
   };
 };
