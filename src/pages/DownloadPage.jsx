@@ -10,7 +10,7 @@ export default function DownloadPage() {
         <p className="text-sm font-bold uppercase tracking-wide text-emerald-700">MarketMix for Android</p>
         <h1 className="mt-2 text-3xl font-extrabold text-slate-900">Take MarketMix with you</h1>
         <p className="mt-3 max-w-2xl text-slate-600">Browse homes, contact sellers, request a move, and follow your bookings from your Android phone.</p>
-        <a href="/MarketMix-RealEstates-debug.apk" download className="mt-7 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white transition hover:bg-emerald-800">
+        <a href="/MarketMix%20Realestate.apk" download="MarketMix Realestate.apk" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white transition hover:bg-emerald-800">
           <Download className="h-5 w-5" /> Download Android APK
         </a>
         <p className="mt-2 text-xs text-slate-500">Download the current Android app build directly to your device.</p>
