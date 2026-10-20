@@ -63,8 +63,9 @@ export default function ReceiptPage() {
   const amount = Number(transaction.totalAmount || transaction.amount || 0);
 
   return (
-    <div className="min-h-screen bg-slate-100 py-12 px-4">
-      <div className="max-w-lg mx-auto bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+    <div className="receipt-page min-h-screen bg-slate-100 py-12 px-4">
+      <style>{`@media print { body { background: #fff !important; } .receipt-page { min-height: 0 !important; padding: 0 !important; background: #fff !important; } .receipt-card { max-width: none !important; border: 0 !important; box-shadow: none !important; } .receipt-actions { display: none !important; } }`}</style>
+      <div className="receipt-card max-w-lg mx-auto bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
         <div className="text-center border-b border-slate-100 pb-6 mb-6">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 mb-3">
             <CheckCircle className="w-6 h-6" />
@@ -78,9 +79,13 @@ export default function ReceiptPage() {
 
         <div className="space-y-4 text-sm">
           <div className="flex justify-between py-2 border-b border-slate-100">
-            <span className="text-slate-500">Reference ID</span>
+            <span className="text-slate-500">Payment reference</span>
             <span className="font-mono font-bold text-slate-900">{ref}</span>
           </div>
+          {transaction.bookingId && <div className="flex justify-between gap-4 py-2 border-b border-slate-100">
+            <span className="shrink-0 text-slate-500">Booking ID</span>
+            <span className="text-right font-mono font-bold text-slate-900">{transaction.bookingId}</span>
+          </div>}
           <div className="flex justify-between py-2 border-b border-slate-100">
             <span className="text-slate-500">M-Pesa Code</span>
             <span className="font-mono font-bold text-emerald-700">{mpesaRef}</span>
@@ -95,12 +100,12 @@ export default function ReceiptPage() {
           </div>
         </div>
 
-        <div className="mt-8 flex gap-3">
+        <div className="receipt-actions mt-8 flex gap-3">
           <button
             onClick={() => window.print()}
-            className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-emerald-800 py-3 text-xs font-bold text-white hover:bg-emerald-900"
           >
-            <Printer className="w-4 h-4" /> Print Receipt
+            <Printer className="w-4 h-4" /> Save receipt (PDF)
           </button>
           <Link
             to="/"

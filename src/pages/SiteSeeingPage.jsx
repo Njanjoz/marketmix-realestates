@@ -131,6 +131,7 @@ export default function SiteSeeingPage() {
   const [activeProperty, setActiveProperty] = useState(null);
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [bookingMode, setBookingMode] = useState('availability_check');
+  const [availabilityFee, setAvailabilityFee] = useState(50);
   const [tourPropertyIds, setTourPropertyIds] = useState([]);
   const [tourSelectionMode, setTourSelectionMode] = useState('browse');
   const [tourPropertyType, setTourPropertyType] = useState('');
@@ -149,6 +150,14 @@ export default function SiteSeeingPage() {
   const [profileContactLoading, setProfileContactLoading] = useState(false);
   const paymentDetailsRef = useRef(null);
 
+  useEffect(() => onSnapshot(doc(db, 'siteSeeingSettings', 'availabilityFee'), (snapshot) => {
+    const amount = Number(snapshot.data()?.amount ?? 50);
+    setAvailabilityFee(Number.isInteger(amount) && amount >= 1 && amount <= 500000 ? amount : 50);
+  }, (error) => {
+    console.error('Could not load site-seeing fee setting:', error);
+    setAvailabilityFee(50);
+  }), []);
+
   const savedContactPhone = profileContactPhone || userProfile?.phone || userProfile?.phoneNumber || userProfile?.mobile ||
     userProfile?.mobileNumber || userProfile?.contactNumber || userProfile?.phone_number || userProfile?.contact?.phone ||
     userProfile?.contact?.phoneNumber || userProfile?.contactInfo?.phone || userProfile?.contactInfo?.phoneNumber ||
@@ -162,7 +171,7 @@ export default function SiteSeeingPage() {
   const bookingTotal = selectedPackage
     ? getSiteSeeingPackagePrice(selectedPackage) * (isGroupViewingPackage ? groupParticipantCount : 1)
     : 0;
-  const bookingDeposit = 50;
+  const bookingDeposit = availabilityFee;
 
   useEffect(() => {
     if (!completionBookingId || !completionPackageId || !packages.length) return;
@@ -476,7 +485,7 @@ export default function SiteSeeingPage() {
       } else {
         toast.success(completionBookingId || bookingMode === 'direct_booking'
           ? `Booking ${result.bookingId} paid. The agent will send meeting details by WhatsApp.`
-          : `Booking request received. An admin will update you on WhatsApp within 12 hours after the vacancy check. The KSh 50 availability-check fee is non-refundable.`);
+          : `Booking request received. An admin will update you on WhatsApp within 12 hours after the vacancy check. The KSh ${bookingDeposit.toLocaleString()} availability-check fee is non-refundable.`);
       }
       closeViewingModal();
       setTourPropertyIds([]);
@@ -697,7 +706,7 @@ export default function SiteSeeingPage() {
                       {selectedPackage && !completionBookingId && <fieldset className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
                         <legend className="mb-2 text-sm font-extrabold text-slate-900">Choose how to continue</legend>
                         <motion.button type="button" whileHover={{ y: -4, scale: 1.015 }} whileTap={{ scale: 0.985 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} onClick={() => setBookingMode('availability_check')} style={{ fontFamily: "'Playfair Display', Georgia, serif" }} className={`min-w-0 rounded-2xl border p-3 text-left shadow-md transition-colors sm:p-5 ${bookingMode === 'availability_check' ? 'border-[#6f4e37] bg-[#6f4e37] text-white ring-2 ring-[#d6c0a8]' : 'border-[#d6c0a8] bg-[#fbf7f2] text-[#392719] hover:border-[#8b6548]'}`}>
-                          <span className="block text-xs font-bold leading-snug sm:text-base">Check vacancy first · KSh 50</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'availability_check' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay the non-refundable KSh 50 availability-check fee. The agent checks with the landlord, submits vacancy photos, and an admin updates you; if available, you can then pay for the site visit package.</span>
+                          <span className="block text-xs font-bold leading-snug sm:text-base">Check vacancy first · KSh {bookingDeposit.toLocaleString()}</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'availability_check' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay the non-refundable KSh {bookingDeposit.toLocaleString()} availability-check fee. The agent checks with the landlord, submits vacancy photos, and an admin updates you; if available, you can then pay for the site visit package.</span>
                         </motion.button>
                         <motion.button type="button" whileHover={{ y: -4, scale: 1.015 }} whileTap={{ scale: 0.985 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} onClick={() => setBookingMode('direct_booking')} style={{ fontFamily: "'Playfair Display', Georgia, serif" }} className={`min-w-0 rounded-2xl border p-3 text-left shadow-md transition-colors sm:p-5 ${bookingMode === 'direct_booking' ? 'border-[#6f4e37] bg-[#6f4e37] text-white ring-2 ring-[#d6c0a8]' : 'border-[#d6c0a8] bg-[#fbf7f2] text-[#392719] hover:border-[#8b6548]'}`}>
                           <span className="block text-xs font-bold leading-snug sm:text-base">Book the site visit · KSh {bookingTotal.toLocaleString()}</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'direct_booking' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay for the site visit now and we’ll coordinate with the agent. This pays for the visit only; vacancy and getting the property are not guaranteed.</span>
@@ -806,7 +815,7 @@ export default function SiteSeeingPage() {
                   {!checkoutMode && (selectedPackage ? (
                     <div aria-live="polite" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                       <p className="font-bold">{selectedPackage.title} selected · Package total KSh {bookingTotal.toLocaleString()}</p>
-                      <p className="mt-2 leading-relaxed">Choose whether to pay KSh 50 for an admin-coordinated vacancy check, or pay for your package and arrange a visit without a vacancy guarantee.</p>
+                      <p className="mt-2 leading-relaxed">Choose whether to pay KSh {bookingDeposit.toLocaleString()} for an admin-coordinated vacancy check, or pay for your package and arrange a visit without a vacancy guarantee.</p>
                     </div>
                   ) : (
                     <p aria-live="polite" className="mt-3 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
@@ -818,7 +827,7 @@ export default function SiteSeeingPage() {
                 {selectedPackage && !completionBookingId && !checkoutMode && <fieldset className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
                   <legend className="mb-2 text-sm font-extrabold text-slate-900">Choose how to continue</legend>
                   <motion.button type="button" whileHover={{ y: -4, scale: 1.015 }} whileTap={{ scale: 0.985 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} onClick={() => setBookingMode('availability_check')} style={{ fontFamily: "'Playfair Display', Georgia, serif" }} className={`min-w-0 rounded-2xl border p-3 text-left shadow-md transition-colors sm:p-5 ${bookingMode === 'availability_check' ? 'border-[#6f4e37] bg-[#6f4e37] text-white ring-2 ring-[#d6c0a8]' : 'border-[#d6c0a8] bg-[#fbf7f2] text-[#392719] hover:border-[#8b6548]'}`}>
-                    <span className="block text-xs font-bold leading-snug sm:text-base">Check vacancy first · KSh 50</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'availability_check' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay the non-refundable KSh 50 availability-check fee. The agent checks with the landlord and submits vacancy photos. We’ll update you; if available, you can then pay for the site visit package.</span>
+                    <span className="block text-xs font-bold leading-snug sm:text-base">Check vacancy first · KSh {bookingDeposit.toLocaleString()}</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'availability_check' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay the non-refundable KSh {bookingDeposit.toLocaleString()} availability-check fee. The agent checks with the landlord and submits vacancy photos. We’ll update you; if available, you can then pay for the site visit package.</span>
                   </motion.button>
                   <motion.button type="button" whileHover={{ y: -4, scale: 1.015 }} whileTap={{ scale: 0.985 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} onClick={() => setBookingMode('direct_booking')} style={{ fontFamily: "'Playfair Display', Georgia, serif" }} className={`min-w-0 rounded-2xl border p-3 text-left shadow-md transition-colors sm:p-5 ${bookingMode === 'direct_booking' ? 'border-[#6f4e37] bg-[#6f4e37] text-white ring-2 ring-[#d6c0a8]' : 'border-[#d6c0a8] bg-[#fbf7f2] text-[#392719] hover:border-[#8b6548]'}`}>
                     <span className="block text-xs font-bold leading-snug sm:text-base">Book the site visit · KSh {bookingTotal.toLocaleString()}</span><span className={`mt-2 block font-sans text-[10px] leading-snug sm:text-xs sm:leading-relaxed ${bookingMode === 'direct_booking' ? 'text-[#f2e8dc]' : 'text-[#705b49]'}`}>Pay for the site visit now and we’ll coordinate with the agent. This pays for the visit only; vacancy and getting the property are not guaranteed.</span>
@@ -832,7 +841,7 @@ export default function SiteSeeingPage() {
                       <select id="group-participant-count" value={groupParticipantCount} onChange={(event) => setGroupParticipantCount(Number(event.target.value))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold">
                         {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} {count === 1 ? 'person' : 'people'}</option>)}
                       </select>
-                      <p className="text-xs text-slate-600">KSh {getSiteSeeingPackagePrice(selectedPackage).toLocaleString()} per person · Package total KSh {bookingTotal.toLocaleString()} · KSh 50 vacancy-check fee now</p>
+                      <p className="text-xs text-slate-600">KSh {getSiteSeeingPackagePrice(selectedPackage).toLocaleString()} per person · Package total KSh {bookingTotal.toLocaleString()} · KSh {bookingDeposit.toLocaleString()} vacancy-check fee now</p>
                     </div>
                   </div>
                 )}
@@ -875,7 +884,7 @@ export default function SiteSeeingPage() {
                             ? 'Checking your saved profile contact…'
                           : 'Enter the phone number that should receive the M-Pesa payment prompt.'}
                       </p>
-                      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{completionBookingId ? 'This completes payment for your selected package.' : bookingMode === 'direct_booking' ? 'This payment covers the site visit only. Vacancy and getting the property are not guaranteed.' : 'The non-refundable KSh 50 fee covers an agent vacancy check. We’ll update you after the landlord confirms availability; if available, you can pay for the site visit package.'}</p>
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{completionBookingId ? 'This completes payment for your selected package.' : bookingMode === 'direct_booking' ? 'This payment covers the site visit only. Vacancy and getting the property are not guaranteed.' : `The non-refundable KSh ${bookingDeposit.toLocaleString()} fee covers an agent vacancy check. We’ll update you after the landlord confirms availability; if available, you can pay for the site visit package.`}</p>
                     </div>
                     <div className="rounded-xl bg-emerald-950 px-4 py-3 text-white sm:min-w-40">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">{completionBookingId || bookingMode === 'direct_booking' ? 'Package payment' : 'Availability-check fee'}</p>
@@ -901,7 +910,7 @@ export default function SiteSeeingPage() {
                     className="mmx-liquid-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-xs font-bold text-white shadow transition hover:opacity-95 disabled:opacity-50"
                   >
                     {bookingLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                    <span>{bookingLoading ? 'Waiting for M-Pesa confirmation…' : selectedPackage ? (completionBookingId || bookingMode === 'direct_booking' ? `Pay KSh ${bookingTotal.toLocaleString()}` : 'Pay KSh 50 and check vacancy') : 'Select a Package'}</span>
+                    <span>{bookingLoading ? 'Waiting for M-Pesa confirmation…' : selectedPackage ? (completionBookingId || bookingMode === 'direct_booking' ? `Pay KSh ${bookingTotal.toLocaleString()}` : `Pay KSh ${bookingDeposit.toLocaleString()} and check vacancy`) : 'Select a Package'}</span>
                   </button>
                 </div>
               </motion.div>

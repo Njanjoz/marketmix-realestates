@@ -27,6 +27,7 @@ import { resolvePropertyImage } from '../../utils/propertyMapping';
 import PromotePropertyModal from '../PromotePropertyModal';
 import AgencyPackagesPage from '../../pages/admin/AgencyPackagesPage';
 import SightseeingPackagesPage from '../../pages/admin/SightseeingPackagesPage';
+import SightseeingFeeSettings from '../../pages/admin/SightseeingFeeSettings';
 import MovingPackagesPage from '../../pages/admin/MovingPackagesPage';
 import TransportRequestsPage from '../../pages/admin/TransportRequestsPage';
 import AdminServiceRequestsPage from '../../pages/admin/ServiceRequestsPage';
@@ -659,6 +660,7 @@ const AdminDashboard = () => {
     { id: 'movingPackages', label: 'Moving Packages', icon: <Package size={18} /> },
     { id: 'agencyPackages', label: 'Agency Packages', icon: <Building2 size={18} /> },
     { id: 'sightseeingPackages', label: 'Sightseeing Packages', icon: <Compass size={18} /> },
+    { id: 'sightseeingFee', label: 'Site-seeing Fee', icon: <Settings size={18} /> },
     { id: 'whatsappControl', label: 'WhatsApp Control', icon: <MessageCircle size={18} /> },
     { id: 'users', label: 'User Management', icon: <Users size={18} /> },
     { id: 'allProperties', label: 'All Properties', icon: <Building size={18} /> },
@@ -1331,6 +1333,7 @@ const AdminDashboard = () => {
         {activeSection === 'movingPackages' && <MovingPackagesPage />}
         {activeSection === 'agencyPackages' && <AgencyPackagesPage />}
         {activeSection === 'sightseeingPackages' && <SightseeingPackagesPage />}
+        {activeSection === 'sightseeingFee' && <SightseeingFeeSettings />}
         {activeSection === 'whatsappControl' && <WhatsAppControl />}
 
         {activeSection === 'analytics' && (

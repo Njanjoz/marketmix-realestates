@@ -101,7 +101,13 @@ router.post('/api/bookings/site-seeing/checkout', async (req, res) => {
     const totalPrice = parsePackagePrice(pkg);
     const groupSize = String(packageId) === 'group_viewing' ? Math.max(1, Math.min(10, Math.floor(Number(participantCount) || 1))) : 1;
     const bookingTotal = totalPrice * groupSize;
-    const consultationFee = CONSULTATION_FEE;
+    const feeSettingSnap = !completionBookingId && bookingMode === 'availability_check'
+      ? await db.collection('siteSeeingSettings').doc('availabilityFee').get()
+      : null;
+    const configuredFee = Number(feeSettingSnap?.data()?.amount);
+    const consultationFee = Number.isInteger(configuredFee) && configuredFee >= 1 && configuredFee <= 500000
+      ? configuredFee
+      : CONSULTATION_FEE;
 
     let bookingRef;
     let completion = false;
@@ -192,7 +198,7 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
     }
     const completing = order.paymentKind === 'sightseeing_booking_completion';
     const direct = order.paymentKind === 'sightseeing_direct_booking';
-    if ((!completing && !direct && (Number(order.totalAmount) !== CONSULTATION_FEE || Number(order.consultationFee) !== CONSULTATION_FEE)) || ((completing || direct) && Number(order.totalAmount) !== Number(order.bookingAmount))) {
+    if ((!completing && !direct && (Number(order.totalAmount) <= 0 || Number(order.totalAmount) !== Number(order.consultationFee))) || ((completing || direct) && Number(order.totalAmount) !== Number(order.bookingAmount))) {
       return res.status(409).json({ success: false, message: 'The payment amount does not match the selected booking option.' });
     }
     const bookingRef = db.collection('sightseeingBookings').doc(String(order.bookingId));
@@ -217,7 +223,7 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
         queueWhatsApp(agent.phoneNumber || agent.phone || agent.contactPhone, 'Viewing package payment confirmed', alert),
         queueWhatsApp(order.phoneNumber, 'Your MarketMix viewing payment receipt', receipt),
       ]);
-      return res.json({ success: true, bookingId: order.bookingId, status: 'meeting_details_pending', totalPrice: order.bookingAmount, consultationFee: CONSULTATION_FEE, completionPayment: order.totalAmount, mpesaReference: order.mpesaReference || null });
+      return res.json({ success: true, bookingId: order.bookingId, status: 'meeting_details_pending', totalPrice: order.bookingAmount, consultationFee: Number(order.consultationFee || CONSULTATION_FEE), completionPayment: order.totalAmount, mpesaReference: order.mpesaReference || null });
     }
     await db.runTransaction(async (transaction) => {
       const currentBooking = await transaction.get(bookingRef);
@@ -237,7 +243,7 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
         participantCount: order.participantCount || 1,
         packagePrice: order.bookingAmount,
         totalPrice: order.bookingAmount,
-        consultationFee: CONSULTATION_FEE,
+        consultationFee: Number(order.consultationFee || CONSULTATION_FEE),
         consultationFeeNonRefundable: !direct,
         remainingBalance: direct ? 0 : order.bookingAmount,
         userId: user.uid,
@@ -282,7 +288,7 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
       queueWhatsApp(assignedAgent.phoneNumber || assignedAgent.phone || assignedAgent.contactPhone, 'New viewing request — check landlord availability', agentDetails),
       queueWhatsApp(order.phoneNumber, 'Your MarketMix viewing payment receipt', customerReceipt),
     ]);
-    return res.json({ success: true, bookingId: order.bookingId, status: direct ? 'meeting_details_pending' : 'awaiting_availability', totalPrice: order.bookingAmount, participantCount: order.participantCount || 1, consultationFee: CONSULTATION_FEE, directPayment: direct, mpesaReference: order.mpesaReference || null });
+    return res.json({ success: true, bookingId: order.bookingId, status: direct ? 'meeting_details_pending' : 'awaiting_availability', totalPrice: order.bookingAmount, participantCount: order.participantCount || 1, consultationFee: Number(order.consultationFee || CONSULTATION_FEE), directPayment: direct, mpesaReference: order.mpesaReference || null });
   } catch (error) {
     console.error('Confirm site-seeing booking error:', error);
     return res.status(400).json({ success: false, message: error.message || 'Could not confirm the booking.' });
@@ -448,7 +454,7 @@ router.post('/api/bookings/site-seeing/:bookingId/admin-notify-customer', async 
       ? `Your MarketMix site-seeing visit for ${booking.propertyTitle || 'the property'} is marked complete after admin review of the tour photos. Thank you for using MarketMix.`
       : booking.availabilityStatus === 'available'
       ? `Good news, ${booking.customerName || 'there'} — ${booking.propertyTitle || 'the property'} is available. The agent reports ${booking.availableUnits || 1} available unit(s), confirmed by our admin. Vacancy photos: ${(booking.availabilityEvidencePhotoUrls || []).join(' | ')}. Vacancy video: ${booking.availabilityVideoUrl}. Book your site-seeing visit here: ${booking.completionUrl}`
-      : `Update on your viewing request for ${booking.propertyTitle || 'the property'}: it is not available. Your KSh ${CONSULTATION_FEE} consultation fee is non-refundable. Browse other properties and start another booking here: ${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/site-seeing`;
+      : `Update on your viewing request for ${booking.propertyTitle || 'the property'}: it is not available. Your KSh ${Number(booking.consultationFee || CONSULTATION_FEE).toLocaleString()} consultation fee is non-refundable. Browse other properties and start another booking here: ${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/site-seeing`;
     const paymentSnap = await db.collection('orders').where('bookingId', '==', String(req.params.bookingId)).limit(1).get();
     const customerPhone = paymentSnap.docs[0]?.data()?.phoneNumber;
     const queued = await queueWhatsApp(customerPhone, isTourReview ? 'Site-seeing tour completed' : booking.availabilityStatus === 'available' ? 'Property available — book your visit' : 'Update on your viewing request', message);
