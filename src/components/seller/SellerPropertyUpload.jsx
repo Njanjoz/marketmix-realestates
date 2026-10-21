@@ -41,6 +41,7 @@ import WizardProgress from './shared/WizardProgress';
 import { WIZARD_STEPS } from './constants/wizardSteps';
 import { PROPERTY_TYPES, LAND_LIKE, HOSTEL_LIKE } from './constants/propertyTaxonomy';
 import { getPublicPropertyLocation } from '../../utils/propertyMapping';
+import { hasTwoWordLocation } from './locationValidation';
 import '../moving/LiquidGlass.css';
 
 import StepPropertyType from './steps/StepPropertyType';
@@ -71,6 +72,7 @@ const initialData = {
   title: '',
   propertyName: '',
   location: '',
+  searchKeywords: [],
   county: '',
   subCounty: '',
   ward: '',
@@ -977,10 +979,10 @@ function validateForSubmit(data) {
     },
     {
       field: 'location',
-      label: 'Property location',
+      label: 'Landmark or location name',
       screenId: 'locationTransport',
-      missing: isEmpty(locationValue) && !data.coordinates,
-      message: 'Add the property location or pin the property on the map.',
+      missing: !hasTwoWordLocation(data.location),
+      message: 'Enter a landmark or location name using at least two words (for example, Rhonda Mazembe).',
     },
   ];
 
@@ -1042,8 +1044,8 @@ function validateScreenForContinue(data, screenId, rules) {
     }
 
     case 'locationTransport':
-      return isEmpty(readLocation(data)) && !data.coordinates
-        ? { field: 'location', label: 'Property location', screenId, message: 'Add the location or pin the property on the map.' }
+      return !hasTwoWordLocation(data.location)
+        ? { field: 'location', label: 'Landmark or location name', screenId, message: 'Enter at least two words, such as Rhonda Mazembe.' }
         : null;
 
     case 'photosMedia': {
@@ -1076,7 +1078,7 @@ function screenCompleted(data, screenId) {
     case 'studentInfo': return true;
     case 'spaceOccupancy': return Boolean(readOccupancy(data));
     case 'priceCosts': return Boolean(readPrice(data));
-    case 'locationTransport': return Boolean(readLocation(data) || data.coordinates);
+    case 'locationTransport': return hasTwoWordLocation(data.location);
     case 'nearbyPlaces': return Boolean(data.landmark || data.area || data.town);
     case 'waterUtilities': return Boolean(data.waterType || data.electricityType);
     case 'internetGarbage': return Boolean(data.internet || data.internetType || data.features?.length);
@@ -1131,6 +1133,7 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
   const [constructionRevision, setConstructionRevision] = useState(0);
   const [autoSaveStatus, setAutoSaveStatus] = useState('saved');
   const [transitioning, setTransitioning] = useState(false);
+  const [mobilePreviewCollapsed, setMobilePreviewCollapsed] = useState(false);
   const [validationError, setValidationError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [submittedPropertyId, setSubmittedPropertyId] = useState('');
@@ -1642,8 +1645,20 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <section className="mmx-mobile-hero shrink-0 border-b border-black/8 bg-[#F4F1E9]/95 px-2.5 pb-2.5 pt-2.5 backdrop-blur-xl lg:hidden">
+            <section className={`mmx-mobile-hero relative shrink-0 border-b border-black/8 bg-[#F4F1E9]/95 px-2.5 ${mobilePreviewCollapsed ? 'py-1.5' : 'pb-2.5 pt-2.5'} backdrop-blur-xl lg:hidden`}>
               <div className="mx-auto max-w-3xl">
+                {mobilePreviewCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => setMobilePreviewCollapsed(false)}
+                    aria-label="Show live property preview"
+                    aria-expanded={false}
+                    className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-black/10 bg-white text-[#5F5C55] shadow-sm"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                  </button>
+                ) : (
+                  <>
                 <div
                   key={`${currentScreenId}-${constructionRevision}`}
                   className="mmx-mobile-transition relative h-[178px] overflow-hidden rounded-[22px] border border-black/10 bg-[#0D0F10] shadow-[0_15px_40px_rgba(0,0,0,.10)]"
@@ -1661,11 +1676,22 @@ export default function SellerPropertyUpload({ onClose, onSuccess, existingDraft
                   <div className="absolute right-3 top-3 z-10 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 text-[9px] font-semibold text-white/70 backdrop-blur-md">
                     {Math.min(100, Math.round((builtLayer / 16) * 100))}%
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePreviewCollapsed(true)}
+                    aria-label="Collapse live property preview"
+                    aria-expanded={true}
+                    className="absolute bottom-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white/90 shadow-md backdrop-blur-md hover:bg-black/75"
+                  >
+                    <X size={15} />
+                  </button>
                 </div>
                 <div className="mt-1 flex items-center justify-between px-1 text-[9px] uppercase tracking-[.15em] text-[#8D8A83]">
                   <span>{currentMeta.label}</span>
                   <span style={{ color: INK }}>{Math.min(100, Math.round((builtLayer / 16) * 100))}% built</span>
                 </div>
+                  </>
+                )}
               </div>
             </section>
 

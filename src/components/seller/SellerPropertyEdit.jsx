@@ -25,6 +25,7 @@ import {
   ChevronRight,
   CircleUserRound,
   ClipboardCheck,
+  ChevronDown,
   DoorOpen,
   Droplets,
   Home,
@@ -41,6 +42,7 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { hasTwoWordLocation } from './locationValidation';
 
 import WizardProgress from './shared/WizardProgress';
 import { WIZARD_STEPS } from './constants/wizardSteps';
@@ -262,6 +264,7 @@ const initialData = {
   laundryHours: '',
   kitchenHours: '',
   location: '',
+  searchKeywords: [],
   locationData: null,
   coordinates: null,
   county: '',
@@ -675,12 +678,7 @@ function screenCompleted(data, screenId) {
     case 'rentCosts':
       return Boolean(data.rentAmount || data.price);
     case 'locationTransport':
-      return Boolean(
-        data.location ||
-        data.county ||
-        data.town ||
-        data.coordinates
-      );
+      return hasTwoWordLocation(data.location);
     case 'nearbyPlaces':
       return Boolean(data.nearbyPlaces?.length || data.landmark || data.estate || data.nearestRoad);
     case 'waterUtilities':
@@ -769,13 +767,10 @@ function firstMissingRequired(data, rules) {
     },
     {
       field: 'location',
-      label: 'Property location',
+      label: 'Landmark or location name',
       screenId: 'locationTransport',
-      missing: !String(data.location || '').trim() &&
-        !String(data.county || '').trim() &&
-        !String(data.town || '').trim() &&
-        !data.coordinates,
-      message: 'Add the property location or pin it on the map.',
+      missing: !hasTwoWordLocation(data.location),
+      message: 'Enter a landmark or location name using at least two words (for example, Rhonda Mazembe).',
     },
     {
       field: 'images',
@@ -915,12 +910,8 @@ function validateStep(stepId, data, rules) {
         : 'Enter the rent price.';
   }
 
-  if (stepId === 'locationTransport' &&
-      !String(data.location || '').trim() &&
-      !String(data.county || '').trim() &&
-      !String(data.town || '').trim() &&
-      !data.coordinates) {
-    errors.location = 'Add the location or pin it on the map.';
+  if (stepId === 'locationTransport' && !hasTwoWordLocation(data.location)) {
+    errors.location = 'Enter at least two words, such as Rhonda Mazembe.';
   }
 
   if (stepId === 'roomOccupancy' &&
@@ -2138,6 +2129,7 @@ export default function SellerPropertyEdit({
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [builtLayer, setBuiltLayer] = useState(0);
+  const [mobilePreviewCollapsed, setMobilePreviewCollapsed] = useState(false);
   const [revision, setRevision] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const [validationError, setValidationError] = useState(null);
@@ -2757,6 +2749,7 @@ export default function SellerPropertyEdit({
         },
 
         location: current.location,
+        searchKeywords: [...new Set((Array.isArray(current.searchKeywords) ? current.searchKeywords : []).map((word) => String(word || '').trim()).filter(Boolean))],
         coordinates: current.coordinates,
 
         publicMedia,
@@ -3023,8 +3016,22 @@ export default function SellerPropertyEdit({
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
 
             {/* Mobile permanent construction hero. */}
-            <section className="sticky top-0 z-25 shrink-0 border-b border-black/8 bg-[#F4F1E9]/96 px-2.5 pb-2.5 pt-2.5 backdrop-blur-xl lg:hidden">
+            <section className={`sticky top-0 z-25 shrink-0 border-b border-black/8 bg-[#F4F1E9]/96 px-2.5 ${mobilePreviewCollapsed ? 'py-1.5' : 'pb-2.5 pt-2.5'} backdrop-blur-xl lg:hidden`}>
               <div className="mx-auto max-w-3xl">
+                {mobilePreviewCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => setMobilePreviewCollapsed(false)}
+                    aria-label="Show live edit preview"
+                    aria-expanded={false}
+                    className="mx-auto flex h-7 w-7 items-center justify-center rounded-full border border-black/10 bg-white text-[#5F5C55] shadow-sm"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                  </button>
+                ) : <>
+                <div className="mb-1 flex items-center justify-between px-1">
+                  <span className="text-[9px] font-bold uppercase tracking-[.14em] text-[#8D8A83]">Live edit preview</span>
+                </div>
                 <div
                   key={`${currentScreenId}-${revision}`}
                   className="mmx-mobile-transition relative h-[178px] overflow-hidden rounded-[22px] border border-black/10 bg-[#0D0F10] shadow-[0_15px_40px_rgba(0,0,0,.10)]"
@@ -3047,6 +3054,15 @@ export default function SellerPropertyEdit({
                       Math.round((builtLayer / 16) * 100)
                     )}% built
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePreviewCollapsed(true)}
+                    aria-label="Collapse live edit preview"
+                    aria-expanded={true}
+                    className="absolute bottom-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white/90 shadow-md backdrop-blur-md hover:bg-black/75"
+                  >
+                    <X size={15} />
+                  </button>
                 </div>
 
                 <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[.14em] text-[#8D8A83]">
@@ -3055,6 +3071,7 @@ export default function SellerPropertyEdit({
                     {GROUP_LABELS[currentMeta.group]}
                   </span>
                 </div>
+                </>}
               </div>
             </section>
 

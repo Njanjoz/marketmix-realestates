@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, Edit3, Loader, MapPin, RefreshCw, Search, X } from 'lucide-react';
-import { collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useSearchParams } from 'react-router-dom';
+import { AlertCircle, Check, Edit3, Loader, MapPin, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { collection, deleteDoc, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../../firebase/config';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
@@ -26,11 +27,15 @@ const getPropertyImageUrls = (property) => {
   return urls;
 };
 
-const PropertyModerationPage = () => {
+const PropertyModerationPage = ({ initialStatus = '' }) => {
+  const [searchParams] = useSearchParams();
   const [properties, setProperties] = useState([]);
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const requestedStatus = initialStatus || searchParams.get('status');
+    return STATUS_FILTERS.includes(requestedStatus) ? requestedStatus : 'pending';
+  });
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -172,6 +177,22 @@ const PropertyModerationPage = () => {
     }
   };
 
+  const deleteListing = async (property) => {
+    const title = property.title || 'this property listing';
+    if (!window.confirm(`Permanently delete “${title}” from MarketMix? This removes the listing record and cannot be undone.`)) return;
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, 'properties', property.id));
+      setProperties((current) => current.filter((item) => item.id !== property.id));
+      toast.success('Property listing deleted.');
+    } catch (error) {
+      console.error('Could not delete property listing:', error);
+      toast.error('Could not delete this listing. Check admin access and try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateDraft = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const editingPhotoUrls = editing ? getPropertyImageUrls(editing) : [];
 
@@ -244,6 +265,7 @@ const PropertyModerationPage = () => {
                       <button type="button" onClick={() => openEditor(property)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"><Edit3 className="h-4 w-4" /> Edit ad</button>
                       {status !== 'approved' && <button type="button" disabled={saving} onClick={() => setListingStatus(property, 'approved')} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"><Check className="h-4 w-4" /> Approve</button>}
                       {status !== 'rejected' && <button type="button" disabled={saving} onClick={() => setListingStatus(property, 'rejected')} className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50"><X className="h-4 w-4" /> Reject</button>}
+                      <button type="button" disabled={saving} onClick={() => deleteListing(property)} className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Delete listing</button>
                     </div>
                   </div>
                 </article>

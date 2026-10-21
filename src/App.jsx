@@ -1,6 +1,7 @@
 // src/App.jsx - COMPLETE WITH ADMIN DASHBOARD
 import React, { Suspense, lazy, useEffect, useLayoutEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './context/AuthContext';
 import { PropertyProvider } from './context/PropertyContext';
 import { SearchProvider } from './context/SearchContext';
@@ -19,6 +20,8 @@ import { getNetworkStatus, subscribeToNetwork } from './services/networkService'
 const HomePage = lazy(() => import('./pages/HomePage'));
 const DownloadPage = lazy(() => import('./pages/DownloadPage'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const CookiesPage = lazy(() => import('./pages/CookiesPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
@@ -53,8 +56,9 @@ const AdminServiceRequestsPage = lazy(() => import('./pages/admin/ServiceRequest
 const AdminTransportRequestsPage = lazy(() => import('./pages/admin/TransportRequestsPage'));
 const MovingPackagesPage = lazy(() => import('./pages/admin/MovingPackagesPage'));
 const AgencyPackagesPage = lazy(() => import('./pages/admin/AgencyPackagesPage'));
-const SightseeingPackagesPage = lazy(() => import('./pages/admin/SightseeingPackagesPage'));
 const SightseeingBookingsPage = lazy(() => import('./pages/admin/SightseeingBookingsPage'));
+const VisitCampaignPage = lazy(() => import('./pages/VisitCampaignPage'));
+const VisitCampaignsAdminPage = lazy(() => import('./pages/admin/VisitCampaignsPage'));
 const ViewingMeetingDetailsPage = lazy(() => import('./pages/agent/ViewingMeetingDetailsPage'));
 const ViewingAvailabilityPage = lazy(() => import('./pages/agent/ViewingAvailabilityPage'));
 const WhatsAppControl = lazy(() => import('./pages/admin/WhatsAppControl'));
@@ -80,6 +84,38 @@ function ScrollToTop() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [location.pathname, location.search]);
+  return null;
+}
+
+function NativeDeepLinkHandler() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+    let listener;
+    let active = true;
+    import('@capacitor/app').then(({ App: NativeApp }) => {
+      if (!active) return;
+      return NativeApp.addListener('appUrlOpen', ({ url }) => {
+        try {
+          const target = new URL(url);
+          if (target.hostname !== 'marketmix-realestates.vercel.app') return;
+          navigate(`${target.pathname}${target.search}${target.hash}`, { replace: true });
+        } catch (error) {
+          console.warn('Could not open shared app link:', error);
+        }
+      });
+    }).then((registeredListener) => {
+      if (!active) registeredListener?.remove?.();
+      else listener = registeredListener;
+    }).catch((error) => console.warn('Native link listener unavailable:', error));
+
+    return () => {
+      active = false;
+      listener?.remove?.();
+    };
+  }, [navigate]);
+
   return null;
 }
 
@@ -115,6 +151,7 @@ function App() {
   return (
     <Router>
       <ScrollToTop />
+      <NativeDeepLinkHandler />
       <RouteSEO />
       <AuthProvider>
         <PropertyProvider>
@@ -149,6 +186,8 @@ function App() {
                       <Route path="/" element={<HomePage />} />
                       <Route path="/download" element={<DownloadPage />} />
                       <Route path="/terms" element={<TermsPage />} />
+                      <Route path="/privacy" element={<PrivacyPage />} />
+                      <Route path="/cookies" element={<CookiesPage />} />
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/about" element={<AboutPage />} />
@@ -166,6 +205,8 @@ function App() {
                       <Route path="/transport/updates" element={<ProtectedRoute><TransportLiveUpdatesPage /></ProtectedRoute>} />
                       <Route path="/site-seeing" element={<SiteSeeingPage />} />
                       <Route path="/site-seeing/checkout" element={<SiteSeeingPage />} />
+                      <Route path="/visit-campaigns" element={<Navigate to="/" replace />} />
+                      <Route path="/visit-campaigns/:campaignId" element={<VisitCampaignPage />} />
                       <Route path="/agent/viewing-details/:bookingId" element={<ProtectedRoute><ViewingMeetingDetailsPage /></ProtectedRoute>} />
                       <Route path="/agent/viewing-availability/:bookingId" element={<ProtectedRoute><ViewingAvailabilityPage /></ProtectedRoute>} />
                       <Route path="/help" element={<ProtectedRoute><CustomerHelpPage /></ProtectedRoute>} />
@@ -204,6 +245,9 @@ function App() {
                           <PropertyModerationPage />
                         </ProtectedRoute>
                       } />
+                      <Route path="/admin/visit-campaigns" element={
+                        <ProtectedRoute allowedRoles={['admin']}><VisitCampaignsAdminPage /></ProtectedRoute>
+                      } />
                       <Route path="/admin/service-requests" element={
                         <ProtectedRoute allowedRoles={['admin']}>
                           <AdminServiceRequestsPage />
@@ -219,7 +263,7 @@ function App() {
                         <ProtectedRoute allowedRoles={['admin']}><AgencyPackagesPage /></ProtectedRoute>
                       } />
                       <Route path="/admin/sightseeing-packages" element={
-                        <ProtectedRoute allowedRoles={['admin']}><SightseeingPackagesPage /></ProtectedRoute>
+                        <ProtectedRoute allowedRoles={['admin']}><Navigate to="/admin/visit-campaigns" replace /></ProtectedRoute>
                       } />
                       <Route path="/admin/sightseeing-bookings" element={
                         <ProtectedRoute allowedRoles={['admin']}><SightseeingBookingsPage /></ProtectedRoute>

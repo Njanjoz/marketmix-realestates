@@ -3,6 +3,7 @@ import { X, MessageCircle, Sparkles, Phone, Mail, Share2, Download } from 'lucid
 import { resolvePropertyImage } from '../utils/propertyMapping';
 import { getListingType } from '../utils/listingType';
 import { getYouTubeTourUrl } from '../services/shareService';
+import { getPublicAppUrl } from '../utils/publicUrl';
 import { generatePromoPoster as requestPromoPoster, getPromoCoverImage } from '../services/posterService';
 import toast from 'react-hot-toast';
 
@@ -51,15 +52,11 @@ const getPropertyUrl = (property) => {
 
   if (typeof window === 'undefined') return '';
   const id = property?.id || property?.propertyId;
-  if (!id) return window.location.href;
+  if (!id) return getPublicAppUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`);
 
   const refParam = property?.referralCode ? `?ref=${encodeURIComponent(property.referralCode)}` : '';
 
-  try {
-    return new URL(`/property/${encodeURIComponent(id)}${refParam}`, window.location.origin).toString();
-  } catch {
-    return `${window.location.origin}/property/${encodeURIComponent(id)}${refParam}`;
-  }
+  return getPublicAppUrl(`/property/${encodeURIComponent(id)}${refParam}`);
 };
 
 const getContactDetails = ({ userProfile, currentUser }) => {

@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Local Gradle and Android SDK caches
+.gradle-user-home/
+**/.gradle-user-home/
+android/.android-user-home*/
+**/.gradle/
+**/build/
+/*.apk
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

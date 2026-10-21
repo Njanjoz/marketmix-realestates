@@ -391,6 +391,11 @@ const PropertyDetailspage = () => {
   const gate = p.gate || {};
   const availability = p.availability || {};
   const youtubeId = p.youtubeVideoId;
+  const galleryAsideItems = [
+    ...(youtubeId ? [{ type: 'video', id: youtubeId }] : []),
+    ...media.slice(1, 3).map((item) => ({ type: 'photo', ...item })),
+  ].slice(0, 2);
+  const hasGalleryAside = galleryAsideItems.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
@@ -402,9 +407,9 @@ const PropertyDetailspage = () => {
         type="article"
       />
       {/* ─── Hero / Gallery ─────────────────────────── */}
-      <section className="mx-auto max-w-7xl px-4 pt-5 sm:pt-7" aria-label="Property photos">
+      <section className="mx-auto max-w-7xl px-4 pt-5 sm:pt-7" aria-label={youtubeId ? 'Property photos and video tour' : 'Property photos'}>
         <div className="relative overflow-hidden rounded-2xl bg-slate-950 shadow-lg ring-1 ring-black/5">
-          <div className={`grid ${media.length > 1 ? 'md:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]' : ''} min-h-[280px] sm:min-h-[380px] md:h-[500px]`}>
+          <div className={`grid ${hasGalleryAside ? 'md:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]' : ''} min-h-[280px] sm:min-h-[380px] md:h-[500px]`}>
             {cover ? (
               <button
                 type="button"
@@ -432,18 +437,30 @@ const PropertyDetailspage = () => {
               </div>
             )}
 
-            {media.length > 1 && (
-              <div className={`hidden min-h-0 ${media.length > 2 ? 'grid-rows-2' : 'grid-rows-1'} gap-1.5 bg-slate-950 p-1.5 md:grid`}>
-                {media.slice(1, 3).map((m, i) => (
+            {hasGalleryAside && (
+              <div className={`hidden min-h-0 ${galleryAsideItems.length > 1 ? 'grid-rows-2' : 'grid-rows-1'} gap-1.5 bg-slate-950 p-1.5 md:grid`}>
+                {galleryAsideItems.map((item, i) => item.type === 'video' ? (
+                  <div key={`video-${item.id}`} className="relative min-h-0 overflow-hidden bg-black">
+                    <iframe
+                      title="Property video tour"
+                      src={`https://www.youtube.com/embed/${item.id}`}
+                      className="absolute inset-0 h-full w-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white">Video tour</span>
+                  </div>
+                ) : (
                   <button
-                    key={`${m.url}-${i}`}
+                    key={`${item.url}-${i}`}
                     type="button"
-                    onClick={() => setLightbox(i + 1)}
+                    onClick={() => setLightbox(media.findIndex((photo) => photo.url === item.url))}
                     className="group relative min-h-0 overflow-hidden bg-slate-900"
                     aria-label={`Open property photo ${i + 2}`}
                   >
                     <img
-                      src={m.url}
+                      src={item.url}
                       alt={`${p.title || 'Property'} photo ${i + 2}`}
                       loading="lazy"
                       className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
@@ -457,6 +474,22 @@ const PropertyDetailspage = () => {
               </div>
             )}
           </div>
+
+          {youtubeId && (
+            <div className="border-t border-white/10 bg-black md:hidden">
+              <div className="relative aspect-video w-full">
+                <iframe
+                  title="Property video tour"
+                  src={`https://www.youtube.com/embed/${youtubeId}`}
+                  className="absolute inset-0 h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              </div>
+              <p className="px-3 py-2 text-xs font-semibold text-white">Video tour</p>
+            </div>
+          )}
 
           {media.length > 1 && (
             <div className="flex gap-2 overflow-x-auto border-t border-white/10 bg-slate-950 p-2 md:hidden">
@@ -838,20 +871,6 @@ const PropertyDetailspage = () => {
               </div>
             )}
           </Section>
-
-          {/* YouTube tour */}
-          {youtubeId && (
-            <Section title="Video tour" icon={Play}>
-              <div className="aspect-video rounded-lg overflow-hidden border border-gray-200">
-                <iframe
-                  title="Property tour"
-                  src={`https://www.youtube.com/embed/${youtubeId}`}
-                  className="w-full h-full"
-                  allowFullScreen
-                />
-              </div>
-            </Section>
-          )}
 
           {/* Photo gallery grouped by category */}
           {Object.keys(photosByCategory).length > 0 && (

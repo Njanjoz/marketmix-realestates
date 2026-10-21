@@ -510,6 +510,35 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /sightseeingPackages/{packageId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Public campaign counters contain aggregate attendee totals only. The
+    // trusted booking server updates them after confirmed package payments.
+    match /sightseeingCampaignStats/{packageId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Group visit campaigns have their own catalog and registration totals;
+    // they are independent of property site-seeing packages and bookings.
+    match /visitCampaigns/{campaignId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /visitCampaignStats/{campaignId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /visitCampaignRegistrations/{registrationId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /siteSeeingSettings/{settingId} {
       allow read: if true;
       allow create, update: if isAdmin() && settingId == 'availabilityFee' &&
@@ -604,6 +633,13 @@ service cloud.firestore {
     match /subscriptions/{subId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
+    }
+
+    // Payment history is readable by its owner and administrators; clients
+    // cannot create or alter payment records.
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if false;
     }
 
     // Audit Logs

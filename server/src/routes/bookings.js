@@ -44,6 +44,18 @@ function parsePackagePrice(pkg) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : 0;
 }
 
+function calculateRefundBreakdown(grossAmount) {
+  const maintenanceFee = Math.round(grossAmount * 0.05);
+  const amountAfterMaintenance = Math.max(0, Math.floor(grossAmount - maintenanceFee));
+  const withdrawalFee = amountAfterMaintenance <= 100 ? 10
+    : amountAfterMaintenance <= 1000 ? 20
+      : amountAfterMaintenance <= 3000 ? 30
+        : amountAfterMaintenance <= 5000 ? 50
+          : amountAfterMaintenance <= 80000 ? 100
+            : amountAfterMaintenance <= 120000 ? 500 : 1000;
+  return { maintenanceFee, withdrawalFee, feeAmount: maintenanceFee + withdrawalFee, netAmount: amountAfterMaintenance - withdrawalFee };
+}
+
 router.post('/api/bookings/site-seeing/checkout', async (req, res) => {
   try {
     const user = await getUser(req);
@@ -89,14 +101,12 @@ router.post('/api/bookings/site-seeing/checkout', async (req, res) => {
     }
     const property = tourProperties.find((item) => item.id === String(propertyId)) || tourProperties[0];
 
-    let pkg = DEFAULT_PACKAGES[String(packageId)];
-    if (!pkg) {
-      const packageSnap = await db.collection('sightseeingPackages').doc(String(packageId)).get();
-      if (!packageSnap.exists || packageSnap.data().active === false) return res.status(404).json({ success: false, message: 'This viewing package is unavailable.' });
-      pkg = packageSnap.data();
-    }
-    if (['quick_view', 'assisted_view'].includes(String(packageId))) {
-      pkg = { ...pkg, ...DEFAULT_PACKAGES[String(packageId)] };
+    const packageSnap = await db.collection('sightseeingPackages').doc(String(packageId)).get();
+    let pkg = packageSnap.exists
+      ? { ...(DEFAULT_PACKAGES[String(packageId)] || {}), ...packageSnap.data() }
+      : DEFAULT_PACKAGES[String(packageId)];
+    if (!pkg || (packageSnap.exists && packageSnap.data().active === false)) {
+      return res.status(404).json({ success: false, message: 'This viewing package is unavailable.' });
     }
     const totalPrice = parsePackagePrice(pkg);
     const groupSize = String(packageId) === 'group_viewing' ? Math.max(1, Math.min(10, Math.floor(Number(participantCount) || 1))) : 1;
@@ -203,10 +213,29 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
     }
     const bookingRef = db.collection('sightseeingBookings').doc(String(order.bookingId));
     if (completing) {
-      const bookingSnap = await bookingRef.get();
-      if (!bookingSnap.exists || bookingSnap.data().userId !== user.uid || bookingSnap.data().availabilityStatus !== 'available') return res.status(409).json({ success: false, message: 'This booking is no longer available to complete.' });
-      await bookingRef.update({ status: 'meeting_details_pending', packageId: order.packageId, packageName: order.packageName, packagePrice: order.bookingAmount, totalPrice: order.bookingAmount, remainingBalance: 0, completionPaymentReference: String(paymentRef), completionMpesaReference: order.mpesaReference || null, agentAssignmentLocked: true, assignedAgentId: bookingSnap.data().agentId || null, tourCompleted: false, completedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-      const completedBooking = bookingSnap.data() || {};
+      let completedBooking = null;
+      await db.runTransaction(async (transaction) => {
+        const bookingSnap = await transaction.get(bookingRef);
+        if (!bookingSnap.exists || bookingSnap.data().userId !== user.uid || bookingSnap.data().availabilityStatus !== 'available') {
+          throw new Error('This booking is no longer available to complete.');
+        }
+        completedBooking = bookingSnap.data() || {};
+        const alreadyCounted = completedBooking.campaignRegistrationCounted === true;
+        transaction.update(bookingRef, {
+          status: 'meeting_details_pending', packageId: order.packageId, packageName: order.packageName,
+          packagePrice: order.bookingAmount, totalPrice: order.bookingAmount, remainingBalance: 0,
+          completionPaymentReference: String(paymentRef), completionMpesaReference: order.mpesaReference || null,
+          agentAssignmentLocked: true, assignedAgentId: completedBooking.agentId || null, tourCompleted: false,
+          campaignRegistrationCounted: true, completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        if (!alreadyCounted) {
+          transaction.set(db.collection('sightseeingCampaignStats').doc(String(order.packageId)), {
+            registeredCount: admin.firestore.FieldValue.increment(Math.max(1, Number(completedBooking.participantCount) || 1)),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+      });
       const agentFormUrl = `${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/agent/viewing-details/${encodeURIComponent(order.bookingId)}`;
       const agentSnap = completedBooking.agentId ? await db.collection('users').doc(String(completedBooking.agentId)).get() : null;
       const agent = agentSnap?.data() || {};
@@ -254,6 +283,7 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
         preferredViewingTime: order.preferredViewingTime || null,
         bookingNote: order.bookingNote || '',
         paymentStatus: 'paid',
+        campaignRegistrationCounted: direct,
         paymentReference: String(paymentRef),
         mpesaReference: order.mpesaReference || null,
         status: direct ? 'meeting_details_pending' : 'awaiting_availability',
@@ -268,6 +298,12 @@ router.post('/api/bookings/site-seeing/confirm', async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         queuedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+      if (direct) {
+        transaction.set(db.collection('sightseeingCampaignStats').doc(String(order.packageId)), {
+          registeredCount: admin.firestore.FieldValue.increment(Math.max(1, Number(order.participantCount) || 1)),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
     });
     const dashboardUrl = `${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/dashboard`;
     const agentFormUrl = `${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/agent/viewing-details/${encodeURIComponent(order.bookingId)}`;
@@ -497,6 +533,175 @@ router.post('/api/bookings/site-seeing/:bookingId/admin-notify-customer', async 
   } catch (error) {
     console.error('Admin customer update error:', error);
     return res.status(400).json({ success: false, message: error.message || 'Could not update the customer.' });
+  }
+});
+
+// Admin initiated, idempotent refund of a paid package via IntaSend MPESA-B2C.
+// Availability-check service fees are excluded: this endpoint only refunds the
+// direct or completion package payment recorded on the booking.
+router.post('/api/bookings/site-seeing/:bookingId/refund-request', async (req, res) => {
+  const db = admin.firestore();
+  try {
+    const user = await getUser(req);
+    const bookingId = String(req.params.bookingId);
+    const bookingRef = db.collection('sightseeingBookings').doc(bookingId);
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    const booking = bookingSnap.data() || {};
+    if (booking.userId !== user.uid) return res.status(403).json({ success: false, message: 'This booking does not belong to your account.' });
+    const paymentRef = String(req.body?.paymentRef || booking.completionPaymentReference || booking.directPaymentReference || booking.availabilityPaymentReference || '');
+    const bookingPaymentRefs = [booking.completionPaymentReference, booking.packagePaymentReference, booking.directPaymentReference, booking.availabilityPaymentReference];
+    if (!paymentRef || !bookingPaymentRefs.includes(paymentRef)) return res.status(409).json({ success: false, message: 'Select a paid site-seeing payment belonging to this booking.' });
+    const paymentSnap = await db.collection('orders').doc(String(paymentRef)).get();
+    const payment = paymentSnap.data() || {};
+    if (!paymentSnap.exists || payment.userId !== user.uid || payment.paymentStatus !== 'paid' || !['sightseeing_booking_completion', 'sightseeing_direct_booking', 'sightseeing_availability_check', 'sightseeing_consultation_fee'].includes(payment.paymentKind) || payment.bookingId !== bookingId) {
+      return res.status(409).json({ success: false, message: 'Only a confirmed site-seeing payment for this booking can be submitted for refund review.' });
+    }
+    if (['REQUESTED', 'PROCESSING', 'PAYOUT_SENT', 'PAYOUT_RETRYABLE'].includes(booking.refundStatus)) return res.status(409).json({ success: false, message: `A refund is already ${String(booking.refundStatus).toLowerCase().replace(/_/g, ' ')}.` });
+    const grossAmount = Number(payment.totalAmount);
+    if (!Number.isFinite(grossAmount) || grossAmount <= 0) return res.status(409).json({ success: false, message: 'The paid amount could not be verified.' });
+    const { maintenanceFee, withdrawalFee, feeAmount, netAmount } = calculateRefundBreakdown(grossAmount);
+    const viewingDate = String(booking.preferredViewingDate || '');
+    const viewingTime = String(booking.preferredViewingTime || '');
+    const scheduledViewingCandidate = /^\d{4}-\d{2}-\d{2}$/.test(viewingDate) && /^\d{2}:\d{2}$/.test(viewingTime)
+      ? new Date(`${viewingDate}T${viewingTime}:00+03:00`)
+      : null;
+    const scheduledViewingAt = scheduledViewingCandidate && Number.isFinite(scheduledViewingCandidate.getTime())
+      ? scheduledViewingCandidate
+      : null;
+    const cancellationDeadline = scheduledViewingAt && Number.isFinite(scheduledViewingAt.getTime())
+      ? new Date(scheduledViewingAt.getTime() - 24 * 60 * 60 * 1000)
+      : null;
+    const receivedAt = new Date();
+    const lateRequest = cancellationDeadline ? receivedAt > cancellationDeadline : null;
+    const phone = String(payment.phoneNumber || '').replace(/\D/g, '').replace(/^0/, '254');
+    const idempotencyKey = `MM-TOUR-REFUND-${paymentRef}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
+    if (netAmount < 1 || !/^254[17]\d{8}$/.test(phone)) return res.status(409).json({ success: false, message: netAmount < 1 ? 'The payment is too small to refund after the maintenance and withdrawal fees.' : 'Customer M-Pesa number is invalid.' });
+    const requestRef = db.collection('sightseeingRefunds').doc(`refund_${paymentRef}`);
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(requestRef);
+      if (existing.exists) throw new Error('A refund request already exists for this booking.');
+      transaction.create(requestRef, {
+        bookingId, paymentRef, userId: user.uid, grossAmount,
+        phone, maintenanceRate: 0.05, maintenanceFee, withdrawalFee, feeAmount,
+        netAmount, currency: 'KES', idempotencyKey,
+        scheduledViewingAt, cancellationDeadline, lateRequest,
+        status: 'REQUESTED', requestedBy: user.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      transaction.update(bookingRef, { refundStatus: 'REQUESTED', refundPaymentReference: paymentRef, refundRequestedAmount: grossAmount, refundRequestedMaintenanceFee: maintenanceFee, refundRequestedWithdrawalFee: withdrawalFee, refundRequestedNetAmount: netAmount, refundRequestLate: lateRequest, refundCancellationDeadline: cancellationDeadline, refundRequestedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+    return res.json({ success: true, bookingId, refundStatus: 'REQUESTED', grossAmount, maintenanceFee, withdrawalFee, estimatedRefund: netAmount, lateRequest, cancellationDeadline });
+  } catch (error) {
+    console.error('Site-seeing refund request error:', error);
+    const status = /already exists/.test(error.message) ? 409 : 400;
+    return res.status(status).json({ success: false, message: error.message || 'Could not submit refund request.' });
+  }
+});
+
+router.post('/api/bookings/site-seeing/:bookingId/refund', async (req, res) => {
+  const db = admin.firestore();
+  let refundRef;
+  let refund;
+  try {
+    const user = await getUser(req);
+    const adminSnap = await db.collection('users').doc(user.uid).get();
+    const profile = adminSnap.data() || {};
+    if (!(profile.role === 'admin' || profile.userType === 'admin' || (Array.isArray(profile.roles) && profile.roles.includes('admin')))) {
+      return res.status(403).json({ success: false, message: 'Admin access required.' });
+    }
+    const secretKey = process.env.INTASEND_SECRET_KEY;
+    if (!secretKey) return res.status(503).json({ success: false, message: 'IntaSend payout credentials are not configured.' });
+    const bookingId = String(req.params.bookingId);
+    const bookingRef = db.collection('sightseeingBookings').doc(bookingId);
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    const booking = bookingSnap.data() || {};
+    const paymentRef = booking.refundPaymentReference || booking.completionPaymentReference || booking.directPaymentReference || booking.availabilityPaymentReference || null;
+    if (!paymentRef) return res.status(409).json({ success: false, message: 'No paid site-seeing payment is available to refund.' });
+    const paymentSnap = await db.collection('orders').doc(String(paymentRef)).get();
+    if (!paymentSnap.exists) return res.status(409).json({ success: false, message: 'The package payment record could not be verified.' });
+    const payment = paymentSnap.data() || {};
+    if (payment.paymentStatus !== 'paid' || !['sightseeing_booking_completion', 'sightseeing_direct_booking', 'sightseeing_availability_check', 'sightseeing_consultation_fee'].includes(payment.paymentKind) || payment.bookingId !== bookingId) {
+      return res.status(409).json({ success: false, message: 'Only a confirmed site-seeing payment for this booking can be refunded.' });
+    }
+    const grossAmount = Number(payment.totalAmount);
+    const { maintenanceFee, withdrawalFee, feeAmount, netAmount } = calculateRefundBreakdown(grossAmount);
+    const phone = String(payment.phoneNumber || '').replace(/\D/g, '').replace(/^0/, '254');
+    if (!Number.isFinite(grossAmount) || grossAmount <= 0 || netAmount < 1 || !/^254[17]\d{8}$/.test(phone)) {
+      return res.status(409).json({ success: false, message: 'The paid amount, refund amount, or customer M-Pesa number is invalid.' });
+    }
+    refundRef = db.collection('sightseeingRefunds').doc(`refund_${paymentRef}`);
+    const idempotencyKey = `MM-TOUR-REFUND-${paymentRef}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 70);
+    let shouldSend = false;
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(refundRef);
+      if (existing.exists) {
+        refund = existing.data() || {};
+        if (['PAYOUT_SENT', 'PAID'].includes(refund.status)) throw new Error('A refund payout has already been initiated for this booking.');
+        if (refund.status === 'PROCESSING') throw new Error('A refund payout is already processing. Check its status before retrying.');
+        if (refund.paymentRef !== paymentRef || refund.netAmount !== netAmount) throw new Error('The saved refund details do not match this payment. Contact support.');
+        transaction.update(refundRef, { status: 'PROCESSING', updatedAt: admin.firestore.FieldValue.serverTimestamp(), retriedBy: user.uid });
+      } else {
+      refund = { bookingId, paymentRef, userId: booking.userId || payment.userId, phone, grossAmount, maintenanceRate: 0.05, maintenanceFee, withdrawalFee, feeAmount, netAmount, currency: 'KES', status: 'PROCESSING', idempotencyKey };
+        transaction.create(refundRef, { ...refund, initiatedBy: user.uid, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      }
+      transaction.update(bookingRef, { refundStatus: 'PROCESSING', refundPaymentReference: paymentRef, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      shouldSend = true;
+    });
+    if (!shouldSend) return res.status(409).json({ success: false, message: 'Refund was not prepared.' });
+
+    let providerResponse;
+    try {
+      providerResponse = await fetch('https://api.intasend.com/api/v1/send-money/initiate/', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currency: 'KES', country: 'KE', provider: 'MPESA-B2C', requires_approval: 'NO', batch_reference: refund.idempotencyKey, transactions: [{ name: String(payment.customerName || payment.buyerName || 'MarketMix Customer').replace(/[^a-zA-Z0-9 _:-]/g, '').slice(0, 80), account: phone, amount: String(netAmount), narrative: `MarketMix tour refund ${bookingId.slice(0, 18)}`, idempotency_key: refund.idempotencyKey }] }),
+      });
+    } catch (providerError) {
+      await refundRef.set({ status: 'PAYOUT_RETRYABLE', payoutError: 'Provider connection failed. Retry uses the same idempotency key.', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      await bookingRef.set({ refundStatus: 'PAYOUT_RETRYABLE', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      throw providerError;
+    }
+    const payout = await providerResponse.json().catch(() => ({}));
+    if (!providerResponse.ok || !payout.tracking_id) {
+      await refundRef.set({ status: 'PAYOUT_RETRYABLE', payoutError: String(payout.message || 'IntaSend did not accept the payout').slice(0, 240), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      await bookingRef.set({ refundStatus: 'PAYOUT_RETRYABLE', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      return res.status(502).json({ success: false, message: payout.message || 'IntaSend did not accept the refund payout.' });
+    }
+    await refundRef.set({ status: 'PAYOUT_SENT', trackingId: payout.tracking_id, providerStatus: payout.status || 'Processing', initiatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await bookingRef.set({ refundStatus: 'PAYOUT_SENT', refundTrackingId: payout.tracking_id, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return res.json({ success: true, bookingId, refund: { grossAmount, maintenanceFee, withdrawalFee, feeAmount, netAmount, phone, status: 'PAYOUT_SENT', trackingId: payout.tracking_id } });
+  } catch (error) {
+    console.error('Initiate site-seeing refund error:', error);
+    const status = /already been initiated|already processing|saved refund details/.test(error.message) ? 409 : 400;
+    return res.status(status).json({ success: false, message: error.message || 'Could not initiate refund.' });
+  }
+});
+
+router.post('/api/bookings/site-seeing/refund-webhook', async (req, res) => {
+  const challenge = process.env.INTASEND_WEBHOOK_CHALLENGE;
+  if (!challenge || String(req.body?.challenge || '') !== challenge || req.body?.topic !== 'send_money_event') {
+    return res.status(401).json({ success: false, message: 'Invalid payout webhook.' });
+  }
+  try {
+    const batchReference = String(req.body.batch_reference || '');
+    const prefix = 'MM-TOUR-REFUND-';
+    if (!batchReference.startsWith(prefix)) return res.json({ success: true, ignored: true });
+    const refundPaymentRef = batchReference.slice(prefix.length).replace(/^refund_/, '');
+    const refundRef = db.collection('sightseeingRefunds').doc(`refund_${refundPaymentRef}`);
+    const refundSnap = await refundRef.get();
+    if (!refundSnap.exists || refundSnap.data()?.trackingId !== req.body.tracking_id) return res.json({ success: true, ignored: true });
+    const bookingId = refundSnap.data()?.bookingId;
+    const rawStatus = String(req.body.status || 'Processing');
+    const normalized = rawStatus.toLowerCase();
+    const status = normalized.includes('complete') || normalized.includes('success') ? 'PAID' : normalized.includes('fail') || normalized.includes('cancel') ? 'PAYOUT_FAILED' : 'PAYOUT_SENT';
+    await refundRef.set({ status, providerStatus: rawStatus, providerPayload: { fileId: req.body.file_id || null, trackingId: req.body.tracking_id }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await db.collection('sightseeingBookings').doc(bookingId).set({ refundStatus: status, refundUpdatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Site-seeing refund webhook error:', error);
+    return res.status(500).json({ success: false });
   }
 });
 

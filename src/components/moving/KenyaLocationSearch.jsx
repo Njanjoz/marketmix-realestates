@@ -39,7 +39,7 @@ const KenyaLocationSearch = ({ onSelect }) => {
       </div>
     </form>
     {message && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{message}</p>}
-    {results.length > 0 && <ul className="mt-3 max-h-64 divide-y divide-white/50 overflow-y-auto rounded-xl border border-white/60 bg-white/60">
+    {results.length > 0 && <ul className="mt-3 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
       {results.map((result) => <li key={`${result.point.lat}:${result.point.lng}`}>
         <button type="button" onClick={() => { onSelect(result); setResults([]); setQuery(result.label); }} className="flex w-full items-start gap-3 px-3 py-3 text-left transition hover:bg-emerald-50/80">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-800" />

@@ -246,11 +246,11 @@ const PropertiesPage = () => {
   });
   const [nearMeActive, setNearMeActive] = useState(false);
   const [filters, setFilters] = useState({
-    location: '',
+    location: searchParams.get('search') || '',
     minPrice: '',
     maxPrice: '',
-    bedrooms: 'any',
-    propertyType: 'all',
+    bedrooms: searchParams.get('bedrooms') || 'any',
+    propertyType: searchParams.get('type') || 'all',
     status: requestedStatus
   });
   const itemsPerPage = 12;
@@ -302,9 +302,19 @@ const PropertiesPage = () => {
     let filtered = [...allProperties];
     
     if (filters.location) {
-      filtered = filtered.filter(prop => 
-        getPublicPropertyLocation(prop).toLowerCase().includes(filters.location.toLowerCase())
-      );
+      const searchTerm = filters.location.trim().toLocaleLowerCase();
+      filtered = filtered.filter((prop) => {
+        const searchableText = [
+          prop.title,
+          getPublicPropertyLocation(prop),
+          prop.propertyType,
+          prop.type,
+          getListingType(prop),
+          prop.description,
+          ...(Array.isArray(prop.searchKeywords) ? prop.searchKeywords : []),
+        ].filter(Boolean).join(' ').toLocaleLowerCase();
+        return searchableText.includes(searchTerm);
+      });
     }
     if (filters.minPrice) {
       filtered = filtered.filter(prop => prop.price >= parseInt(filters.minPrice));
@@ -316,7 +326,21 @@ const PropertiesPage = () => {
       filtered = filtered.filter(prop => prop.bedrooms >= parseInt(filters.bedrooms));
     }
     if (filters.propertyType !== 'all') {
-      filtered = filtered.filter(prop => prop.propertyType === filters.propertyType);
+      const selectedType = String(filters.propertyType).toLowerCase();
+      const matchesType = (prop) => {
+        const values = [prop.propertyType, prop.type, prop.category, prop.unitType]
+          .filter(Boolean).map((value) => String(value).toLowerCase().replace(/[\s-]+/g, '_'));
+        if (values.includes(selectedType)) return true;
+        const groups = {
+          house: ['maisonette', 'bungalow', 'townhouse', 'duplex', 'standalone_house', 'semi_detached', 'shared_house'],
+          apartment: ['studio_apartment', 'serviced_apartment', 'bedsitter'],
+          student_hostel: ['hostel', 'student_housing', 'single_room', 'bedsitter', 'shared_house'],
+          commercial: ['office', 'shop', 'warehouse'],
+          urbannest: ['guest_house', 'serviced_apartment', 'short_stay'],
+        };
+        return (groups[selectedType] || []).some((type) => values.some((value) => value.includes(type)));
+      };
+      filtered = filtered.filter(matchesType);
     }
     if (filters.status !== 'all') {
       filtered = filtered.filter(prop => getListingType(prop) === filters.status);

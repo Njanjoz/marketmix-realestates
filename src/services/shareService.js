@@ -1,9 +1,10 @@
 import { isCapacitor } from '../utils/platform';
 import { resolvePropertyImage } from '../utils/propertyMapping';
+import { canonicalizeSharedUrl, getPublicAppUrl } from '../utils/publicUrl';
 
 const getPropertyUrl = (property) => {
   if (property?.url || property?.propertyUrl) {
-    return property.url || property.propertyUrl;
+    return canonicalizeSharedUrl(property.url || property.propertyUrl);
   }
 
   if (typeof window === 'undefined') {
@@ -12,14 +13,10 @@ const getPropertyUrl = (property) => {
 
   const id = property?.id || property?.propertyId;
   if (id) {
-    try {
-      return new URL(`/property/${encodeURIComponent(id)}`, window.location.origin).toString();
-    } catch (error) {
-      console.warn('Unable to create property share URL:', error);
-    }
+    return getPublicAppUrl(`/property/${encodeURIComponent(id)}`);
   }
 
-  return window.location.href;
+  return getPublicAppUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`);
 };
 
 export const getYouTubeTourUrl = (property) => {
@@ -69,7 +66,7 @@ export const shareProperty = async (property) => {
       await Share.share({
         title,
         text: shareText,
-        url: url || window.location.href,
+        url: url || getPublicAppUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`),
         dialogTitle: 'Share property',
       });
       return { source: 'capacitor', shared: true };
@@ -82,7 +79,7 @@ export const shareProperty = async (property) => {
     await navigator.share({
       title,
       text: shareText,
-      url: url || window.location.href,
+      url: url || getPublicAppUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`),
     });
     return { source: 'web-share', shared: true };
   }

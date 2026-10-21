@@ -1,4 +1,4 @@
-// src/pages/SiteSeeingPage.jsx - Site Seeing Feature for MarketMix Real Estates
+﻿// src/pages/SiteSeeingPage.jsx - Site Seeing Feature for MarketMix Real Estates
 // Reuses Transport Page UI language (Liquid Glass, glass-surface-dark hero header, cards, location logic)
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -291,28 +291,18 @@ export default function SiteSeeingPage() {
 
     // Load admin sightseeing packages if available
     const unsubPkgs = onSnapshot(collection(db, 'sightseeingPackages'), (snapshot) => {
-      if (!snapshot.empty) {
-        const customPkgs = snapshot.docs.map(d => {
-          const data = d.data() || {};
-          const defaults = DEFAULT_PACKAGES.find((pkg) => pkg.id === d.id);
-          if (d.id === 'quick_view' || String(data.title || '').toLowerCase() === 'quick view') {
-            return { ...data, ...(defaults || {}), id: 'quick_view', price: 100, priceLabel: 'KSh 100' };
-          }
-          if (d.id === 'assisted_view' || String(data.title || '').toLowerCase() === 'assisted view') {
-            return { ...data, ...(defaults || {}), id: 'assisted_view', price: 250, priceLabel: 'KSh 250' };
-          }
-          return {
-            ...(defaults || {}),
-            ...data,
-            id: d.id,
-            ...(defaults && ['student_hunt', 'property_hunt'].includes(d.id)
-              ? { subtitle: defaults.subtitle, includes: defaults.includes }
-              : {}),
-          };
-        });
-        customPkgs.sort((a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0));
-        setPackages(customPkgs);
-      }
+      const savedById = new Map(snapshot.docs.map((entry) => [entry.id, entry.data() || {}]));
+      const defaultPackages = DEFAULT_PACKAGES
+        .map((pkg) => ({ ...pkg, ...(savedById.get(pkg.id) || {}), id: pkg.id }))
+        .filter((pkg) => pkg.active !== false);
+      const defaultIds = new Set(DEFAULT_PACKAGES.map((pkg) => pkg.id));
+      const customPackages = snapshot.docs
+        .filter((entry) => !defaultIds.has(entry.id))
+        .map((entry) => ({ id: entry.id, ...entry.data() }))
+        .filter((pkg) => pkg.active !== false);
+      const mergedPackages = [...defaultPackages, ...customPackages];
+      mergedPackages.sort((a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0));
+      setPackages(mergedPackages);
     }, () => {});
 
     return () => {

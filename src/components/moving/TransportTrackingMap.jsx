@@ -507,7 +507,9 @@ export default function TransportTrackingMap({
       controller.abort();
     }, 22000);
 
-    loadRoute(controller.signal);
+    loadRoute(controller.signal).finally(() => {
+      clearTimeout(timeoutId);
+    });
 
     return () => {
       clearTimeout(timeoutId);

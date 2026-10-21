@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" role="img" aria-labelledby="title desc">
+  <title id="title">MarketMix Kenya launch poster</title>
+  <desc id="desc">Discover local homes, services, and businesses with MarketMix.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0C211B"/><stop offset="1" stop-color="#164A37"/></linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#D4F7E4"/><stop offset="1" stop-color="#57B783"/></linearGradient>
+    <pattern id="dots" width="42" height="42" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="2" fill="#D4F7E4" opacity=".12"/></pattern>
+  </defs>
+  <rect width="1080" height="1350" fill="url(#bg)"/>
+  <rect width="1080" height="1350" fill="url(#dots)"/>
+  <circle cx="1000" cy="340" r="260" fill="#2A7555" opacity=".28"/>
+  <circle cx="40" cy="1100" r="300" fill="#2A7555" opacity=".2"/>
+  <g transform="translate(76 72)">
+    <rect width="92" height="92" rx="28" fill="#F3B84B"/>
+    <path d="M20 43 46 21l26 22v30a4 4 0 0 1-4 4H24a4 4 0 0 1-4-4Z" fill="#102A22"/>
+    <path d="M39 77V55h14v22M31 46h30" fill="none" stroke="#B8EED4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="112" y="61" fill="#F5FBF7" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="800" letter-spacing="-2">Market<tspan fill="#8AD5AA">Mix</tspan></text>
+    <text x="115" y="88" fill="#B8D9C8" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" letter-spacing="3">KENYA</text>
+  </g>
+  <text x="82" y="350" fill="#9DE0B8" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="5">YOUR LOCAL MARKETPLACE</text>
+  <text x="76" y="470" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="100" font-weight="800" letter-spacing="-5">Find what</text>
+  <text x="76" y="580" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="100" font-weight="800" letter-spacing="-5">you need.</text>
+  <text x="76" y="690" fill="#9DE0B8" font-family="Arial, Helvetica, sans-serif" font-size="100" font-weight="800" letter-spacing="-5">Grow local.</text>
+  <text x="84" y="770" fill="#D9EAE1" font-family="Arial, Helvetica, sans-serif" font-size="30">Discover homes, services and local businesses</text>
+  <text x="84" y="814" fill="#D9EAE1" font-family="Arial, Helvetica, sans-serif" font-size="30">all in one place.</text>
+  <g transform="translate(84 910)">
+    <rect width="912" height="172" rx="30" fill="#F4FAF6"/>
+    <g transform="translate(38 39)">
+      <circle cx="36" cy="36" r="34" fill="#D9F5E5"/><path d="M20 36h32M36 20v32" stroke="#257C55" stroke-width="5" stroke-linecap="round"/>
+      <text x="90" y="30" fill="#173C2D" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="700">Explore MarketMix</text>
+      <text x="90" y="70" fill="#527267" font-family="Arial, Helvetica, sans-serif" font-size="20">Browse, connect and get started today</text>
+    </g>
+    <text x="42" y="145" fill="#257C55" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="2">MARKETMIXREALESTATES.VERCEL.APP</text>
+  </g>
+  <text x="84" y="1180" fill="#B8D9C8" font-family="Arial, Helvetica, sans-serif" font-size="23">Shop local. Find home. Move forward.</text>
+  <text x="84" y="1232" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="3">SHOP LOCAL  ·  GROW LOCAL</text>
+</svg>

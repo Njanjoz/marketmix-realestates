@@ -33,7 +33,8 @@ export default function RealEstatePayment({ property, landlord, buyer: initialBu
     setStatus("starting");
     setMsg("Sending M-Pesa prompt…");
     try {
-      const tx = await payRealEstate({ property, landlord, buyer });
+      const idToken = currentUser ? await currentUser.getIdToken() : null;
+      const tx = await payRealEstate({ property, landlord, buyer, idToken });
       setRef(tx.orderId || tx.id);
       setStatus("done");
       setMsg(`✅ Paid. Receipt sent to ${buyer.email}.`);

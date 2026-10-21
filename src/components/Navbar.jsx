@@ -8,12 +8,10 @@ import {
   ChevronRight, Sparkles, Gem, Crown, Zap, 
   ArrowDownToLine, Target, Award, TrendingUp, Globe, Compass,
   Bell, MessageSquare, Settings, ChevronLeft, CreditCard,
-  Shield, Calendar, Bookmark, Briefcase, DollarSign, 
+  Shield, Bookmark, Briefcase,
   Key, Lock, Mail, UserCircle, LayoutDashboard, 
   LogOut as LogOutIcon, Truck, Users
 } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
@@ -21,12 +19,10 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dropdownRef = useRef(null);
-  const notificationsRef = useRef(null);
   
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isHomePage, setIsHomePage] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   
   // Check if we're on homepage and detect device
@@ -40,9 +36,6 @@ const Navbar = () => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
-      }
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
-        setNotificationsOpen(false);
       }
     };
 
@@ -79,69 +72,10 @@ const Navbar = () => {
     { name: 'Agents', path: '/agents', icon: <User className="w-4 h-4" /> },
   ], []);
 
-  // Dynamic Notifications from Firestore
-  const [notifications, setNotifications] = useState([
-    { id: 'default-1', title: 'Welcome to MarketMix', description: 'Explore verified properties, book site seeing tours, and moving services.', time: 'Just now', read: false, type: 'property' }
-  ]);
-
-  useEffect(() => {
-    if (!currentUser) {
-      setNotifications([
-        { id: 'default-1', title: 'Welcome to MarketMix', description: 'Explore verified properties, book site seeing tours, and moving services.', time: 'Just now', read: false, type: 'property' }
-      ]);
-      return;
-    }
-
-    const unsubSightseeing = onSnapshot(query(collection(db, 'sightseeingBookings'), where('userId', '==', currentUser.uid)), (snap) => {
-      const items = snap.docs.map(doc => {
-        const data = doc.data();
-        const isPaid = data.paymentStatus === 'paid' || data.status === 'confirmed';
-        return {
-          id: `sightseeing_${doc.id}`,
-          title: isPaid ? '✅ Site Seeing Tour Confirmed' : '⏳ Site Seeing Request Submitted',
-          description: `Tour for "${data.propertyTitle || 'Property'}" (${data.packageName || 'Package'}) is ${data.status || 'pending'}.`,
-          time: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-          read: isPaid,
-          type: 'appointment'
-        };
-      });
-
-      const unsubTransport = onSnapshot(query(collection(db, 'transportRequests'), where('userId', '==', currentUser.uid)), (tSnap) => {
-        const tItems = tSnap.docs.map(doc => {
-          const data = doc.data();
-          const accepted = data.status === 'accepted' || data.status === 'completed';
-          return {
-            id: `transport_${doc.id}`,
-            title: accepted ? '🚚 Moving Request Accepted' : '📦 Moving Request Made',
-            description: `From ${data.pickupLocation || 'Pickup'} to ${data.destinationLocation || 'Destination'} is ${data.status || 'pending'}.`,
-            time: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-            read: accepted,
-            type: 'price'
-          };
-        });
-
-        const combined = [...items, ...tItems];
-        if (combined.length > 0) {
-          setNotifications(combined);
-        }
-      });
-
-      return () => unsubTransport();
-    }, (err) => {
-      console.error("Error loading dynamic notifications:", err);
-    });
-
-    return () => {
-      unsubSightseeing();
-    };
-  }, [currentUser]);
-
-  const unreadNotifications = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
-
   // Dashboard Links
   const dashboardLinks = useMemo(() => {
     const userType = userProfile?.userType || userProfile?.role || 'user';
-    const isDriver = userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved || userProfile?.driverStatus;
+    const isDriver = userType === 'driver' || (userProfile?.role === 'user' && userProfile?.driverIntent === true);
     let dashboardName = 'My Dashboard';
     let badge = null;
     
@@ -193,7 +127,8 @@ const Navbar = () => {
         { name: 'Moderate Property Ads', path: '/admin/properties', icon: <Building2 className="w-4 h-4" /> },
         { name: 'Move-in Requests', path: '/admin/service-requests', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'Moving Requests', path: '/admin/transport-requests', icon: <Briefcase className="w-4 h-4" /> },
-        { name: 'Viewing Availability', path: '/admin/sightseeing-bookings', icon: <Building2 className="w-4 h-4" /> },
+        { name: 'Property Site-Seeing Bookings', path: '/admin/sightseeing-bookings', icon: <Building2 className="w-4 h-4" /> },
+        { name: 'Visit & Tour Campaigns', path: '/admin/visit-campaigns', icon: <Compass className="w-4 h-4" /> },
         { name: 'Moving Package Posters', path: '/admin/moving-packages', icon: <Briefcase className="w-4 h-4" /> },
         { name: 'WhatsApp Control', path: '/admin/whatsapp', icon: <MessageSquare className="w-4 h-4" /> },
         { name: 'Customer Help Inbox', path: '/admin/customer-help', icon: <MessageSquare className="w-4 h-4" /> },
@@ -211,10 +146,9 @@ const Navbar = () => {
   };
 
   const glassDropdownStyle = {
-    background: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(30px) saturate(200%)',
-    border: '1px solid rgba(255, 255, 255, 0.25)',
-    boxShadow: '0 15px 45px rgba(0, 0, 0, 0.15)',
+    background: '#ffffff',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 18px 48px rgba(15, 23, 42, 0.2)',
   };
 
   const glassButtonStyle = {
@@ -236,7 +170,7 @@ const Navbar = () => {
           className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-50"
           style={glassDropdownStyle}
         >
-          <div className="p-4 border-b border-white/25">
+          <div className="p-4 border-b border-slate-100">
             <div className="flex items-center space-x-3">
               <div className="relative">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg">
@@ -261,14 +195,14 @@ const Navbar = () => {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     userProfile?.userType === 'admin' ? 'bg-red-500/25 text-red-800' : 
                     userProfile?.userType === 'agent' ? 'bg-blue-500/25 text-blue-800' :
-                    userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'bg-emerald-500/25 text-emerald-800' :
+                    userProfile?.userType === 'driver' || (userProfile?.role === 'user' && userProfile?.driverIntent === true) ? 'bg-emerald-500/25 text-emerald-800' :
                     userProfile?.userType === 'seller' ? 'bg-amber-500/25 text-amber-800' :
                     userProfile?.userType === 'investor' ? 'bg-purple-500/25 text-purple-800' :
                     'bg-emerald-500/25 text-emerald-800'
                   }`}>
                     {userProfile?.userType === 'admin' ? 'Administrator' : 
                      userProfile?.userType === 'agent' ? 'Verified Agent' :
-                     userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'Transport Driver' :
+                     userProfile?.userType === 'driver' || (userProfile?.role === 'user' && userProfile?.driverIntent === true) ? 'Transport Driver' :
                      userProfile?.userType === 'seller' ? 'Property Seller' :
                      userProfile?.userType === 'investor' ? 'Investor' :
                      'Premium Member'}
@@ -288,7 +222,7 @@ const Navbar = () => {
                     setDropdownOpen(false);
                     navigate(item.path);
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-gray-900 hover:text-gray-950 hover:bg-white/30 transition-all duration-200 mb-1"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-gray-900 hover:text-gray-950 hover:bg-emerald-50 transition-all duration-200 mb-1"
                 >
                   <div className="flex items-center space-x-3">
                     <div className={item.badge ? 'text-amber-600' : 'text-emerald-600'}>
@@ -314,72 +248,6 @@ const Navbar = () => {
                 <span>Log Out</span>
               </button>
             </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
-  // Notifications Dropdown
-  const NotificationsDropdown = () => (
-    <AnimatePresence>
-      {notificationsOpen && (
-        <motion.div
-          ref={notificationsRef}
-          initial={{ opacity: 0, y: -10, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-          className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-50"
-          style={glassDropdownStyle}
-        >
-          <div className="p-4 border-b border-white/25 flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
-            <span className="text-xs text-emerald-600 cursor-pointer hover:text-emerald-700">
-              Live updates
-            </span>
-          </div>
-          
-          <div className="max-h-96 overflow-y-auto">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`p-3 border-b border-white/15 hover:bg-white/25 transition-colors ${
-                  !notification.read ? 'bg-emerald-500/15' : ''
-                }`}
-              >
-                <div className="flex items-start space-x-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    notification.type === 'property' ? 'bg-blue-500/25 text-blue-600' :
-                    notification.type === 'price' ? 'bg-green-500/25 text-green-600' :
-                    'bg-amber-500/25 text-amber-600'
-                  }`}>
-                    {notification.type === 'property' ? <Building2 className="w-4 h-4" /> :
-                     notification.type === 'price' ? <DollarSign className="w-4 h-4" /> :
-                     <Calendar className="w-4 h-4" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{notification.title}</p>
-                    <p className="text-xs text-gray-800 mt-1">{notification.description}</p>
-                    <p className="text-xs text-gray-600 mt-1">{notification.time}</p>
-                  </div>
-                  {!notification.read && (
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm"></div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="p-3 border-t border-white/25">
-            <Link
-              to="/notifications"
-              onClick={() => setNotificationsOpen(false)}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-sm text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/15 transition-all duration-200"
-            >
-              <span>View All Notifications</span>
-              <ChevronRight className="w-4 h-4" />
-            </Link>
           </div>
         </motion.div>
       )}
@@ -434,25 +302,18 @@ const Navbar = () => {
               </button>
               
               {currentUser && (
-                <div className="relative" ref={notificationsRef}>
-                  <button
-                    onClick={() => setNotificationsOpen(!notificationsOpen)}
-                    className="p-2 rounded-lg transition-all duration-200 relative"
-                    style={glassButtonStyle}
-                  >
-                    <Bell className="w-5 h-5 text-gray-700" />
-                    {unreadNotifications > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-xs text-white rounded-full flex items-center justify-center shadow-md">
-                        {unreadNotifications}
-                      </span>
-                    )}
-                  </button>
-                  <NotificationsDropdown />
-                </div>
+                <Link
+                  to="/favorites"
+                  aria-label="Saved properties"
+                  title="Saved properties"
+                  className="grid h-10 w-10 place-items-center rounded-lg border border-emerald-100 bg-white text-emerald-800 shadow-sm transition hover:bg-emerald-50"
+                >
+                  <Heart className="h-5 w-5" />
+                </Link>
               )}
               
               {currentUser ? (
-                <div className="relative" ref={dropdownRef}>
+                <div className="relative hidden lg:block" ref={dropdownRef}>
                   <button
                     onClick={() => setDropdownOpen(!dropdownOpen)}
                     className="flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200"
@@ -470,7 +331,7 @@ const Navbar = () => {
                       <div className="text-xs text-emerald-600 capitalize">
                         {userProfile?.userType === 'admin' ? 'Administrator' : 
                          userProfile?.userType === 'agent' ? 'Agent' :
-                         userProfile?.userType === 'driver' || userProfile?.driverIntent || userProfile?.driverApproved ? 'Transport Driver' :
+                         userProfile?.userType === 'driver' || (userProfile?.role === 'user' && userProfile?.driverIntent === true) ? 'Transport Driver' :
                          userProfile?.userType === 'seller' ? 'Seller' :
                          userProfile?.userType === 'investor' ? 'Investor' : 'Member'}
                       </div>

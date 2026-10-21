@@ -1,365 +1,113 @@
-// src/pages/ContactPage.jsx - STYLED COMPONENTS VERSION
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import styled from 'styled-components';
-import { FaPhone, FaEnvelope, FaMapMarkerAlt, FaClock, FaPaperPlane, FaCheckCircle } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Clock3, Mail, MapPin, MessageCircle, Phone, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// --- COLOR AND STYLE CONSTANTS ---
-const PRIMARY_BLUE = '#0284c7'; 
-const PRIMARY_DARK = '#0c4a6e';
-const WHITE = '#ffffff';
-const BG_LIGHT = '#f9fafb';
-const GRAY_600 = '#4b5563';
-const GRAY_700 = '#374151';
-const GRAY_300 = '#d1d5db';
-
-// --- UTILITY STYLED COMPONENTS ---
-const Container = styled.div`
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    @media (min-width: 640px) { padding-left: 1.5rem; padding-right: 1.5rem; }
-    @media (min-width: 1024px) { padding-left: 4rem; padding-right: 4rem; }
-    @media (min-width: 1280px) { max-width: 1280px; }
-`;
-
-const PageWrapper = styled.div`
-    min-height: 90vh;
-    padding-top: 5rem;
-    padding-bottom: 4rem;
-    background-color: ${BG_LIGHT};
-`;
-
-const ContactContentGrid = styled.div`
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    @media (min-width: 1024px) {
-        grid-template-columns: 1fr 2fr;
-    }
-`;
-
-const InfoCard = styled(motion.div)`
-    background-color: ${WHITE};
-    border-radius: 1rem;
-    padding: 1.5rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    
-    .icon-wrapper {
-        color: ${PRIMARY_BLUE};
-        font-size: 2rem;
-        margin-bottom: 0.75rem;
-    }
-    
-    h3 {
-        font-size: 1.125rem;
-        font-weight: 700;
-        color: ${GRAY_700};
-        margin-bottom: 0.5rem;
-    }
-    
-    .details {
-        font-weight: 500;
-        color: ${GRAY_700};
-    }
-    
-    .description {
-        font-size: 0.875rem;
-        color: ${GRAY_600};
-        margin-top: 0.5rem;
-    }
-`;
-
-const FormCard = styled(motion.div)`
-    background-color: ${WHITE};
-    border-radius: 1rem;
-    padding: 2rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-`;
-
-const FormInput = styled.input`
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid ${GRAY_300};
-    border-radius: 0.5rem;
-    &:focus {
-        outline: none;
-        border-color: ${PRIMARY_BLUE};
-        box-shadow: 0 0 0 1px ${PRIMARY_BLUE};
-    }
-`;
-
-const FormSelect = styled.select`
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid ${GRAY_300};
-    border-radius: 0.5rem;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 1.5em 1.5em;
-    cursor: pointer;
-    &:focus {
-        outline: none;
-        border-color: ${PRIMARY_BLUE};
-    }
-`;
-
-const FormTextarea = styled.textarea`
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid ${GRAY_300};
-    border-radius: 0.5rem;
-    resize: vertical;
-    &:focus {
-        outline: none;
-        border-color: ${PRIMARY_BLUE};
-        box-shadow: 0 0 0 1px ${PRIMARY_BLUE};
-    }
-`;
-
-const PrimaryButton = styled.button`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    background-color: ${PRIMARY_BLUE};
-    color: ${WHITE};
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    transition: background-color 200ms;
-    
-    &:hover {
-        background-color: ${PRIMARY_DARK};
-    }
-`;
-
-const SuccessMessage = styled(motion.div)`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: 3rem 1rem;
-    
-    .icon {
-        color: #10b981; /* green-500 */
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-    
-    h2 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: ${GRAY_700};
-        margin-bottom: 0.5rem;
-    }
-    
-    p {
-        color: ${GRAY_600};
-        max-width: 400px;
-    }
-`;
-
-const MapWrapper = styled.div`
-    margin-top: 2rem;
-    background-color: ${WHITE};
-    border-radius: 1rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    overflow: hidden;
-`;
-
-// --- REACT COMPONENT ---
+const CONTACT_EMAIL = 'marketmixkenya@gmail.com';
+const CONTACT_PHONE = '0115988107';
 
 const ContactPage = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    subject: '',
-    message: '',
-    propertyType: 'general'
-  });
-  const [submitted, setSubmitted] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', subject: '', message: '', topic: 'General inquiry' });
 
-  const contactInfo = [
-    {
-      icon: <FaPhone />,
-      title: "Phone",
-      details: ["0115988107"],
-      description: "Mon-Fri from 8am to 6pm"
-    },
-    {
-      icon: <FaEnvelope />,
-      title: "Email",
-      details: ["marketmixkenya@gmail.com"],
-      description: "We'll respond within 24 hours"
-    },
-    {
-      icon: <FaMapMarkerAlt />,
-      title: "Office",
-      details: ["Westlands, Nairobi", "Mombasa Road, Nairobi"],
-      description: "Visit our offices"
-    },
-    {
-      icon: <FaClock />,
-      title: "Business Hours",
-      details: ["Mon-Fri: 8:00 AM - 6:00 PM", "Sat: 9:00 AM - 4:00 PM"],
-      description: "Closed on Sundays"
-    }
+  const handleChange = (event) => setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const subject = encodeURIComponent(formData.subject.trim());
+    const body = encodeURIComponent([
+      `Name: ${formData.name}`,
+      `Email: ${formData.email}`,
+      `Phone: ${formData.phone || 'Not provided'}`,
+      `Topic: ${formData.topic}`,
+      '',
+      formData.message,
+    ].join('\n'));
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+    toast.success('Your email app should open with your message ready to send.');
+  };
+
+  const contactCards = [
+    { icon: Phone, label: 'Call us', value: CONTACT_PHONE, detail: 'Speak with our team', href: `tel:${CONTACT_PHONE}` },
+    { icon: Mail, label: 'Email us', value: CONTACT_EMAIL, detail: 'We usually reply within one business day', href: `mailto:${CONTACT_EMAIL}` },
+    { icon: MapPin, label: 'Our home base', value: 'Nakuru, Kenya', detail: 'Proudly serving people across Kenya' },
+    { icon: Clock3, label: 'Working hours', value: 'Mon–Fri, 8:00 AM–6:00 PM', detail: 'Saturday, 9:00 AM–4:00 PM · Closed Sunday' },
   ];
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // In real app, send to backend
-    toast.success('Message sent successfully! We\'ll contact you shortly.');
-    setSubmitted(true);
-    setFormData({
-      name: '', email: '', phone: '', subject: '', message: '', propertyType: 'general'
-    });
-  };
+  const inputClass = 'mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-4 focus:ring-emerald-700/10';
 
   return (
-    <PageWrapper>
-      <Container>
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-extrabold text-gray-900 mb-2">Get In Touch</h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            We're here to help you find your perfect property. Contact us through any of the methods below.
-          </p>
+    <main className="min-h-screen bg-[#f5f7f5] pb-16 pt-24 sm:pt-28">
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#0b241a] via-[#12372a] to-[#1b4b37] text-white">
+        <div className="pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full bg-emerald-300/10 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-5 py-14 sm:px-8 sm:py-20">
+          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[.2em] text-emerald-200"><MessageCircle className="h-4 w-4" /> MarketMix Real Estates</p>
+          <h1 className="mt-5 max-w-3xl font-serif text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">Let’s talk about what you need.</h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-white/75 sm:text-lg">Questions about finding a home, listing a property, or planning a move? Our team is based in Nakuru, Kenya and ready to help.</p>
+          <a href={`tel:${CONTACT_PHONE}`} className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-emerald-950 transition hover:bg-emerald-50"><Phone className="h-4 w-4" /> Call our team</a>
         </div>
+      </section>
 
-        {/* Contact Info Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          {contactInfo.map((item, index) => (
-            <InfoCard
-              key={item.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-            >
-              <div className="icon-wrapper">{item.icon}</div>
-              <h3>{item.title}</h3>
-              {item.details.map((detail, i) => (
-                <p key={i} className="details">{detail}</p>
-              ))}
-              <p className="description">{item.description}</p>
-            </InfoCard>
-          ))}
-        </div>
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14">
+        <section aria-label="Contact details" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {contactCards.map(({ icon: Icon, label, value, detail, href }) => {
+            const content = <>
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-800"><Icon className="h-5 w-5" /></span>
+              <span className="mt-5 block text-xs font-bold uppercase tracking-[.15em] text-slate-500">{label}</span>
+              <span className="mt-2 block break-words text-lg font-bold text-slate-950">{value}</span>
+              <span className="mt-2 block text-sm leading-6 text-slate-600">{detail}</span>
+            </>;
+            return href ? <a key={label} href={href} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-6">{content}</a>
+              : <article key={label} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">{content}</article>;
+          })}
+        </section>
 
-        <ContactContentGrid>
-          {/* Left Column - Contact Form */}
-          <FormCard 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Send Us a Message</h2>
-            <p className="text-gray-600 mb-6">Fill out the form for a prompt response from our team.</p>
-            
-            {submitted ? (
-              <SuccessMessage
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-              >
-                <div className="icon"><FaCheckCircle /></div>
-                <h2>Message Sent!</h2>
-                <p>Thank you for reaching out. We have received your inquiry and will get back to you within 24 hours.</p>
-                <button 
-                    onClick={() => setSubmitted(false)}
-                    className="mt-6 text-primary-600 font-semibold hover:text-primary-700"
-                >
-                    Send Another Message
-                </button>
-              </SuccessMessage>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormInput type="text" name="name" placeholder="Your Name" value={formData.name} onChange={handleChange} required />
-                  <FormInput type="email" name="email" placeholder="Your Email" value={formData.email} onChange={handleChange} required />
-                </div>
-                
-                <FormInput type="tel" name="phone" placeholder="Phone Number" value={formData.phone} onChange={handleChange} />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormSelect name="propertyType" value={formData.propertyType} onChange={handleChange}>
-                        <option value="general">General Inquiry</option>
-                        <option value="sale">Property for Sale</option>
-                        <option value="rent">Property for Rent</option>
-                        <option value="agent">Connect with an Agent</option>
-                    </FormSelect>
-                    <FormInput type="text" name="subject" placeholder="Subject" value={formData.subject} onChange={handleChange} required />
-                </div>
-
-                <FormTextarea name="message" rows="5" placeholder="Tell us about your property needs..." value={formData.message} onChange={handleChange} required></FormTextarea>
-                
-                <PrimaryButton type="submit">
-                  <FaPaperPlane />
-                  <span>Send Message</span>
-                </PrimaryButton>
-              </form>
-            )}
-          </FormCard>
-
-          {/* Right Column - Map/Quick Links */}
-          <div>
-            {/* Quick Links */}
-            <FormCard 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                style={{ marginBottom: '2rem' }}
-            >
-                <h3 className="text-xl font-bold mb-4">Quick Links</h3>
-                <ul className="space-y-3">
-                    <li><a href="/dashboard" className="text-primary-600 hover:text-primary-700 font-medium">How to List a Property →</a></li>
-                    <li><a href="/properties?status=rent" className="text-primary-600 hover:text-primary-700 font-medium">Rental Application Process →</a></li>
-                    <li><a href="/agents" className="text-primary-600 hover:text-primary-700 font-medium">Find an Agent Directly →</a></li>
-                    <li><a href="#" className="text-primary-600 hover:text-primary-700 font-medium">Mortgage Assistance →</a></li>
-                </ul>
-            </FormCard>
-
-            {/* Map Section */}
-            <MapWrapper>
-              <div className="h-64 bg-gray-200 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">📍</div>
-                  <p className="text-gray-600">Interactive Map Integration Here</p>
-                  <p className="text-sm text-gray-500">(Google Maps or Leaflet integration)</p>
-                </div>
+        <section className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-800">Send a message</p>
+            <h2 className="mt-3 text-2xl font-bold text-slate-950 sm:text-3xl">How can we help?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Complete the form and your email app will open with your message prepared.</p>
+            <form onSubmit={handleSubmit} className="mt-7 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-semibold text-slate-700">Your name<input className={inputClass} type="text" name="name" autoComplete="name" placeholder="Full name" value={formData.name} onChange={handleChange} required /></label>
+                <label className="text-sm font-semibold text-slate-700">Email address<input className={inputClass} type="email" name="email" autoComplete="email" placeholder="you@example.com" value={formData.email} onChange={handleChange} required /></label>
               </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold mb-4">Our Locations</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="font-bold mb-2 text-gray-900">Nairobi Headquarters</h4>
-                    <p className="text-gray-600">Westlands, Nairobi, Kenya</p>
-                  </div>
-                  <div>
-                    <h4 className="font-bold mb-2 text-gray-900">Mombasa Branch</h4>
-                    <p className="text-gray-600">Nyali, Mombasa, Kenya</p>
-                  </div>
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-semibold text-slate-700">Phone number <span className="font-normal text-slate-400">(optional)</span><input className={inputClass} type="tel" name="phone" autoComplete="tel" placeholder="Your phone number" value={formData.phone} onChange={handleChange} /></label>
+                <label className="text-sm font-semibold text-slate-700">What is this about?
+                  <select className={inputClass} name="topic" value={formData.topic} onChange={handleChange}>
+                    <option>General inquiry</option><option>Property for sale</option><option>Property for rent</option><option>Connect with an agent</option><option>Transport and moving</option><option>Technical support</option>
+                  </select>
+                </label>
               </div>
-            </MapWrapper>
+              <label className="block text-sm font-semibold text-slate-700">Subject<input className={inputClass} type="text" name="subject" placeholder="How can we help?" value={formData.subject} onChange={handleChange} required /></label>
+              <label className="block text-sm font-semibold text-slate-700">Message<textarea className={`${inputClass} resize-y`} name="message" rows="5" placeholder="Tell us a little more…" value={formData.message} onChange={handleChange} required /></label>
+              <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-900 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-800 sm:w-auto"><Send className="h-4 w-4" /> Prepare email</button>
+            </form>
           </div>
-        </ContactContentGrid>
-      </Container>
-    </PageWrapper>
+
+          <aside className="flex flex-col gap-6">
+            <div className="rounded-3xl bg-emerald-950 p-6 text-white sm:p-8">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 text-emerald-200"><MapPin className="h-6 w-6" /></span>
+              <p className="mt-6 text-xs font-bold uppercase tracking-[.18em] text-emerald-200">Based in Nakuru</p>
+              <h2 className="mt-3 text-2xl font-bold">Local roots. Kenya-wide reach.</h2>
+              <p className="mt-3 text-sm leading-6 text-white/70">MarketMix Real Estates is based in Nakuru, Kenya. We help people connect around property and moving needs in communities across the country.</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-800">Useful next steps</p>
+              <h2 className="mt-3 text-xl font-bold text-slate-950">Go straight to what you need</h2>
+              <div className="mt-5 divide-y divide-slate-100">
+                {[
+                  ['Browse rental properties', '/properties?status=rent'],
+                  ['List or manage a property', '/dashboard'],
+                  ['Find an agent', '/agents'],
+                  ['Plan transport', '/transport'],
+                ].map(([label, to]) => <Link key={to} to={to} className="flex items-center justify-between gap-3 py-3 text-sm font-semibold text-slate-700 transition hover:text-emerald-800"><span>{label}</span><ArrowRight className="h-4 w-4 shrink-0" /></Link>)}
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
   );
 };
 

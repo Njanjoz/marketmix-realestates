@@ -5,6 +5,7 @@ import { Gift, Award, CheckCircle, Clock, Plus, Share2, ArrowRight, ShieldCheck,
 import { getUserReferrals } from '../../services/referralService';
 import SubmitReferralModal from './SubmitReferralModal';
 import toast from 'react-hot-toast';
+import { getPublicAppUrl } from '../../utils/publicUrl';
 
 export default function UserReferralsSection({ currentUser, userProfile }) {
   const [properties, setProperties] = useState([]);
@@ -42,7 +43,7 @@ export default function UserReferralsSection({ currentUser, userProfile }) {
   const availableTokens = tokens.filter(t => t.status === 'APPROVED').length;
 
   const copyReferralLink = (propertyId, referralCode) => {
-    const link = `${window.location.origin}/property/${propertyId}?ref=${referralCode}`;
+    const link = getPublicAppUrl(`/property/${encodeURIComponent(propertyId)}?ref=${encodeURIComponent(referralCode)}`);
     navigator.clipboard.writeText(link);
     toast.success('Referral link copied to clipboard!');
   };

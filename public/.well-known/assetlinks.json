@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.marketmix.realestates",
+      "sha256_cert_fingerprints": [
+        "00:9C:10:FE:D2:4F:3E:9E:6C:C2:6D:3C:73:76:22:A6:D1:82:08:5A:BF:26:C5:69:D5:DE:A8:33:40:49:08:F4"
+      ]
+    }
+  }
+]

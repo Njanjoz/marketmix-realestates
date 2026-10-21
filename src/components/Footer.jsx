@@ -156,15 +156,20 @@ const Footer = () => {
     { name: 'Agents', path: '/agents' },
     { name: 'About Us', path: '/about' },
     { name: 'Contact', path: '/contact' },
-    { name: 'Customer Help', path: '/help' },
     { name: 'Download Android app', path: '/download' },
   ];
   
   const resourcesLinks = [
     { name: 'Mortgage Calculator', path: '/mortgage' },
-    { name: 'Blog & News', path: '/blog' },
-    { name: 'Testimonials', path: '/testimonials' },
+    { name: 'Explore Listings', path: '/explore' },
+    { name: 'Property Viewings', path: '/site-seeing' },
     { name: 'List Your Property', path: '/dashboard?tab=listings' },
+  ];
+
+  const legalLinks = [
+    { name: 'Terms of Service', path: '/terms' },
+    { name: 'Privacy Policy', path: '/privacy' },
+    { name: 'Cookie Notice', path: '/cookies' },
   ];
 
   return (
@@ -190,20 +195,6 @@ const Footer = () => {
               Your trusted partner in finding the perfect property. Dedicated to excellence in real estate.
             </p>
             
-            <div className="flex space-x-4 pt-2">
-              <SocialLink href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook">
-                <Facebook className="w-6 h-6" />
-              </SocialLink>
-              <SocialLink href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Twitter">
-                <Twitter className="w-6 h-6" />
-              </SocialLink>
-              <SocialLink href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
-                <Instagram className="w-6 h-6" />
-              </SocialLink>
-              <SocialLink href="https://linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn">
-                <Linkedin className="w-6 h-6" />
-              </SocialLink>
-            </div>
           </div>
 
           {/* Quick Links */}
@@ -245,27 +236,26 @@ const Footer = () => {
                   </div>
                 ))}
               </div>
+              <div className="border-t border-slate-200/70 pt-4">
+                <h5 className="mb-3 text-sm font-bold text-slate-800">Legal</h5>
+                <div className="space-y-3">
+                  {legalLinks.map((link) => (
+                    <div key={link.name}>
+                      <FooterLink to={link.path}>{link.name}</FooterLink>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Newsletter */}
           <div className="mmx-glass-surface rounded-3xl p-5 sm:p-6">
-            <h4 className="text-lg font-bold mb-5 text-slate-900">Stay Updated</h4>
+            <h4 className="text-lg font-bold mb-5 text-slate-900">Need Help?</h4>
             <p className="text-sm text-slate-600">
-              Subscribe to our newsletter for the latest market insights.
+              Contact our team for help with listings, viewings, bookings, or payments.
             </p>
-            <NewsletterForm>
-              <NewsletterInput
-                type="email"
-                placeholder="Enter your email"
-              />
-              <NewsletterButton>
-                <Mail className="w-5 h-5" />
-              </NewsletterButton>
-            </NewsletterForm>
-            <p className="text-xs text-slate-500 mt-2">
-              Get weekly property updates and exclusive deals
-            </p>
+            <div className="mt-4"><FooterLink to="/contact">Contact MarketMix</FooterLink></div>
           </div>
         </div>
 
@@ -275,16 +265,12 @@ const Footer = () => {
             <BottomBarText>
               &#169; {currentYear} MarketMix Real Estates. All rights reserved.
             </BottomBarText>
-            <div className="flex space-x-6 mt-4 md:mt-0">
-              <FooterLink to="/privacy">
-                Privacy Policy
-              </FooterLink>
-              <FooterLink to="/terms">
-                Terms of Service
-              </FooterLink>
-              <FooterLink to="/cookies">
-                Cookies
-              </FooterLink>
+            <div className="mt-4 flex flex-wrap justify-center gap-x-6 gap-y-2 md:mt-0 md:justify-end">
+              {legalLinks.map((link) => (
+                <FooterLink key={link.name} to={link.path}>
+                  {link.name}
+                </FooterLink>
+              ))}
             </div>
           </div>
         </BottomBar>

@@ -1,0 +1,92 @@
+.dashboard-mobile-shell,
+.dashboard-mobile-shell * {
+  box-sizing: border-box;
+}
+
+.dashboard-mobile-shell {
+  width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.dashboard-mobile-shell > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-mobile-shell img,
+.dashboard-mobile-shell video,
+.dashboard-mobile-shell canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .dashboard-mobile-shell > div[style*="min-height: 100vh"] {
+    padding: 16px 12px 32px !important;
+  }
+
+  .dashboard-mobile-shell [style*="grid-template-columns"] {
+    min-width: 0 !important;
+  }
+
+  .dashboard-mobile-shell [style*="repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-mobile-shell [style*="1fr 1fr"],
+  .dashboard-mobile-shell [style*="1fr 1fr 1fr"],
+  .dashboard-mobile-shell [style*="repeat(3, 1fr)"],
+  .dashboard-mobile-shell [style*="1.4fr 1fr"],
+  .dashboard-mobile-shell [style*="repeat(auto-fill"],
+  .dashboard-mobile-shell [style*="repeat(auto-fit"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-mobile-shell [style*="1fr 70px 96px 80px 60px"] {
+    grid-template-columns: minmax(0, 1fr) 44px 58px 48px 36px !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+  }
+
+  .dashboard-mobile-shell nav {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dashboard-mobile-shell [style*="justify-content: space-between"] {
+    flex-wrap: wrap !important;
+  }
+
+  .dashboard-mobile-shell [style*="padding: 24px"],
+  .dashboard-mobile-shell [style*="padding: '24px"] {
+    padding: 16px !important;
+  }
+
+  .dashboard-mobile-shell button,
+  .dashboard-mobile-shell a {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-mobile-shell button {
+    min-height: 40px;
+  }
+
+  .dashboard-mobile-shell input,
+  .dashboard-mobile-shell select,
+  .dashboard-mobile-shell textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-mobile-shell [style*="repeat(4, 1fr)"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-mobile-shell [style*="1fr 70px 96px 80px 60px"] {
+    grid-template-columns: minmax(0, 1fr) 38px 48px 42px 30px !important;
+    font-size: 9px !important;
+  }
+}

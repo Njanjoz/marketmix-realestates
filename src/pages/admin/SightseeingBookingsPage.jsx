@@ -25,7 +25,7 @@ export default function SightseeingBookingsPage() {
     try {
       const snapshot = await getDocs(collection(db, 'sightseeingBookings'));
       const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
-        .filter((item) => (['available', 'unavailable'].includes(item.availabilityStatus) && item.adminCustomerUpdateStatus !== 'sent') || (item.bookingMode === 'direct_booking' && item.paymentStatus === 'paid' && item.tourStatus !== 'completed') || item.tourStatus === 'awaiting_admin_tour_review')
+        .filter((item) => item.refundStatus === 'REQUESTED' || (['available', 'unavailable'].includes(item.availabilityStatus) && item.adminCustomerUpdateStatus !== 'sent') || (item.bookingMode === 'direct_booking' && item.paymentStatus === 'paid' && item.tourStatus !== 'completed') || item.tourStatus === 'awaiting_admin_tour_review' || ((item.directPaymentReference || item.completionPaymentReference || item.availabilityPaymentReference) && !['PAID', 'PAYOUT_SENT', 'PROCESSING'].includes(item.refundStatus)))
         .sort((a, b) => (b.availabilityCheckedAt?.toMillis?.() || 0) - (a.availabilityCheckedAt?.toMillis?.() || 0));
       setBookings(rows);
     } catch (error) {
@@ -58,6 +58,28 @@ export default function SightseeingBookingsPage() {
     }
   };
 
+  const initiateRefund = async (booking) => {
+    if (!currentUser) return toast.error('Sign in as an admin to continue.');
+    const amount = Number(booking.refundRequestedAmount || booking.packagePaymentAmount || booking.directPaymentAmount || booking.availabilityPaymentAmount || booking.packagePrice || booking.totalPrice || 0);
+    const deduction = Math.round(amount * 0.05);
+    const afterMaintenance = Math.max(0, Math.floor(amount - deduction));
+    const withdrawalFee = afterMaintenance <= 100 ? 10 : afterMaintenance <= 1000 ? 20 : afterMaintenance <= 3000 ? 30 : afterMaintenance <= 5000 ? 50 : afterMaintenance <= 80000 ? 100 : afterMaintenance <= 120000 ? 500 : 1000;
+    const net = Math.max(0, afterMaintenance - withdrawalFee);
+    if (net < 1) return toast.error('The payment is too small for the configured maintenance and withdrawal deductions. Contact support for review.');
+    if (!window.confirm(`Send a KSh ${net.toLocaleString('en-KE')} refund to the customer's M-Pesa number?\n\nPaid: KSh ${amount.toLocaleString('en-KE')}\n5% platform maintenance: KSh ${deduction.toLocaleString('en-KE')}\nM-Pesa withdrawal fee: KSh ${withdrawalFee.toLocaleString('en-KE')}\nCustomer receives: KSh ${net.toLocaleString('en-KE')}`)) return;
+    setSendingId(booking.id);
+    try {
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`${BACKEND}/api/bookings/site-seeing/${encodeURIComponent(booking.id)}/refund`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.message || 'Could not initiate refund.');
+      toast.success(`IntaSend refund initiated: KSh ${Number(result.refund.netAmount).toLocaleString('en-KE')}.`);
+      await loadBookings();
+    } catch (error) {
+      toast.error(error.message || 'Could not initiate refund.');
+    } finally { setSendingId(''); }
+  };
+
   return <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div><p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-800">MarketMix Real Estates</p><h1 className="mt-1 text-2xl font-extrabold text-slate-950">Viewing evidence review</h1><p className="mt-1 text-sm text-slate-600">Review live room photos and the YouTube video before confirming availability. Approved evidence is shared with the customer, and the seller receives the KSh 25 vacancy-confirmation payout.</p></div>
@@ -72,6 +94,7 @@ export default function SightseeingBookingsPage() {
         </div>
         {booking.availabilityStatus === 'available' && <div className="mt-4 space-y-3">{booking.availabilityVideoUrl && <div><p className="mb-2 text-xs font-bold text-slate-700">Live empty-room video evidence</p><a className="text-sm font-bold text-emerald-800 underline" href={booking.availabilityVideoUrl} target="_blank" rel="noreferrer">Open YouTube evidence video</a>{toYouTubeEmbedUrl(booking.availabilityVideoUrl) && <div className="mt-2 aspect-video max-w-2xl overflow-hidden rounded-xl bg-black"><iframe title={`Vacancy evidence for ${booking.propertyTitle || 'property'}`} className="h-full w-full" src={toYouTubeEmbedUrl(booking.availabilityVideoUrl)} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></div>}</div>}{(booking.availabilityEvidencePhotoUrls || []).length > 0 && <div><p className="mb-2 text-xs font-bold text-slate-700">Vacancy confirmation photos</p><div className="flex flex-wrap gap-3">{booking.availabilityEvidencePhotoUrls.map((url, index) => <a key={`${url}-${index}`} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Vacancy evidence ${index + 1}`} className="h-28 w-36 rounded-lg border object-cover" /></a>)}</div></div>}</div>}
         {booking.tourStatus === 'awaiting_admin_tour_review' && <div className="mt-4"><p className="mb-2 text-xs font-bold text-slate-700">Tour completion photos</p><div className="flex flex-wrap gap-3">{(booking.tourEvidenceUrls || []).map((url, index) => <a key={`${url}-${index}`} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Tour evidence ${index + 1}`} className="h-28 w-36 rounded-lg border object-cover" /></a>)}</div></div>}
+        {(booking.directPaymentReference || booking.completionPaymentReference || booking.availabilityPaymentReference) && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><p><strong>Site-seeing refund:</strong> KSh {Number(booking.refundRequestedAmount || booking.packagePaymentAmount || booking.directPaymentAmount || booking.availabilityPaymentAmount || booking.packagePrice || booking.totalPrice || 0).toLocaleString('en-KE')} less 5% platform maintenance and the configured M-Pesa withdrawal fee. {booking.refundRequestLate && <strong>Submitted after the 24-hour deadline; review case by case. </strong>}Legally required full refunds are not reduced.</p>{booking.refundStatus ? <p className="mt-1 font-bold">Refund status: {booking.refundStatus}{booking.refundTrackingId ? ` · ${booking.refundTrackingId}` : ''}</p> : <button type="button" onClick={() => initiateRefund(booking)} disabled={sendingId === booking.id} className="mt-2 rounded-lg bg-amber-900 px-3 py-2 font-bold text-white disabled:opacity-60">{sendingId === booking.id ? 'Processing…' : 'Approve & send refund'}</button>}</div>}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <p className="text-xs text-slate-600">{booking.tourStatus === 'awaiting_admin_tour_review' ? 'Review tour completion photos and release the booking assignment. The separate site-seeing payment is credited after tour approval.' : booking.bookingMode === 'direct_booking' ? 'The customer skipped vacancy confirmation. The seller has been notified; vacancy is not guaranteed.' : booking.availabilityStatus === 'available' ? 'Confirm the empty-room photos and video. Approval pays the KSh 25 vacancy credit and sends the evidence and visit-booking link to the customer.' : 'Unavailable reports earn no vacancy confirmation credit.'}</p>
           {booking.bookingMode === 'direct_booking' && booking.tourStatus !== 'awaiting_admin_tour_review' ? <span className="text-xs font-bold text-sky-900">Seller notified · no vacancy verification requested</span> : <button type="button" onClick={() => notifyCustomer(booking)} disabled={sendingId === booking.id} className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{sendingId === booking.id ? <RefreshCw size={15} className="animate-spin" /> : booking.tourStatus === 'awaiting_admin_tour_review' || booking.availabilityStatus === 'available' ? <CheckCircle2 size={15} /> : <Send size={15} />}{sendingId === booking.id ? 'Processing…' : booking.tourStatus === 'awaiting_admin_tour_review' ? 'Approve tour evidence, credit agent & release booking' : booking.availabilityStatus === 'available' ? 'Approve vacancy evidence, pay KSh 25 & notify customer' : 'Confirm unavailable & notify customer'}</button>}

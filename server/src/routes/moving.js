@@ -1,8 +1,48 @@
 // server/src/routes/moving.js
 import express from 'express';
 import admin from 'firebase-admin';
+import process from 'node:process';
 
 const router = express.Router();
+
+async function queueMovingWhatsApp(phone, title, message) {
+  if (!phone) return false;
+  try {
+    const backend = process.env.WHATSAPP_NOTIFY_BACKEND || 'https://backened-lt67.onrender.com';
+    const response = await fetch(`${backend}/api/whatsapp/notify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, title, message }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('Could not queue moving WhatsApp:', error.message);
+    return false;
+  }
+}
+
+async function sendMovingQuoteEmail(email, quote, bookingUrl) {
+  if (!email || !process.env.BREVO_API_KEY) return false;
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: 'MarketMix Moving', email: process.env.SENDER_MOVING || 'support@marketmix.site' },
+        to: [{ email }], subject: 'Your MarketMix moving quote is ready',
+        htmlContent: `<p>Your MarketMix moving quote is ready.</p><p>${quote}</p><p>Pickup and destination labels are the location names provided with your request. Trip distance is estimated from the map pins.</p><p><a href="${bookingUrl}">Review the quote and book your move</a></p><p>The 8% MarketMix commission and applicable driver withdrawal charge are deducted from driver payout. The booking page shows the payment total before you pay.</p>`,
+      }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('Could not email moving quote:', error.message);
+    return false;
+  }
+}
+
+function movingWithdrawalFee(amount) {
+  const value = Math.max(0, Number(amount) || 0);
+  return value <= 100 ? 10 : value <= 1000 ? 20 : value <= 3000 ? 30 : value <= 5000 ? 50 : value <= 80000 ? 100 : value <= 120000 ? 500 : 1000;
+}
 
 const getAuthUser = async (req) => {
   const authHeader = req.headers.authorization;
@@ -156,7 +196,11 @@ router.post('/api/moving/dispatch', async (req, res) => {
     const areaDrivers = nearbyDrivers.filter((driver) => driverCanCarryRequest(driver, request));
     if (!areaDrivers.length) {
       const alertRef = db.collection('transportCapacityAlerts').doc(requestId);
-      const driverContacts = nearbyDrivers.map((driver) => {
+      const existingAlert = await alertRef.get();
+      // If the pickup area has no compatible match, give admin the closest
+      // approved drivers from anywhere so the request can still be coordinated.
+      const fallbackDrivers = driversSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const driverContacts = (nearbyDrivers.length ? nearbyDrivers : fallbackDrivers).map((driver) => {
         const profile = driver.driverProfile || {};
         const driverDistanceKm = movingDistanceKm(driver.driverLiveLocation || profile.workCoordinates || driver.workCoordinates, request.pickupCoordinates);
         const lastSeen = driver.driverLastSeenAt?.toMillis?.() || 0;
@@ -171,21 +215,46 @@ router.post('/api/moving/dispatch', async (req, res) => {
           driverDistanceKm: driverDistanceKm == null ? null : Math.round(driverDistanceKm * 10) / 10,
           online: driver.driverOnline === true && lastSeen >= Date.now() - 5 * 60 * 1000,
           workArea: [profile.workArea, profile.workSubCounty, profile.workCounty].filter(Boolean).join(', '),
+          canCarryRequest: driverCanCarryRequest(driver, request),
         };
-      }).sort((a, b) => Number(b.online) - Number(a.online) || (a.driverDistanceKm ?? Infinity) - (b.driverDistanceKm ?? Infinity)).slice(0, 30);
+      }).sort((a, b) => (a.driverDistanceKm ?? Infinity) - (b.driverDistanceKm ?? Infinity) || Number(b.online) - Number(a.online)).slice(0, 30);
+      const closestDriver = driverContacts[0] || null;
+      const capacityMessage = areaDrivers.length
+        ? 'Nearby approved drivers were found, but none can carry the requested items. Review their contact details and coordinate a suitable vehicle.'
+        : closestDriver
+          ? `No approved driver matched the pickup area. Closest listed driver: ${closestDriver.name}${closestDriver.phone ? ` · ${closestDriver.phone}` : ' · no contact number listed'}${closestDriver.driverDistanceKm != null ? ` · ${closestDriver.driverDistanceKm} km away` : ''}. Admin follow-up required.`
+          : 'No approved drivers are registered yet. Admin follow-up required.';
       await alertRef.set({
         requestId,
         status: 'PENDING',
+        alertReason: areaDrivers.length ? 'NO_CAPACITY_MATCH' : 'NO_PICKUP_AREA_MATCH',
+        adminMessage: capacityMessage,
         customerName: String(request.userName || 'Customer').slice(0, 120),
         pickupLabel: String(request.pickupLabel || '').slice(0, 200),
         destinationLabel: String(request.destinationLabel || request.destinationTitle || '').slice(0, 200),
         vehicleLabel: String(request.vehicleLabel || '').slice(0, 60),
         items: Object.entries(request.items || {}).filter(([, quantity]) => Number(quantity) > 0).map(([id, quantity]) => ({ id, quantity: Number(quantity) })),
         nearbyDrivers: driverContacts,
-        nearbyDriverCount: nearbyDrivers.length,
+        nearbyDriverCount: driverContacts.length,
+        closestDriver,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      if (!existingAlert.exists) {
+        const adminPhone = process.env.ADMIN_PHONE || process.env.ORDERS_PHONE || '254115988107';
+        const driversText = driverContacts.slice(0, 5).map((driver, index) => `${index + 1}. ${driver.name} · ${driver.vehicleLabel}${driver.plate ? ` (${driver.plate})` : ''} · ${driver.phone || 'no phone'} · ${driver.driverDistanceKm == null ? 'distance unknown' : `${driver.driverDistanceKm} km`}`).join('\n');
+        queueMovingWhatsApp(adminPhone, 'Move request needs driver matching', [
+          `Customer: ${request.userName || 'Customer'} · ${request.userPhone || request.phoneNumber || 'phone not on request'}`,
+          `Pickup landmark / location: ${request.pickupLabel || 'Not specified'}`,
+          `Destination landmark / location: ${request.destinationLabel || request.destinationTitle || 'Not specified'}`,
+          'Use the customer-entered location names to identify the places; map coordinates are used for distance calculations.',
+          `Vehicle: ${request.vehicleLabel || 'Any suitable vehicle'}`,
+          `Items: ${Object.entries(request.items || {}).filter(([, quantity]) => Number(quantity) > 0).map(([item, quantity]) => `${item} × ${quantity}`).join(', ') || 'Not listed'}`,
+          `Reason: ${capacityMessage}`,
+          'Closest approved drivers:', driversText || 'No approved drivers found.',
+          `Admin dashboard: ${process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app'}/admin`,
+        ].join('\n'), { kind: 'moving-capacity-admin', requestId }).catch(() => {});
+      }
       await requestRef.update({
         offerDriverIds: [],
         offerDispatchMode: 'admin-capacity-review',
@@ -232,6 +301,104 @@ router.post('/api/moving/dispatch', async (req, res) => {
   } catch (error) {
     console.error('Dispatch transport request error:', error);
     return res.status(500).json({ success: false, message: error.message || 'Driver matching failed' });
+  }
+});
+
+// Admin searches approved drivers, ranked by distance from the request pickup.
+router.get('/api/moving/admin/driver-candidates', async (req, res) => {
+  try {
+    const user = await getAuthUser(req);
+    await requireMovingAdmin(user);
+    const requestId = String(req.query.requestId || '');
+    if (!requestId) return res.status(400).json({ success: false, message: 'requestId is required.' });
+    const db = admin.firestore();
+    const requestSnap = await db.collection('transportRequests').doc(requestId).get();
+    if (!requestSnap.exists) return res.status(404).json({ success: false, message: 'Move request not found.' });
+    const request = requestSnap.data() || {};
+    const snapshot = await db.collection('users').where('driverApproved', '==', true).get();
+    const drivers = snapshot.docs.map((entry) => {
+      const driver = entry.data() || {};
+      const profile = driver.driverProfile || {};
+      const distance = movingDistanceKm(profile.workCoordinates || driver.workCoordinates, request.pickupCoordinates);
+      const workArea = [profile.workArea || driver.workArea, profile.workWard || driver.workWard, profile.workSubCounty || driver.workSubCounty, profile.workCounty || driver.workCounty].filter(Boolean).join(', ');
+      return {
+        driverId: entry.id,
+        name: String(driver.name || driver.displayName || 'Driver').slice(0, 80),
+        phone: String(profile.phone || driver.phoneNumber || driver.phone || '').slice(0, 32),
+        vehicleLabel: String(profile.vehicleTemplate || profile.vehicleId || 'Vehicle').slice(0, 60),
+        plate: String(profile.plate || '').slice(0, 20),
+        workArea,
+        driverDistanceKm: distance == null ? null : Math.round(distance * 10) / 10,
+        online: driver.driverOnline === true && (driver.driverLastSeenAt?.toMillis?.() || 0) >= Date.now() - 5 * 60 * 1000,
+        canCarryRequest: driverCanCarryRequest(driver, request),
+      };
+    }).sort((a, b) => (a.driverDistanceKm ?? Infinity) - (b.driverDistanceKm ?? Infinity) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+    return res.json({ success: true, drivers });
+  } catch (error) {
+    return res.status(403).json({ success: false, message: error.message || 'Could not search approved drivers.' });
+  }
+});
+
+// Admin assigns one of the approved fallback drivers and publishes a customer quote.
+router.post('/api/moving/admin/assign-quote', async (req, res) => {
+  try {
+    const user = await getAuthUser(req);
+    await requireMovingAdmin(user);
+    const { requestId, driverId, quoteMode, amount, ratePerKm } = req.body || {};
+    if (!requestId || !driverId || !['fixed', 'per_km'].includes(quoteMode)) {
+      return res.status(400).json({ success: false, message: 'Choose a request, driver, and quote type.' });
+    }
+    const db = admin.firestore();
+    const requestRef = db.collection('transportRequests').doc(String(requestId));
+    const alertRef = db.collection('transportCapacityAlerts').doc(String(requestId));
+    const [requestSnap, alertSnap, driverSnap] = await Promise.all([requestRef.get(), alertRef.get(), db.collection('users').doc(String(driverId)).get()]);
+    if (!requestSnap.exists || !alertSnap.exists) return res.status(404).json({ success: false, message: 'Move request or capacity alert not found.' });
+    if (!driverSnap.exists || driverSnap.data().driverApproved !== true) return res.status(409).json({ success: false, message: 'Choose a currently approved driver.' });
+    const request = requestSnap.data() || {};
+    if (!['REQUESTED', 'QUOTED'].includes(request.status) || request.paymentStatus === 'paid') return res.status(409).json({ success: false, message: 'This move is no longer available for a new quote.' });
+    const driver = driverSnap.data() || {};
+    const profile = driver.driverProfile || {};
+    const straightDistance = movingDistanceKm(request.pickupCoordinates, request.destinationCoordinates);
+    if (quoteMode === 'per_km' && (!Number.isFinite(straightDistance) || !(Number(ratePerKm) > 0))) {
+      return res.status(400).json({ success: false, message: 'A route and positive per-kilometre rate are required.' });
+    }
+    const routeKm = Number.isFinite(straightDistance) ? Math.round(straightDistance * 1.15 * 10) / 10 : null;
+    const quote = quoteMode === 'per_km' ? Math.ceil(routeKm * Number(ratePerKm)) : Math.ceil(Number(amount));
+    if (!Number.isFinite(quote) || quote < 1 || quote > 100000000) return res.status(400).json({ success: false, message: 'Enter a valid quote amount.' });
+    const driverName = String(driver.name || driver.displayName || 'Driver').slice(0, 120);
+    const driverPhone = String(profile.phone || driver.phoneNumber || driver.phone || '').slice(0, 32);
+    const vehicleLabel = String(profile.vehicleTemplate || profile.vehicleId || request.vehicleLabel || 'Vehicle').slice(0, 60);
+    await db.runTransaction(async (transaction) => {
+      const fresh = await transaction.get(requestRef);
+      if (!fresh.exists || !['REQUESTED', 'QUOTED'].includes(fresh.data().status) || fresh.data().paymentStatus === 'paid') throw new Error('This move is no longer available for a new quote.');
+      transaction.update(requestRef, {
+        status: 'QUOTED', quotedPrice: quote, quoteMode,
+        quoteRatePerKm: quoteMode === 'per_km' ? Number(ratePerKm) : null,
+        quotedRouteKm: routeKm, quotedDriverId: String(driverId), quotedDriverName: driverName,
+        driverUserId: null, driverName, driverPhone, vehicleLabel,
+        quoteDecision: 'PENDING', adminAssignedDriver: true,
+        driverAcceptsOnlinePayments: true,
+        quotePublishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      transaction.update(alertRef, { status: 'ASSIGNED', assignedDriverId: String(driverId), assignedDriverName: driverName, quoteAmount: quote, quoteMode, reviewedBy: user.uid, resolvedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+    const customerPhone = request.userPhone || request.phoneNumber || request.customerPhone || '';
+    const appUrl = process.env.REAL_ESTATE_APP_URL || 'https://marketmix-realestates.vercel.app';
+    const bookingUrl = `${appUrl}/transport`;
+    const quoteDescription = quoteMode === 'per_km' ? `${routeKm} km × KSh ${Number(ratePerKm).toLocaleString('en-KE')}/km` : 'Fixed trip fare';
+    const customerMessage = `Your MarketMix moving quote is ready.\n\nDriver: ${driverName} · ${vehicleLabel}${driverPhone ? ` · ${driverPhone}` : ''}\nPickup landmark / location: ${request.pickupLabel || 'Pickup details to be confirmed'}\nDestination landmark / location: ${request.destinationLabel || request.destinationTitle || 'Destination details to be confirmed'}\nQuote: KSh ${quote.toLocaleString('en-KE')} (${quoteDescription})\n\nReview and accept the quote, then book and pay securely here: ${bookingUrl}\nThe trip distance is estimated from the map pins. The 8% MarketMix commission and the driver's applicable withdrawal charge are deducted from the driver payout. Your booking page shows the payment total before you pay.`;
+    const hasPhone = !!customerPhone;
+    const whatsappQueued = hasPhone ? await queueMovingWhatsApp(customerPhone, 'Your moving quote is ready', customerMessage) : false;
+    if (driverPhone) {
+      queueMovingWhatsApp(driverPhone, 'MarketMix move request assigned', `A move request has been assigned to you by MarketMix admin.\n\nCustomer: ${request.userName || 'Customer'}\nPickup landmark / location: ${request.pickupLabel || 'Pickup details to be confirmed'}\nDestination landmark / location: ${request.destinationLabel || request.destinationTitle || 'Destination details to be confirmed'}\nItems: ${Object.entries(request.items || {}).filter(([, quantity]) => Number(quantity) > 0).map(([item, quantity]) => `${item} × ${quantity}`).join(', ') || 'Not listed'}\nCustomer quote: KSh ${quote.toLocaleString('en-KE')}\nTrip distance was estimated from the map pins. Please confirm availability and contact the customer after they accept. Website payment and trip payout will be tracked in your MarketMix driver account.`).catch(() => {});
+    }
+    const customerEmail = request.userEmail || request.customerEmail || '';
+    const emailSent = customerEmail ? await sendMovingQuoteEmail(customerEmail, `KSh ${quote.toLocaleString('en-KE')} · ${quoteDescription}`, bookingUrl) : false;
+    return res.json({ success: true, quote, quoteMode, routeKm, driverName, driverPhone, bookingUrl, whatsappQueued, emailSent, hasPhone, hasEmail: !!customerEmail });
+  } catch (error) {
+    console.error('Admin moving assignment failed:', error);
+    return res.status(400).json({ success: false, message: error.message || 'Could not assign driver and send quote.' });
   }
 });
 
@@ -344,7 +511,7 @@ router.post('/api/moving/quote/respond', async (req, res) => {
           driverPhone: driver.phoneNumber || driver.phone || driver.driverProfile?.phone || '',
           vehicleLabel: driver.driverProfile?.vehicleTemplate || request.vehicleLabel || 'Vehicle',
           status: 'DRIVER_ASSIGNED', quoteDecision: 'ACCEPTED',
-          driverAcceptsOnlinePayments: driver.driverProfile?.acceptsOnlinePayments === true,
+          driverAcceptsOnlinePayments: request.adminAssignedDriver === true || driver.driverProfile?.acceptsOnlinePayments === true,
           assignedAt: admin.firestore.FieldValue.serverTimestamp(),
           quoteRespondedAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -410,7 +577,7 @@ router.post('/api/moving/payments/checkout', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Online payment is available after you accept the driver quote.' });
     }
     const driverSnap = await db.collection('users').doc(request.driverUserId).get();
-    if (!driverSnap.exists || driverSnap.data().driverProfile?.acceptsOnlinePayments !== true) {
+    if (!driverSnap.exists || (request.adminAssignedDriver !== true && driverSnap.data().driverProfile?.acceptsOnlinePayments !== true)) {
       return res.status(409).json({ success: false, message: 'This driver has not enabled website payments.' });
     }
     if (request.paymentStatus === 'paid') return res.status(409).json({ success: false, message: 'This move has already been paid.' });
@@ -447,10 +614,13 @@ router.post('/api/moving/payments/checkout', async (req, res) => {
       console.error('IntaSend transport checkout failed:', providerData.message || providerResponse.status);
       return res.status(502).json({ success: false, message: providerData.message || 'Could not start the M-Pesa prompt.' });
     }
+    const commissionAmount = Math.round(amount * 0.08);
+    const withdrawalFeeBase = Math.max(0, amount - commissionAmount);
+    const withdrawalFee = movingWithdrawalFee(withdrawalFeeBase);
     await db.collection('transportPayments').doc(paymentId).create({
       requestId: String(requestId), buyerId: user.uid, sellerId: request.driverUserId,
-      amount, currency: 'KES', commissionRate: 8, commissionAmount: Math.round(amount * 0.08),
-      sellerNetAmount: amount - Math.round(amount * 0.08), invoiceId: providerData.invoice.invoice_id,
+      amount, currency: 'KES', commissionRate: 8, commissionAmount,
+      withdrawalFee, withdrawalFeeBase, sellerNetAmount: Math.max(0, withdrawalFeeBase - withdrawalFee), invoiceId: providerData.invoice.invoice_id,
       status: 'PENDING', createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     await requestRef.update({ paymentId, paymentStatus: 'pending', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -509,13 +679,15 @@ router.post('/api/moving/payments/withdraw', async (req, res) => {
       if (withdrawalSnap.exists) throw new Error('A payout request already exists for this move.');
       const amount = Math.ceil(Number(request.quotedPrice));
       const commissionAmount = Math.round(amount * 0.08);
+      const withdrawalBase = Math.max(0, amount - commissionAmount);
+      const withdrawalFee = movingWithdrawalFee(withdrawalBase);
       const driver = await transaction.get(db.collection('users').doc(user.uid));
       if (!driver.exists) throw new Error('Driver account not found.');
       const phone = driver.data().driverProfile?.phone || driver.data().phone || driver.data().phoneNumber;
       if (!phone) throw new Error('Add your M-Pesa number to Driver Settings before requesting payout.');
-      transaction.create(withdrawalRef, { requestId: String(requestId), sellerId: user.uid, sellerName: driver.data().name || driver.data().displayName || 'MarketMix Driver', phone, grossAmount: amount, commissionRate: 8, commissionAmount, netAmount: amount - commissionAmount, currency: 'KES', status: 'PENDING_APPROVAL', createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.create(withdrawalRef, { requestId: String(requestId), sellerId: user.uid, sellerName: driver.data().name || driver.data().displayName || 'MarketMix Driver', phone, grossAmount: amount, commissionRate: 8, commissionAmount, withdrawalFee, withdrawalFeeBase: withdrawalBase, netAmount: Math.max(0, withdrawalBase - withdrawalFee), currency: 'KES', status: 'PENDING_APPROVAL', createdAt: admin.firestore.FieldValue.serverTimestamp() });
       transaction.update(requestRef, { withdrawalStatus: 'PENDING_APPROVAL', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-      return { grossAmount: amount, commissionAmount, netAmount: amount - commissionAmount };
+      return { grossAmount: amount, commissionAmount, withdrawalFee, netAmount: Math.max(0, withdrawalBase - withdrawalFee) };
     });
     return res.json({ success: true, ...result, message: 'Payout request sent for approval.' });
   } catch (error) {

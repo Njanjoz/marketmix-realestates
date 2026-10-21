@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Search, MapPin, DollarSign, Home, Filter, X } from 'lucide-react';
+import { PROPERTY_TYPES } from './seller/constants/propertyTaxonomy';
 
 const PropertyFilter = ({ filters, onFilterChange }) => {
   const [localFilters, setLocalFilters] = useState({
@@ -7,7 +8,7 @@ const PropertyFilter = ({ filters, onFilterChange }) => {
     minPrice: filters?.minPrice || '',
     maxPrice: filters?.maxPrice || '',
     bedrooms: filters?.bedrooms || 'any',
-    propertyType: filters?.type || 'all',
+    propertyType: filters?.propertyType || 'all',
     status: filters?.status || 'all'
   });
 
@@ -138,12 +139,8 @@ const PropertyFilter = ({ filters, onFilterChange }) => {
             onChange={handleChange}
             className="w-full p-2 border rounded-lg"
           >
-            <option value="all">All Types</option>
-            <option value="house">House</option>
-            <option value="apartment">Apartment</option>
-            <option value="villa">Villa</option>
-            <option value="commercial">Commercial</option>
-            <option value="land">Land</option>
+            <option value="all">Choose a property category</option>
+            {PROPERTY_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
           </select>
         </div>
         

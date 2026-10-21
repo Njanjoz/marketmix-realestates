@@ -1,24 +1,42 @@
 // src/components/seller/steps/StepLocationTransport.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Field, TextInput, Select } from '../shared/Field';
 import CheckboxGrid from '../shared/CheckboxGrid';
 import LocationPicker from '../../LocationPicker';
+import { hasTwoWordLocation } from '../locationValidation';
 import {
   ROAD_TYPES, ROAD_CONDITIONS, STREET_LIGHTING, FLOODING_HISTORY,
   TRANSPORT_OPTIONS,
 } from '../constants/propertyTaxonomy';
 
 const StepLocationTransport = ({ data, update }) => {
+  const [keywordDraft, setKeywordDraft] = useState('');
+  const keywords = Array.isArray(data.searchKeywords) ? data.searchKeywords : [];
+  const locationError = (data.location || data.coordinates) && !hasTwoWordLocation(data.location)
+    ? 'Enter at least two words, such as “Rhonda Mazembe”.'
+    : '';
+  const addKeywords = (rawValue) => {
+    const additions = String(rawValue || '').split(/[,\n]/).map((word) => word.trim()).filter(Boolean);
+    if (!additions.length) return;
+    const seen = new Set(keywords.map((word) => String(word).toLocaleLowerCase()));
+    const next = [...keywords];
+    additions.forEach((word) => {
+      const key = word.toLocaleLowerCase();
+      if (!seen.has(key)) { seen.add(key); next.push(word); }
+    });
+    update({ searchKeywords: next });
+    setKeywordDraft('');
+  };
+
   return (
     <div className="space-y-5">
       {/* Location Picker */}
-      <Field label="Property location" required hint="Use GPS or search to set map coordinates. If no place name is found, enter the neighborhood or a nearby landmark.">
+      <Field label="Map pin" hint="Set the coordinates customers will use for distance calculations. Then enter a recognizable location name below.">
         <LocationPicker
           initialLocation={data.locationData || null}
           onLocationSelect={(loc) => {
             update({
               locationData: loc,
-              location: loc?.address || '',
               coordinates: loc?.lat != null && loc?.lng != null ? { lat: loc.lat, lng: loc.lng } : null,
               county: loc?.county || data.county || '',
               constituency: loc?.constituency || data.constituency || '',
@@ -32,6 +50,17 @@ const StepLocationTransport = ({ data, update }) => {
             });
           }}
           label=""
+        />
+      </Field>
+
+      <Field label="Landmark or location name" required error={locationError} hint="Enter at least two words so customers can recognize the area, for example “Rhonda Mazembe”.">
+        <TextInput
+          id="location"
+          value={data.location || ''}
+          onChange={(value) => update({ location: value })}
+          placeholder="e.g. Rhonda Mazembe"
+          maxLength={160}
+          aria-invalid={Boolean(locationError)}
         />
       </Field>
 
@@ -53,6 +82,28 @@ const StepLocationTransport = ({ data, update }) => {
         </Field>
         <Field label="Nearest road">
           <TextInput value={data.nearestRoad} onChange={(v) => update({ nearestRoad: v })} placeholder="e.g. Pipeline Road" />
+        </Field>
+        <Field label="Other names people may search" hint="Add as many local names, landmarks, or informal area names as you like. Press Enter or use a comma after each one.">
+          <div className="rounded-lg border border-gray-300 bg-white p-2">
+            {keywords.length > 0 && <div className="mb-2 flex flex-wrap gap-2">
+              {keywords.map((keyword, index) => <span key={`${keyword}-${index}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm text-emerald-800">
+                {keyword}
+                <button type="button" aria-label={`Remove ${keyword}`} onClick={() => update({ searchKeywords: keywords.filter((_, i) => i !== index) })} className="ml-1 font-bold text-emerald-700">×</button>
+              </span>)}
+            </div>}
+            <input
+              value={keywordDraft}
+              onChange={(event) => setKeywordDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); addKeywords(keywordDraft); }
+                if (event.key === 'Backspace' && !keywordDraft && keywords.length) update({ searchKeywords: keywords.slice(0, -1) });
+              }}
+              onBlur={() => addKeywords(keywordDraft)}
+              placeholder="e.g. Kwa Bee, near the market"
+              className="w-full border-0 px-2 py-2 text-sm outline-none focus:ring-0"
+              aria-label="Add alternate property search names"
+            />
+          </div>
         </Field>
       </div>
 

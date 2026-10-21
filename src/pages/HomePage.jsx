@@ -1,25 +1,31 @@
 // src/pages/HomePage.jsx - FULL FIXED & ENHANCED VERSION
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { 
-  Search, Home, Building2, Building, TreePine, Hotel, Store, 
+  Search, Home, Building2, Building, TreePine, Hotel,
   ChevronRight, Star, Bed, Bath, Square, Loader, 
   Award, Users, TrendingUp, Phone, Mail, MapPin as MapPinIcon,
-  Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle, Compass, ArrowRight, MapPin
+  Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle, Compass, ArrowRight, MapPin, Clock3
 } from 'lucide-react';
 import { db } from '../firebase/config';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { resolvePropertyImage } from '../utils/propertyMapping';
 import { getListingType } from '../utils/listingType';
 import MovingIllustration from '../components/moving/MovingIllustration';
 import '../components/moving/LiquidGlass.css';
 
 const HomePage = () => {
+  const navigate = useNavigate();
+  const { userProfile } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [properties, setProperties] = useState([]);
+  const [searchProperties, setSearchProperties] = useState([]);
   const [heroProperties, setHeroProperties] = useState([]);
   const [trendingProperties, setTrendingProperties] = useState([]);
+  const [sightseeingCampaigns, setSightseeingCampaigns] = useState([]);
+  const [sightseeingCampaignStats, setSightseeingCampaignStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [homepageSettings, setHomepageSettings] = useState({
     hero: {
@@ -37,10 +43,10 @@ const HomePage = () => {
     propertyTypes: [
       { name: 'APARTMENTS', type: 'apartment', enabled: true },
       { name: 'HOUSES', type: 'house', enabled: true },
+      { name: 'STUDENT HOUSING', type: 'student_hostel', enabled: true },
       { name: 'COMMERCIAL', type: 'commercial', enabled: true },
       { name: 'LAND', type: 'land', enabled: true },
-      { name: 'VILLAS', type: 'villa', enabled: true },
-      { name: 'OFFICES', type: 'office', enabled: true }
+      { name: 'SHORT STAYS', type: 'urbannest', enabled: true }
     ],
     cta: {
       title: 'Begin Your Property Journey',
@@ -64,7 +70,6 @@ const HomePage = () => {
     }
   });
 
-  const [typeCounts, setTypeCounts] = useState({});
 
   const getPropertyImage = (property) => {
     return resolvePropertyImage(property) || null;
@@ -110,6 +115,8 @@ const HomePage = () => {
         return dateB - dateA;
       });
 
+      setSearchProperties(sortedProperties);
+
       // Filter by admin assigned homepage placements
       const featured = sortedProperties.filter(
         (p) => p.featured || p.homepagePlacements?.includes('featured') || (!p.homepagePlacements && sortedProperties.indexOf(p) < 6)
@@ -120,14 +127,6 @@ const HomePage = () => {
       setProperties(featured.slice(0, 6));
       setHeroProperties(hero);
       setTrendingProperties(trending);
-      
-      // Count properties by type
-      const counts = {};
-      allApproved.forEach(property => {
-        const type = property.propertyType || 'apartment';
-        counts[type] = (counts[type] || 0) + 1;
-      });
-      setTypeCounts(counts);
       
     } catch (error) {
       console.error('Error loading properties:', error);
@@ -142,11 +141,45 @@ const HomePage = () => {
     loadProperties();
   }, []);
 
+  useEffect(() => {
+    const unsubscribePackages = onSnapshot(collection(db, 'visitCampaigns'), (snapshot) => {
+      const eatToday = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const activeCampaigns = snapshot.docs
+        .map((entry) => ({ id: entry.id, ...entry.data() }))
+        .filter((item) => item.active !== false && item.startDate && item.endDate && item.endDate >= eatToday)
+        .sort((a, b) => String(a.endDate).localeCompare(String(b.endDate)));
+      setSightseeingCampaigns(activeCampaigns);
+    }, (error) => console.error('Could not load visit campaigns:', error));
+    const unsubscribeStats = onSnapshot(collection(db, 'visitCampaignStats'), (snapshot) => {
+      const next = {};
+      snapshot.docs.forEach((entry) => { next[entry.id] = Number(entry.data()?.registeredCount) || 0; });
+      setSightseeingCampaignStats(next);
+    }, (error) => console.error('Could not load live sightseeing campaign counts:', error));
+    return () => { unsubscribePackages(); unsubscribeStats(); };
+  }, []);
+
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      window.location.href = `/properties?search=${encodeURIComponent(searchQuery)}`;
+      navigate(`/properties?search=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
+
+  const searchSuggestions = useMemo(() => {
+    const term = searchQuery.trim().toLocaleLowerCase();
+    if (term.length < 2) return [];
+    return searchProperties
+      .map((property) => {
+        const words = Array.isArray(property.searchKeywords) ? property.searchKeywords : [];
+        const matchedKeyword = words.find((word) => String(word).toLocaleLowerCase().includes(term));
+        const locationText = [property.location, property.town, property.estate, property.ward, property.county]
+          .filter(Boolean).join(', ');
+        const searchable = [property.title, locationText, property.propertyType, property.type, ...words]
+          .filter(Boolean).join(' ').toLocaleLowerCase();
+        return searchable.includes(term) ? { ...property, locationText, matchedKeyword } : null;
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+  }, [searchProperties, searchQuery]);
 
   const getStatIcon = (iconName) => {
     if (iconName === 'Building') return <Building className="w-8 h-8 text-white" />;
@@ -157,21 +190,21 @@ const HomePage = () => {
   };
 
   const propertyTypeIcons = {
-    apartments: <Building2 className="w-8 h-8" />,
-    houses: <Home className="w-8 h-8" />,
+    apartment: <Building2 className="w-8 h-8" />,
+    house: <Home className="w-8 h-8" />,
+    student_hostel: <Hotel className="w-8 h-8" />,
     commercial: <Building className="w-8 h-8" />,
     land: <TreePine className="w-8 h-8" />,
-    villa: <Hotel className="w-8 h-8" />,
-    office: <Store className="w-8 h-8" />
+    urbannest: <Hotel className="w-8 h-8" />
   };
 
   const propertyTypeBg = {
-    apartments: 'bg-gradient-to-br from-gray-900 to-black',
-    houses: 'bg-gradient-to-br from-gray-800 to-gray-900',
+    apartment: 'bg-gradient-to-br from-gray-900 to-black',
+    house: 'bg-gradient-to-br from-gray-800 to-gray-900',
+    student_hostel: 'bg-gradient-to-br from-emerald-900 to-emerald-950',
     commercial: 'bg-gradient-to-br from-gray-700 to-gray-800',
     land: 'bg-gradient-to-br from-black to-gray-900',
-    villa: 'bg-gradient-to-br from-gray-900 to-black',
-    office: 'bg-gradient-to-br from-gray-800 to-gray-900'
+    urbannest: 'bg-gradient-to-br from-teal-900 to-slate-950'
   };
 
   const popularTags = [
@@ -183,7 +216,31 @@ const HomePage = () => {
     { name: 'Luxury Villas', link: '/properties?type=villa' }
   ];
 
-  const enabledPropertyTypes = homepageSettings.propertyTypes.filter(type => type.enabled);
+  const categoryCatalog = [
+    { type: 'urbannest', name: 'URBANNEST', aliases: ['urbannest', 'short_stay', 'guest_house', 'serviced_apartment'], icon: <Hotel className="w-8 h-8" /> },
+    { type: 'apartment', name: 'APARTMENTS', aliases: ['apartment', 'studio_apartment', 'bedsitter'], icon: <Building2 className="w-8 h-8" /> },
+    { type: 'house', name: 'HOUSES', aliases: ['house', 'maisonette', 'bungalow', 'townhouse', 'duplex', 'standalone_house', 'semi_detached', 'shared_house'], icon: <Home className="w-8 h-8" /> },
+    { type: 'student_hostel', name: 'STUDENT HOUSING', aliases: ['student_hostel', 'hostel', 'student_housing', 'single_room'], icon: <Hotel className="w-8 h-8" /> },
+    { type: 'commercial', name: 'COMMERCIAL', aliases: ['commercial', 'office', 'shop', 'warehouse'], icon: <Building className="w-8 h-8" /> },
+    { type: 'land', name: 'LAND', aliases: ['land'], icon: <TreePine className="w-8 h-8" /> },
+  ];
+  const displayedPropertyTypes = useMemo(() => {
+    const latestByCategory = new Map();
+    const countByCategory = new Map();
+    searchProperties.forEach((property) => {
+      const value = [property.propertyType, property.type, property.category].filter(Boolean)
+        .map((item) => String(item).toLowerCase().replace(/[\s-]+/g, '_'));
+      const category = categoryCatalog.find((item) => item.aliases.some((alias) => value.some((type) => type === alias || type.includes(alias))));
+      if (!category) return;
+      const rawDate = property.updatedAt || property.editedAt || property.createdAt;
+      const changedAt = rawDate?.toDate ? rawDate.toDate().getTime() : new Date(rawDate || 0).getTime();
+      latestByCategory.set(category.type, Math.max(latestByCategory.get(category.type) || 0, Number.isFinite(changedAt) ? changedAt : 0));
+      countByCategory.set(category.type, (countByCategory.get(category.type) || 0) + 1);
+    });
+    const byRecency = [...latestByCategory.keys()].sort((a, b) => latestByCategory.get(b) - latestByCategory.get(a));
+    const ordered = [...byRecency, ...categoryCatalog.map((item) => item.type).filter((type) => !byRecency.includes(type))].slice(0, 6);
+    return ordered.map((type) => ({ ...categoryCatalog.find((item) => item.type === type), count: countByCategory.get(type) || 0 }));
+  }, [searchProperties, categoryCatalog]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -223,16 +280,35 @@ const HomePage = () => {
               className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-2 max-w-2xl"
             >
               <div className="flex flex-col md:flex-row gap-2">
-                <div className="flex-1 flex items-center">
+                <div className="relative flex-1 flex items-center">
                   <Search className="w-5 h-5 text-gray-400 ml-4 mr-3" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={searchSuggestions.length > 0}
+                    aria-controls="homepage-property-suggestions"
                     placeholder={homepageSettings.hero.searchPlaceholder}
                     className="flex-1 bg-transparent text-white placeholder-gray-400 py-4 focus:outline-none text-lg font-light"
                   />
+                  {searchSuggestions.length > 0 && <div id="homepage-property-suggestions" role="listbox" className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-xl border border-white/20 bg-white text-left text-gray-900 shadow-2xl">
+                    {searchSuggestions.map((property) => (
+                      <Link
+                        key={property.id}
+                        role="option"
+                        aria-selected="false"
+                        to={`/property/${property.id}`}
+                        onClick={() => setSearchQuery('')}
+                        className="block border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none"
+                      >
+                        <span className="block font-medium">{property.title || property.propertyName || 'Property listing'}</span>
+                        <span className="block text-sm text-gray-500">{property.matchedKeyword ? `Also searched as “${property.matchedKeyword}”` : property.locationText || 'Location available in listing'}</span>
+                      </Link>
+                    ))}
+                  </div>}
                 </div>
                 <button 
                   onClick={handleSearch}
@@ -330,7 +406,7 @@ const HomePage = () => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {enabledPropertyTypes.map((type, index) => (
+            {displayedPropertyTypes.map((type, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
@@ -348,12 +424,55 @@ const HomePage = () => {
                       </div>
                     </div>
                     <h3 className="font-medium mb-1 tracking-wide">{type.name}</h3>
-                    <p className="text-white/60 text-sm">{typeCounts[type.type] || 0} Listings</p>
+                    <p className="text-white/60 text-sm">{type.count || 0} Listings</p>
                   </div>
                 </Link>
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="visit-campaigns" className="overflow-hidden bg-emerald-950 py-14 text-white sm:py-16">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-7 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">Join a planned visit</p>
+              <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Upcoming visit campaigns</h2>
+              <p className="mt-2 max-w-2xl text-sm text-emerald-100/80">See the schedule, price and live registrations, then reserve your place online.</p>
+            </div>
+          </div>
+          {sightseeingCampaigns.length > 0 ? <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0">
+            {sightseeingCampaigns.map((campaign) => {
+              const liveCount = Number(sightseeingCampaignStats[campaign.id]) || 0;
+              const count = campaign.registrationCountOverride != null && campaign.registrationCountOverride !== ''
+                ? Math.max(0, Number(campaign.registrationCountOverride) || 0)
+                : liveCount + Math.max(0, Number(campaign.offlineRegistrationCount) || 0);
+              const target = Number(campaign.campaignTarget) > 0 ? Number(campaign.campaignTarget) : null;
+              const progress = target ? Math.min(100, Math.round((count / target) * 100)) : 0;
+              const dateLabel = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' });
+              return <Link key={campaign.id} to={`/visit-campaigns/${encodeURIComponent(campaign.id)}`} className="group w-[min(86vw,380px)] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/15 bg-white text-slate-900 shadow-xl transition hover:-translate-y-1">
+                {campaign.coverImage && <img src={campaign.coverImage} alt="" className="h-40 w-full object-cover" loading="lazy" />}
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">{campaign.location || 'Kenya'}</p><h3 className="mt-1 text-xl font-bold">{campaign.title}</h3></div>
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-extrabold text-emerald-900">KSh {Number(campaign.price || 0).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm text-slate-600">{campaign.summary}</p>
+                  <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">
+                    {campaign.duration && <span className="inline-flex items-center gap-1.5"><Clock3 size={14} />{campaign.duration}</span>}
+                    <span>{dateLabel(campaign.startDate)} – {dateLabel(campaign.endDate)}</span>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 p-3">
+                    <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-950"><Users size={17} />{count} registered{target ? ` of ${target}` : ''}</span>
+                    {target && <span className="text-xs font-bold text-emerald-700">{progress}%</span>}
+                  </div>
+                  {target && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${progress}%` }} /></div>}
+                  <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-emerald-800 group-hover:text-emerald-950">View campaign & book online <ArrowRight size={16} /></span>
+                </div>
+              </Link>;
+            })}
+          </div> : <p className="rounded-xl border border-white/15 bg-white/5 p-5 text-sm text-emerald-100">There are no upcoming visit campaigns right now. Please check back soon.</p>}
         </div>
       </section>
 
@@ -394,10 +513,10 @@ const HomePage = () => {
               <p className="text-gray-600 font-light">Handpicked properties assigned by admin for homepage showcase</p>
             </div>
             <Link
-              to="/properties"
+              to={userProfile?.role === 'admin' ? '/admin/properties?status=all' : '/properties'}
               className="mt-4 lg:mt-0 inline-flex items-center text-gray-900 hover:text-gray-700 font-medium group border-b border-transparent hover:border-gray-900 transition-all"
             >
-              View All Properties
+              {userProfile?.role === 'admin' ? 'Manage All Properties' : 'View All Properties'}
               <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>

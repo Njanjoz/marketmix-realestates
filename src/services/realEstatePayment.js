@@ -6,6 +6,7 @@ export async function payRealEstate({
   property,
   landlord,
   buyer,
+  idToken = null,
   paymentKind = "rent", // "rent" | "deposit" | "purchase"
 }) {
   // 1. Build a unique ref that starts with PROP_ so the backend knows this is real estate
@@ -14,7 +15,10 @@ export async function payRealEstate({
   // 2. Seed the order with everything the backend needs to send email + WhatsApp
   const seed = await fetch(`${BACKEND}/api/real-estate/seed`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    },
     body: JSON.stringify({
       ref,
       amount: property.price,

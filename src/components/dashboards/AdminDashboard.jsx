@@ -26,11 +26,12 @@ import toast from 'react-hot-toast';
 import { resolvePropertyImage } from '../../utils/propertyMapping';
 import PromotePropertyModal from '../PromotePropertyModal';
 import AgencyPackagesPage from '../../pages/admin/AgencyPackagesPage';
-import SightseeingPackagesPage from '../../pages/admin/SightseeingPackagesPage';
 import SightseeingFeeSettings from '../../pages/admin/SightseeingFeeSettings';
+import VisitCampaignsPage from '../../pages/admin/VisitCampaignsPage';
 import MovingPackagesPage from '../../pages/admin/MovingPackagesPage';
 import TransportRequestsPage from '../../pages/admin/TransportRequestsPage';
 import AdminServiceRequestsPage from '../../pages/admin/ServiceRequestsPage';
+import PropertyModerationPage from '../../pages/admin/PropertyModerationPage';
 import WhatsAppControl from '../../pages/admin/WhatsAppControl';
 import { useAuth } from '../../context/AuthContext';
 
@@ -659,8 +660,8 @@ const AdminDashboard = () => {
     { id: 'serviceRequests', label: 'Move-in Requests', icon: <Briefcase size={18} /> },
     { id: 'movingPackages', label: 'Moving Packages', icon: <Package size={18} /> },
     { id: 'agencyPackages', label: 'Agency Packages', icon: <Building2 size={18} /> },
-    { id: 'sightseeingPackages', label: 'Sightseeing Packages', icon: <Compass size={18} /> },
-    { id: 'sightseeingFee', label: 'Site-seeing Fee', icon: <Settings size={18} /> },
+    { id: 'sightseeingFee', label: 'Property Booking Fee & Packages', icon: <Settings size={18} /> },
+    { id: 'visitCampaigns', label: 'Visit & Tour Campaigns', icon: <Calendar size={18} /> },
     { id: 'whatsappControl', label: 'WhatsApp Control', icon: <MessageCircle size={18} /> },
     { id: 'users', label: 'User Management', icon: <Users size={18} /> },
     { id: 'allProperties', label: 'All Properties', icon: <Building size={18} /> },
@@ -1198,27 +1199,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {activeSection === 'allProperties' && (
-          <div style={{ ...glass, padding: '24px' }}>
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 500 }}>All Properties</div>
-              <div style={{ fontSize: 12, color: ink2 }}>Complete list of all property listings in database</div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-              {properties.map((property) => (
-                <div key={property.id} style={{ background: 'rgba(255,255,255,0.38)', border: `1px solid ${rule}`, borderRadius: 12, overflow: 'hidden' }}>
-                  <img src={resolvePropertyImage(property) || '/images/property-hero.svg'} alt={property.title} style={{ width: '100%', height: 150, objectFit: 'cover' }} />
-                  <div style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{property.title}</div>
-                    <div style={{ fontSize: 11, color: ink2 }}>{property.location}</div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: red, marginTop: 4 }}>KES {property.price?.toLocaleString()}</div>
-                    <div style={{ fontSize: 10, color: ink3, marginTop: 4 }}>Status: {property.verificationStatus || property.approvalStatus || 'pending'}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {activeSection === 'allProperties' && <PropertyModerationPage initialStatus="all" />}
 
         {activeSection === 'transportRequests' && <TransportRequestsPage />}
 
@@ -1332,8 +1313,8 @@ const AdminDashboard = () => {
         {activeSection === 'serviceRequests' && <AdminServiceRequestsPage />}
         {activeSection === 'movingPackages' && <MovingPackagesPage />}
         {activeSection === 'agencyPackages' && <AgencyPackagesPage />}
-        {activeSection === 'sightseeingPackages' && <SightseeingPackagesPage />}
         {activeSection === 'sightseeingFee' && <SightseeingFeeSettings />}
+        {activeSection === 'visitCampaigns' && <VisitCampaignsPage />}
         {activeSection === 'whatsappControl' && <WhatsAppControl />}
 
         {activeSection === 'analytics' && (

@@ -13,6 +13,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Keep native select menus readable over glass or image-backed sections. */
+select,
+select option {
+  color-scheme: light;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
 /* Android 15 enforces edge-to-edge for apps targeting API 35. Keep the fixed
    website navigation and page content below the phone's status bar. */
 .native-android .native-app-navbar {

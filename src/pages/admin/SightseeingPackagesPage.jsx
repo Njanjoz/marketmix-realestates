@@ -1,7 +1,7 @@
-// src/pages/admin/SightseeingPackagesPage.jsx - Admin Managed Sightseeing & Property Tours
+﻿// src/pages/admin/SightseeingPackagesPage.jsx - Admin Managed Sightseeing & Property Tours
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { ImagePlus, Pencil, Save, Trash2, X, Compass, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,13 +14,24 @@ const TOUR_TYPES = [
   ['commercial', 'Commercial & Retail Space Visit']
 ];
 
+const DEFAULT_PACKAGES = [
+  { id: 'quick_view', title: 'Quick View', summary: 'A low-cost booking for one home you have already chosen.', price: 100, priceLabel: 'KSh 100', includes: ['One selected property', 'Viewing time and access request arranged', 'You travel to the property and meet there', 'No property search or transport included'] },
+  { id: 'assisted_view', title: 'Assisted View', summary: 'Arrange a supported visit to two selected homes.', price: 250, priceLabel: 'KSh 250', includes: ['Up to two selected properties', 'Agent confirms availability and access', 'Meet-up point and directions coordinated', 'Guided viewing support and questions answered', 'Transport costs are not included'] },
+  { id: 'student_hunt', title: 'Student Hunt', summary: 'Find affordable rooms and student accommodation near campus.', price: 300, priceLabel: 'KSh 300', includes: ['Student hostels, bedsitters and shared rooms', 'Set your monthly rent budget and preferred area', 'Choose up to 4 homes or get a matching shortlist', 'Best for students comparing places to live'] },
+  { id: 'property_hunt', title: 'Property Hunt', summary: 'Compare different homes across property types and rent ranges.', price: 500, priceLabel: 'KSh 500', includes: ['Apartments, houses and other approved homes', 'Filter by property type, monthly rent and area', 'Choose up to 4 homes or get a matching shortlist', 'Best for renters comparing general housing options'] },
+  { id: 'premium_hunt', title: 'Premium Hunt', summary: 'For users who want a personalized property search.', price: 1000, priceLabel: 'KSh 1,000', includes: ['Choose up to 6 properties', 'Set your budget, type and preferred area', 'Browse homes or request a random shortlist', 'Personalized agent guidance'] },
+  { id: 'group_viewing', title: 'Group Viewing', summary: 'For friends, couples or roommates.', price: 150, priceLabel: 'KSh 150 / person', includes: ['Multiple participants', 'Shared viewing', 'One booking', 'Property comparison'] },
+];
+const DEFAULT_PACKAGE_IDS = new Set(DEFAULT_PACKAGES.map((item) => item.id));
+
 const BLANK_FORM = {
   title: '',
   summary: '',
   tourType: 'luxury_villa',
   location: 'Nairobi & Environs',
   duration: 'Full Day (6 Hours)',
-  priceLabel: 'KSh 3,500 / person',
+  priceLabel: '',
+  price: 3500,
   includes: '',
   active: true,
   displayOrder: 0
@@ -36,7 +47,10 @@ export default function SightseeingPackagesPage() {
 
   useEffect(() => {
     return onSnapshot(collection(db, 'sightseeingPackages'), (snapshot) => {
-      const next = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const savedById = new Map(snapshot.docs.map((entry) => [entry.id, { id: entry.id, ...entry.data() }]));
+      const defaults = DEFAULT_PACKAGES.map((item) => ({ ...item, ...(savedById.get(item.id) || {}), id: item.id }));
+      const custom = snapshot.docs.filter((entry) => !DEFAULT_PACKAGE_IDS.has(entry.id)).map((entry) => ({ id: entry.id, ...entry.data() }));
+      const next = [...defaults, ...custom];
       next.sort((a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0));
       setPackages(next);
     }, (err) => {
@@ -65,7 +79,8 @@ export default function SightseeingPackagesPage() {
       tourType: item.tourType || 'luxury_villa',
       location: item.location || '',
       duration: item.duration || '',
-      priceLabel: item.priceLabel || '',
+      priceLabel: item.priceLabel || `KSh ${Number(item.price || 0).toLocaleString('en-KE')}`,
+      price: Number(item.price) || Number(String(item.priceLabel || '').replace(/[^0-9.]/g, '')) || 0,
       includes: (item.includes || []).join('\n'),
       active: item.active !== false,
       displayOrder: Number(item.displayOrder || 0)
@@ -79,6 +94,11 @@ export default function SightseeingPackagesPage() {
     e.preventDefault();
     if (!form.title.trim() || !form.summary.trim()) {
       toast.error('Title and summary are required');
+      return;
+    }
+    const price = Number(form.price);
+    if (!Number.isInteger(price) || price < 50 || price > 500000) {
+      toast.error('Enter a package price from KSh 50 to KSh 500,000');
       return;
     }
     setSaving(true);
@@ -97,7 +117,8 @@ export default function SightseeingPackagesPage() {
         tourTypeLabel: TOUR_TYPES.find(([id]) => id === form.tourType)?.[1] || 'Property Tour',
         location: form.location.trim(),
         duration: form.duration.trim(),
-        priceLabel: form.priceLabel.trim(),
+        priceLabel: form.priceLabel.trim() || `KSh ${price.toLocaleString('en-KE')}`,
+        price,
         includes: parsedIncludes,
         coverImage,
         active: Boolean(form.active),
@@ -106,7 +127,7 @@ export default function SightseeingPackagesPage() {
       };
 
       if (editingId) {
-        await updateDoc(doc(db, 'sightseeingPackages', editingId), payload);
+        await setDoc(doc(db, 'sightseeingPackages', editingId), payload, { merge: true });
         toast.success('Sightseeing package updated successfully');
       } else {
         await addDoc(collection(db, 'sightseeingPackages'), {
@@ -219,11 +240,26 @@ export default function SightseeingPackagesPage() {
               </label>
 
               <label className="text-sm font-semibold text-slate-700">
-                Price Label
+                Price display text (optional)
                 <input
                   value={form.priceLabel}
                   onChange={e => setForm({ ...form, priceLabel: e.target.value })}
                   placeholder="KSh 3,500 / person"
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-emerald-600"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-slate-700">
+                Website checkout price (KSh)
+                <input
+                  required
+                  type="number"
+                  min="50"
+                  max="500000"
+                  step="1"
+                  inputMode="numeric"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-emerald-600"
                 />
               </label>
@@ -320,7 +356,7 @@ export default function SightseeingPackagesPage() {
                 <h3 className="text-lg font-bold text-slate-900">{item.title}</h3>
                 <p className="mt-1 text-xs text-slate-600">{item.summary}</p>
                 <div className="mt-3 flex items-center justify-between text-xs font-bold text-slate-900 border-t border-slate-100 pt-3">
-                  <span>{item.priceLabel}</span>
+                  <span>KSh {Number(item.price || String(item.priceLabel || '').replace(/[^0-9.]/g, '') || 0).toLocaleString('en-KE')}</span>
                   <span className={item.active !== false ? 'text-emerald-600' : 'text-slate-400'}>
                     {item.active !== false ? 'Active' : 'Hidden'}
                   </span>
@@ -332,12 +368,12 @@ export default function SightseeingPackagesPage() {
                   >
                     <Pencil className="w-3.5 h-3.5" /> Edit
                   </button>
-                  <button
+                  {!DEFAULT_PACKAGE_IDS.has(item.id) && <button
                     onClick={() => removePackage(item)}
                     className="rounded-xl border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </button>}
                 </div>
               </div>
             ))}

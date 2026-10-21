@@ -6,6 +6,7 @@ import youtubeRoutes from './routes/youtube.js';
 import posterRoutes from './routes/poster.js';
 import movingRoutes from './routes/moving.js';
 import bookingRoutes from './routes/bookings.js';
+import visitCampaignRoutes from './routes/visitCampaigns.js';
 import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
@@ -48,6 +49,7 @@ app.use('/', youtubeRoutes);
 app.use('/', posterRoutes);
 app.use('/', movingRoutes);
 app.use('/', bookingRoutes);
+app.use('/', visitCampaignRoutes);
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

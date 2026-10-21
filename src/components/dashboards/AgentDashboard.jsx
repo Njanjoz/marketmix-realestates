@@ -48,6 +48,7 @@ const AgentDashboard = () => {
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
+  const [withdrawalReceipt, setWithdrawalReceipt] = useState(null);
   const [promoteProperty, setPromoteProperty] = useState(null);
   const [stats, setStats] = useState({
     activeListings: 0,
@@ -99,9 +100,12 @@ const AgentDashboard = () => {
   const requestViewingWithdrawal = async () => {
     const amount = Number(window.prompt(`Withdrawable balance: KSh ${stats.commission}. Enter a whole-shilling amount to withdraw.`));
     if (!Number.isInteger(amount) || amount <= 0) return;
+    const previewFee = amount < 100 ? 10 : amount <= 1000 ? 20 : 30;
+    if (amount <= previewFee) return window.alert(`The withdrawal must be greater than its KSh ${previewFee} fee.`);
     const profilePhone = userProfile?.mpesaPhone || userProfile?.phoneNumber || userProfile?.phone || '';
     const phoneNumber = String(window.prompt('M-Pesa number to receive the withdrawal:', profilePhone) || '').trim();
     if (!phoneNumber) return;
+    if (!window.confirm(`Booking-package withdrawal\n\nAmount: KSh ${amount.toLocaleString('en-KE')}\nWithdrawal fee: KSh ${previewFee}\nYou receive: KSh ${(amount - previewFee).toLocaleString('en-KE')}\n\nFee schedule: KSh 10 below KSh 100; KSh 20 from KSh 100 to KSh 1,000; KSh 30 above KSh 1,000. Continue?`)) return;
     setWithdrawalBusy(true);
     try {
       const token = await currentUser.getIdToken();
@@ -110,7 +114,7 @@ const AgentDashboard = () => {
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) throw new Error(result.message || 'Could not request the withdrawal.');
       setStats((previous) => ({ ...previous, commission: Math.max(0, Number(previous.commission.replace(/,/g, '') || 0) - amount).toLocaleString('en-KE') }));
-      window.alert(`M-Pesa payout initiated: KSh ${result.netPayout}. Withdrawal fee: KSh ${result.withdrawalFee}. Reference: ${result.trackingId || result.withdrawalId}`);
+      setWithdrawalReceipt({ ...result, requestedAmount: result.requestedAmount ?? amount, phoneNumber, createdAt: new Date() });
     } catch (error) { window.alert(error.message || 'Could not request the withdrawal.'); }
     finally { setWithdrawalBusy(false); }
   };
@@ -221,7 +225,7 @@ const AgentDashboard = () => {
     { label: 'Active Listings', value: stats.activeListings.toString(), delta: '+3', icon: <Building size={20} /> },
     { label: 'Total Views', value: stats.totalViews.toString(), delta: '+12%', icon: <Eye size={20} /> },
     { label: 'Inquiries', value: stats.inquiries.toString(), delta: '+18%', icon: <MessageSquare size={20} /> },
-    { label: 'Withdrawable site-seeing balance', value: `KES ${stats.commission}`, delta: 'Tour balance after admin approval; vacancy credit is sent separately by M-Pesa', icon: <DollarSign size={20} /> },
+    { label: 'Withdrawable site-seeing balance', value: `KES ${stats.commission}`, delta: 'Package withdrawals: KSh 10 (<100), KSh 20 (100–1,000), KSh 30 (>1,000)', icon: <DollarSign size={20} /> },
   ];
 
   return (
@@ -399,6 +403,31 @@ const AgentDashboard = () => {
           userProfile={userProfile}
           onClose={() => setPromoteProperty(null)}
         />
+      )}
+      {withdrawalReceipt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4">
+          <style>{`@media print { body * { visibility: hidden !important; } .withdrawal-receipt-print, .withdrawal-receipt-print * { visibility: visible !important; } .withdrawal-receipt-print { position: fixed !important; inset: 0 !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; } .withdrawal-receipt-actions { display: none !important; } }`}</style>
+          <article className="withdrawal-receipt-print w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <header className="bg-emerald-950 px-6 py-7 text-center text-white">
+              <p className="text-[10px] font-bold uppercase tracking-[.22em] text-emerald-200">MarketMix Real Estates</p>
+              <h2 className="mt-2 text-2xl font-extrabold">Withdrawal receipt</h2>
+              <p className="mt-1 text-xs text-emerald-100">Booking package earnings · M-Pesa</p>
+              <span className="mt-4 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{withdrawalReceipt.status || 'PAYOUT_INITIATED'}</span>
+            </header>
+            <div className="space-y-4 p-6 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><span className="text-slate-500">Withdrawal reference</span><span className="break-all text-right font-mono text-xs font-bold text-slate-900">{withdrawalReceipt.trackingId || withdrawalReceipt.withdrawalId || 'Pending'}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-slate-500">M-Pesa number</span><span className="font-semibold text-slate-900">{withdrawalReceipt.phoneNumber}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-slate-500">Amount withdrawn</span><span className="font-semibold text-slate-900">KSh {Number(withdrawalReceipt.requestedAmount || 0).toLocaleString('en-KE')}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-slate-500">Withdrawal fee</span><span className="font-semibold text-rose-700">− KSh {Number(withdrawalReceipt.withdrawalFee || 0).toLocaleString('en-KE')}</span></div>
+              <div className="flex justify-between gap-4 rounded-2xl bg-emerald-50 p-4"><span className="font-bold text-emerald-950">Net payout</span><span className="text-lg font-extrabold text-emerald-900">KSh {Number(withdrawalReceipt.netPayout || 0).toLocaleString('en-KE')}</span></div>
+              <p className="text-xs text-slate-500">Requested {withdrawalReceipt.createdAt.toLocaleString('en-KE')}. Keep this receipt as proof of the withdrawal request; payout completion follows the payment provider’s status.</p>
+            </div>
+            <footer className="withdrawal-receipt-actions flex gap-3 border-t border-slate-100 p-5">
+              <button type="button" onClick={() => window.print()} className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-sm font-bold text-white">Save receipt (PDF)</button>
+              <button type="button" onClick={() => setWithdrawalReceipt(null)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">Close</button>
+            </footer>
+          </article>
+        </div>
       )}
     </div>
   );

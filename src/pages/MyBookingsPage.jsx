@@ -24,6 +24,14 @@ export default function MyBookingsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refundBusy, setRefundBusy] = useState('');
+  const [refundMessage, setRefundMessage] = useState('');
+  const [refundClock, setRefundClock] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRefundClock(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!currentUser?.uid) {
@@ -71,6 +79,9 @@ export default function MyBookingsPage() {
         paymentKind, paymentStatus: paymentStatus || booking.paymentStatus || 'pending',
         totalAmount: Number(amount || 0), mpesaReference: mpesaReference || null,
         propertyTitle: booking.propertyTitle, propertyLocation: booking.propertyLocation,
+        refundStatus: booking.refundPaymentReference === paymentRef ? booking.refundStatus : null,
+        refundTrackingId: booking.refundPaymentReference === paymentRef ? booking.refundTrackingId : null,
+        preferredViewingDate: booking.preferredViewingDate, preferredViewingTime: booking.preferredViewingTime,
         createdAt: createdAt || booking.createdAt,
       });
     };
@@ -87,6 +98,31 @@ export default function MyBookingsPage() {
   }, [payments, viewingPayments]);
   const bookings = useMemo(() => type === 'house' ? houses : type === 'payments' ? paymentRows : transport, [type, houses, paymentRows, transport]);
   const chooseType = (nextType) => setSearchParams({ type: nextType });
+  const requestRefund = async (booking) => {
+    if (!currentUser || !booking.bookingId) return;
+    const grossAmount = Number(booking.totalAmount || 0);
+    const maintenanceFee = Math.round(grossAmount * 0.05);
+    const afterMaintenance = Math.max(0, grossAmount - maintenanceFee);
+    const withdrawalFee = afterMaintenance <= 100 ? 10 : afterMaintenance <= 1000 ? 20 : afterMaintenance <= 3000 ? 30 : afterMaintenance <= 5000 ? 50 : afterMaintenance <= 80000 ? 100 : afterMaintenance <= 120000 ? 500 : 1000;
+    const estimatedRefund = Math.max(0, afterMaintenance - withdrawalFee);
+    if (!window.confirm(`Submit a refund request for review?\n\nAmount paid: KSh ${grossAmount.toLocaleString('en-KE')}\n5% platform maintenance: KSh ${maintenanceFee.toLocaleString('en-KE')}\nM-Pesa withdrawal fee: KSh ${withdrawalFee.toLocaleString('en-KE')}\nEstimated refund: KSh ${estimatedRefund.toLocaleString('en-KE')}\n\nAn admin will review your request before payout.`)) return;
+    setRefundBusy(booking.bookingId);
+    setRefundMessage('');
+    try {
+      const backend = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+      const response = await fetch(`${backend}/api/bookings/site-seeing/${encodeURIComponent(booking.bookingId)}/refund-request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await currentUser.getIdToken()}` },
+        body: JSON.stringify({ paymentRef: booking.paymentRef }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || 'Could not request a refund.');
+      setRefundMessage(`Refund request submitted. Estimated refund: KSh ${Number(result.estimatedRefund || 0).toLocaleString('en-KE')} after KSh ${Number(result.maintenanceFee || 0).toLocaleString('en-KE')} maintenance and KSh ${Number(result.withdrawalFee || 0).toLocaleString('en-KE')} withdrawal fees. An admin will review it.`);
+    } catch (requestError) {
+      setRefundMessage(requestError.message || 'Could not request a refund.');
+    } finally {
+      setRefundBusy('');
+    }
+  };
 
   return <main className="mmx-liquid-canvas min-h-screen px-4 pb-28 pt-6 text-slate-900 sm:px-6 sm:pt-10">
     <div className="mx-auto max-w-4xl">
@@ -110,7 +146,7 @@ export default function MyBookingsPage() {
           const isPayment = type === 'payments';
           const title = isHouse
             ? booking.packageTitle || booking.packageName || booking.propertyTitle || 'House viewing'
-            : isPayment ? booking.propertyTitle || 'Real estate payment'
+            : isPayment ? booking.packageName || booking.packageTitle || booking.propertyTitle || 'Real estate payment'
               : booking.destinationTitle || booking.packageTitle || booking.vehicleLabel || 'Transport booking';
           const location = isHouse
             ? booking.propertyLocation || booking.location || booking.area
@@ -119,11 +155,17 @@ export default function MyBookingsPage() {
             ? booking.preferredViewingDate || booking.viewingDate || booking.createdAt
             : isPayment ? booking.createdAt : booking.preferredDate || booking.createdAt;
           const status = isPayment ? booking.paymentStatus || booking.state : booking.status || booking.bookingStatus || booking.paymentStatus;
+          const paymentFailed = isPayment && ['failed', 'cancelled', 'canceled'].includes(String(status || '').toLowerCase());
           const reference = booking.paymentRef || booking.id;
+          const cutoffMs = booking.preferredViewingDate && booking.preferredViewingTime
+            ? new Date(`${booking.preferredViewingDate}T${booking.preferredViewingTime}:00+03:00`).getTime() - 24 * 60 * 60 * 1000
+            : null;
+          const minutesToCutoff = cutoffMs == null ? null : Math.ceil((cutoffMs - refundClock) / 60_000);
+          const countdown = minutesToCutoff == null ? null : minutesToCutoff <= 0 ? null : `${Math.floor(minutesToCutoff / 1440)}d ${Math.floor((minutesToCutoff % 1440) / 60)}h ${minutesToCutoff % 60}m`;
           return <article key={booking.id} className="mmx-glass-surface rounded-2xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">{isHouse ? 'House booking' : isPayment ? 'Real estate payment' : 'Transport booking'}</p><h2 className="mt-1 text-lg font-bold text-slate-900">{title}</h2></div>
-              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-900">{label(status)}</span>
+              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${paymentFailed ? 'bg-rose-50 text-rose-900' : String(status || '').toLowerCase() === 'paid' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{label(status)}</span>
             </div>
             <div className="mt-3 space-y-2 text-sm text-slate-600">
               {location && <p className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-800"/><span>{location}</span></p>}
@@ -132,10 +174,13 @@ export default function MyBookingsPage() {
               {isHouse && booking.availabilityPaymentReference && <p>Vacancy-check payment: KSh {Number(booking.availabilityPaymentAmount || 0).toLocaleString('en-KE')} · {label(booking.availabilityPaymentStatus)}{booking.availabilityMpesaReference ? ` · M-Pesa ${booking.availabilityMpesaReference}` : ''}</p>}
               {isHouse && (booking.packagePaymentReference || booking.directPaymentReference) && <p>Viewing package payment: KSh {Number(booking.packagePaymentAmount || booking.directPaymentAmount || 0).toLocaleString('en-KE')} · {label(booking.packagePaymentStatus || booking.paymentStatus)}{booking.packagePaymentMpesaReference || booking.directMpesaReference ? ` · M-Pesa ${booking.packagePaymentMpesaReference || booking.directMpesaReference}` : ''}</p>}
               {isPayment && <><p>For: {label(booking.paymentKind || booking.paymentType || 'Property payment')}</p><p>Amount: KSh {Number(booking.totalAmount || 0).toLocaleString('en-KE')}</p>{booking.mpesaReference && <p>M-Pesa reference: {booking.mpesaReference}</p>}</>}
+              {paymentFailed && <p role="status" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-900"><strong>Payment failed:</strong> {booking.paymentFailureReason || booking.errorMessage || 'The payment provider did not complete this payment.'}</p>}
               {booking.quotedPrice != null && <p>Quote: KSh {Number(booking.quotedPrice).toLocaleString('en-KE')}</p>}
             </div>
             <p className="mt-3 text-xs text-slate-500">{booking.bookingId ? <>Booking ID: <span className="font-mono font-semibold text-slate-700">{booking.bookingId}</span></> : isPayment ? <>Payment reference: <span className="font-mono font-semibold text-slate-700">{reference}</span></> : <>Booking ID: <span className="font-mono font-semibold text-slate-700">{booking.id}</span></>}</p>
-            {isPayment && <Link to={`/receipt/${encodeURIComponent(reference)}`} className="mt-3 inline-flex rounded-xl bg-emerald-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-900">Save receipt</Link>}
+            {isPayment && <div className="mt-3 flex flex-wrap gap-2"><Link to={`/receipt/${encodeURIComponent(reference)}`} className="inline-flex rounded-xl bg-emerald-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-900">Save receipt</Link>{booking.bookingId && ['sightseeing_booking_completion', 'sightseeing_direct_booking', 'sightseeing_package', 'sightseeing_availability_check'].includes(booking.paymentKind) && booking.paymentStatus === 'paid' && !booking.refundStatus && <button type="button" onClick={() => requestRefund(booking)} disabled={Boolean(refundBusy)} className="inline-flex rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-900 disabled:opacity-60">{refundBusy === booking.bookingId ? 'Submitting…' : 'Request refund'}</button>}</div>}
+            {isPayment && booking.bookingId && ['sightseeing_booking_completion', 'sightseeing_direct_booking', 'sightseeing_package', 'sightseeing_availability_check'].includes(booking.paymentKind) && booking.paymentStatus === 'paid' && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><strong>Refund timing:</strong> {countdown ? <>submit at least 24 hours before the scheduled viewing. The standard cancellation window closes in <strong>{countdown}</strong> (Nairobi time; refreshes every 15 seconds).</> : minutesToCutoff == null ? 'A confirmed viewing date and time are needed to calculate the 24-hour cancellation deadline.' : <strong>The 24-hour standard cancellation window has closed. You may still request a review; late requests are assessed case by case.</strong>}</p>}
+            {isPayment && booking.refundStatus && <p className="mt-3 text-xs font-semibold text-amber-900">Refund: {label(booking.refundStatus)}{booking.refundTrackingId ? ` · ${booking.refundTrackingId}` : ''}</p>}
             {!isHouse && !isPayment && <Link to="/transport/updates" className="mt-3 inline-flex text-sm font-bold text-emerald-800 hover:underline">View live updates</Link>}
           </article>;
         })}
@@ -146,6 +191,7 @@ export default function MyBookingsPage() {
           {type !== 'payments' && <Link to={type === 'house' ? '/site-seeing' : '/transport'} className="mmx-liquid-primary mt-5 inline-flex rounded-xl px-5 py-3 text-sm font-bold text-white">{type === 'house' ? 'Find a house to view' : 'Get a moving quote'}</Link>}
         </div>}
       </section>
+      {refundMessage && <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{refundMessage}</p>}
     </div>
   </main>;
 }

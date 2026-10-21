@@ -14,6 +14,7 @@ import {
   updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { getPublicAppUrl } from '../utils/publicUrl';
 import { db } from '../firebase/config';
 import { useAuth } from '../context/AuthContext';
 import { sendWhatsAppNotification } from '../lib/api';
@@ -502,7 +503,7 @@ const ExplorePage = () => {
   };
 
   const shareProperty = async (property) => {
-    const url = `${window.location.origin}/property/${property.id}`;
+    const url = getPublicAppUrl(`/property/${encodeURIComponent(property.id)}`);
     try {
       if (navigator.share) await navigator.share({ title: property.title || 'MarketMix property', url });
       else {

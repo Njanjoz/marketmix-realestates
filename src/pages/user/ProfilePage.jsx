@@ -74,6 +74,9 @@ const ProfilePage = () => {
         userType: target.userType,
         role: isDriverIntent ? 'user' : target.storedRole,
         updatedAt: serverTimestamp(),
+        // A prior driver application must not keep overriding the newly
+        // selected dashboard role.
+        driverIntent: isDriverIntent,
         ...(isDriverIntent
           ? {
               driverIntent: true,
