@@ -62,4 +62,18 @@ export const SEO_PAGES = [
     heading: 'Luxury properties in Kenya',
     intro: 'Explore premium property listings and homes across Kenya.',
   },
+  {
+    path: '/urban-nest',
+    title: 'Furnished and Short-Stay Homes in Kenya | UrbanNest',
+    description: 'Find furnished homes, serviced apartments, and short-stay accommodation across Kenya with UrbanNest by MarketMix.',
+    heading: 'Furnished and short-stay homes in Kenya',
+    intro: 'Explore furnished homes and short-stay accommodation for flexible stays across Kenya. Compare available options and contact the listing team to arrange your stay.',
+  },
+  {
+    path: '/site-seeing',
+    title: 'Book Property Viewings in Kenya | MarketMix',
+    description: 'Arrange a property viewing in Kenya with MarketMix. Compare homes, request a viewing, and get help coordinating access.',
+    heading: 'Arrange a property viewing in Kenya',
+    intro: 'Found a home you like? Use MarketMix to request a viewing and coordinate access with the property team before you decide.',
+  },
 ];

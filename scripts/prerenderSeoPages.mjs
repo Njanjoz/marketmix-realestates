@@ -5,9 +5,11 @@ import { SEO_PAGES } from '../src/data/seoPages.js';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const outputDirectory = join(scriptDirectory, '..', 'dist');
-const siteOrigin = 'https://marketmix-realestates.vercel.app';
+const configuredOrigin = process.env.VITE_PUBLIC_APP_URL || 'https://marketmix-realestates.vercel.app';
+const siteOrigin = new URL(configuredOrigin).origin;
 const fallbackImage = `${siteOrigin}/images/property-hero.svg`;
-const baseHtml = await readFile(join(outputDirectory, 'index.html'), 'utf8');
+const baseHtml = (await readFile(join(outputDirectory, 'index.html'), 'utf8'))
+  .replaceAll('https://marketmix-realestates.vercel.app', siteOrigin);
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -42,3 +44,11 @@ for (const page of SEO_PAGES) {
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(destination, html, 'utf8');
 }
+
+const sitemapUrls = SEO_PAGES.map((page) => {
+  const path = page.path === '/' ? '/' : page.path;
+  return `  <url><loc>${siteOrigin}${path}</loc></url>`;
+}).join('\n');
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapUrls}\n</urlset>\n`;
+await writeFile(join(outputDirectory, 'sitemap.xml'), sitemap, 'utf8');
+await writeFile(join(outputDirectory, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${siteOrigin}/sitemap.xml\n`, 'utf8');

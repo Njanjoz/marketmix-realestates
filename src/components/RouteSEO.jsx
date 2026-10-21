@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SEO_PAGES } from '../data/seoPages';
+import { getPublicAppUrl } from '../utils/publicUrl';
 
-const SITE_ORIGIN = 'https://marketmix-realestates.vercel.app';
-const DEFAULT_IMAGE = `${SITE_ORIGIN}/images/property-hero.svg`;
+const DEFAULT_IMAGE = getPublicAppUrl('/images/property-hero.svg');
 
 const propertyDetailsPage = {
   match: (path) => path.startsWith('/property/'),
@@ -34,9 +34,9 @@ function ensureCanonical(href) {
 export function PageSEO({ title, description, image = DEFAULT_IMAGE, path, type = 'website', noIndex = false }) {
   useEffect(() => {
     const canonicalPath = (path || window.location.pathname).replace(/\/+$/, '') || '/';
-    const canonical = `${SITE_ORIGIN}${canonicalPath === '/' ? '/' : canonicalPath}`;
+    const canonical = getPublicAppUrl(canonicalPath);
     const safeDescription = String(description || '').trim().slice(0, 300);
-    const absoluteImage = image?.startsWith('http') ? image : `${SITE_ORIGIN}${image || '/images/property-hero.svg'}`;
+    const absoluteImage = image?.startsWith('http') ? image : getPublicAppUrl(image || '/images/property-hero.svg');
 
     document.title = title || 'MarketMix Real Estates | Homes for Rent and Sale in Kenya';
     ensureMeta('name', 'description', safeDescription);
