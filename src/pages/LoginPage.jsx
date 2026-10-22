@@ -15,7 +15,7 @@ import {
 import toast from 'react-hot-toast';
 
 const LoginPage = () => {
-  const { currentUser, login, loginWithGoogle, authLoading } = useAuth();
+  const { currentUser, login, loginWithGoogle, loading: authLoading } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -96,7 +96,15 @@ const LoginPage = () => {
       await loginWithGoogle();
       toast.success('Welcome back!', { id: toastId });
     } catch (err) {
-      toast.error(err.message, { id: toastId });
+      const message = err?.code === 'auth/popup-blocked'
+        ? 'Google sign-in popup was blocked. Allow popups for this site and try again.'
+        : err?.code === 'auth/unauthorized-domain'
+          ? 'This website is not authorized in Firebase. Add its domain under Firebase Authentication → Settings → Authorized domains.'
+          : err?.code === 'auth/popup-closed-by-user'
+            ? 'Google sign-in was cancelled.'
+            : (err?.message || 'Google sign-in failed.');
+      setError(message);
+      toast.error(message, { id: toastId });
       setGoogleLoading(false);
     }
   };

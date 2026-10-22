@@ -31,16 +31,19 @@ export const login = async (email, password) => {
 };
 
 export const loginWithGoogle = async () => {
-  await configureAuthPersistence();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   if (isCapacitor()) {
+    await configureAuthPersistence();
     const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
     const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
     const idToken = result.credential?.idToken;
     if (!idToken) throw new Error('Google sign-in did not return an identity token. Check the Android Firebase Google sign-in setup.');
     return signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
   }
+  // Persistence is initialized by AuthProvider on page load. Do not await it
+  // here: an async delay before signInWithPopup can make browsers block the
+  // popup because it is no longer directly inside the click activation.
   return signInWithPopup(auth, provider);
 };
 
