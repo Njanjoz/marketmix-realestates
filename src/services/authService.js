@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signInWithCredential,
   GoogleAuthProvider,
   signOut,
@@ -44,7 +45,25 @@ export const loginWithGoogle = async () => {
   // Persistence is initialized by AuthProvider on page load. Do not await it
   // here: an async delay before signInWithPopup can make browsers block the
   // popup because it is no longer directly inside the click activation.
-  return signInWithPopup(auth, provider);
+  try {
+    return await Promise.race([
+      signInWithPopup(auth, provider),
+      new Promise((_, reject) => setTimeout(() => {
+        const error = new Error('Google sign-in popup did not open.');
+        error.code = 'auth/popup-timeout';
+        reject(error);
+      }, 10000)),
+    ]);
+  } catch (error) {
+    // Firefox privacy/popup protection can leave signInWithPopup pending
+    // instead of returning auth/popup-blocked. Redirect is the reliable
+    // fallback and onAuthStateChanged completes the login after return.
+    if (['auth/popup-blocked', 'auth/popup-timeout', 'auth/operation-not-supported-in-this-environment'].includes(error?.code)) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    throw error;
+  }
 };
 
 export const register = async (email, password, data = {}) => {
