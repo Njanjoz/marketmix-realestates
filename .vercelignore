@@ -9,5 +9,4 @@ android
 *.aab
 server-payment-*.js
 *.docx
-*.html
 *.log
