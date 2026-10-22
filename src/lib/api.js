@@ -1,6 +1,6 @@
 // src/lib/api.js
 export const BACKEND =
-  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+  import.meta.env.VITE_BACKEND_URL || "https://marketmix-api-native.johnnjanjo1.workers.dev";
 
 export const sendWhatsAppNotification = (phoneNumber, kind, message) => {
   if (!phoneNumber || !message) return Promise.resolve(false);

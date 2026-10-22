@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { db } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 const toYouTubeEmbedUrl = (value = '') => {
   const match = String(value).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
   return match ? `https://www.youtube.com/embed/${match[1]}` : '';

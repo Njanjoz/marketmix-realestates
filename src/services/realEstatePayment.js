@@ -1,6 +1,7 @@
 // src/services/realEstatePayment.js
+import { startIntaSendCheckout } from './intasendCheckout';
 const BACKEND =
-  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+  import.meta.env.VITE_BACKEND_URL || "https://marketmix-api-native.johnnjanjo1.workers.dev";
 
 export async function payRealEstate({
   property,
@@ -41,20 +42,7 @@ export async function payRealEstate({
 
   if (!seed.success) throw new Error(seed.message || "Failed to prepare order");
 
-  // 3. Trigger the M-Pesa STK prompt on the buyer's phone
-  const stk = await fetch(`${BACKEND}/api/stk-push`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      amount: property.price,
-      phoneNumber: buyer.phoneNumber,
-      fullName: buyer.fullName,
-      email: buyer.email,
-      orderId: ref,
-    }),
-  }).then((r) => r.json());
-
-  if (!stk.success) throw new Error(stk.message || "Failed to send M-Pesa prompt");
+  await startIntaSendCheckout({ amount: property.price, phoneNumber: buyer.phoneNumber, fullName: buyer.fullName, email: buyer.email, apiRef: ref });
 
   // 4. Poll until paid (or failed)
   const finalTx = await pollUntilPaid(ref);

@@ -109,7 +109,7 @@ export default function MyBookingsPage() {
     setRefundBusy(booking.bookingId);
     setRefundMessage('');
     try {
-      const backend = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+      const backend = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
       const response = await fetch(`${backend}/api/bookings/site-seeing/${encodeURIComponent(booking.bookingId)}/refund-request`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await currentUser.getIdToken()}` },
         body: JSON.stringify({ paymentRef: booking.paymentRef }),

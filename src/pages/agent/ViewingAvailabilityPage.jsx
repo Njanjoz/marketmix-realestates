@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isCapacitor } from '../../utils/platform';
 import { pickImage } from '../../services/mediaService';
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 const YOUTUBE_BACKEND = (import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com').replace(/\/+$/, '');
 
 const extractYouTubeId = (value = '') => {

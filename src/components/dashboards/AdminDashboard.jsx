@@ -39,7 +39,7 @@ const YOUTUBE_ADMIN_API =
   import.meta.env.VITE_YOUTUBE_API_URL || 'https://marketmix-youtube-server.onrender.com';
 
 const YOUR_ADMIN_BACKEND =
-  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+  import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 
 // ---------- Notification helpers ----------
 async function notifyUserViaBackend({ currentUser, userId, phone, email, title, message, kind }) {

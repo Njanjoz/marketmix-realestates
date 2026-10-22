@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Loader2, CheckCircle2, Clock3, XCircle, ArrowLeft, Printer, MapPin, ReceiptText } from 'lucide-react';
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 const money = (value) => `KSh ${Number(value || 0).toLocaleString('en-KE')}`;
 
 function formatDate(value) {

@@ -1,5 +1,5 @@
 // src/services/transportNotify.js
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 
 /**
  * Fire-and-forget notification helper for transport requests.

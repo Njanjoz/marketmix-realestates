@@ -1,6 +1,8 @@
 // src/services/paymentService.js
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+import { startIntaSendCheckout } from './intasendCheckout';
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || "https://marketmix-api-native.johnnjanjo1.workers.dev";
 
 export async function payRealEstate({ property, landlord, buyer, paymentKind = "rent" }) {
   const ref = `PROP_${property.id || 'LISTING'}_${Date.now()}`;
@@ -31,20 +33,7 @@ export async function payRealEstate({ property, landlord, buyer, paymentKind = "
 
   if (!seedRes.success) throw new Error(seedRes.message || "Failed to seed order");
 
-  // STEP 2: trigger STK push
-  const stkRes = await fetch(`${BACKEND}/api/stk-push`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      amount: property.price,
-      phoneNumber: buyer.phoneNumber,
-      fullName: buyer.fullName,
-      email: buyer.email,
-      orderId: ref,
-    }),
-  }).then((r) => r.json());
-
-  if (!stkRes.success) throw new Error(stkRes.message || "STK push failed");
+  await startIntaSendCheckout({ amount: property.price, phoneNumber: buyer.phoneNumber, fullName: buyer.fullName, email: buyer.email, apiRef: ref });
 
   // STEP 3: poll until paid
   const paidData = await pollUntilPaid(ref);
@@ -67,13 +56,8 @@ async function pollUntilPaid(ref, { intervalMs = 4000, timeoutMs = 180000 } = {}
 
 export async function initiateTestPayment(data) {
   const ref = data.orderId || `TEST_${Date.now()}`;
-  const res = await fetch(`${BACKEND}/api/stk-push`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...data, orderId: ref }),
-  }).then((r) => r.json());
-  if (!res.success) throw new Error(res.message || "Test payment failed");
-  return { ...res, orderId: ref };
+  const result = await startIntaSendCheckout({ ...data, apiRef: ref });
+  return { success: true, data: result, orderId: ref };
 }
 
 export async function checkTransactionStatus(ref) {

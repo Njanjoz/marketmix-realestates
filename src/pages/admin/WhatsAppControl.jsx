@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 
 const BACKEND =
-  import.meta.env.VITE_BACKEND_URL || "https://backened-lt67.onrender.com";
+  // Keep WhatsApp control independent from any legacy VITE_BACKEND_URL value
+  // that may still exist in the hosting provider's environment.
+  import.meta.env.VITE_WHATSAPP_BACKEND_URL || "https://marketmix-api-native.johnnjanjo1.workers.dev";
 
 export default function WhatsAppControl() {
   const [status, setStatus] = useState("…");

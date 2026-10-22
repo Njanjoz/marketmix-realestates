@@ -8,7 +8,7 @@ import { TRANSPORT_STATUSES, TRANSPORT_STATUS_LABELS } from '../../services/tran
 import '../../components/moving/LiquidGlass.css';
 
 const BACKEND =
-  import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+  import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 
 const resolveContact = (request, usersById) => {
   const profile = (usersById && usersById[request.userId]) || {};

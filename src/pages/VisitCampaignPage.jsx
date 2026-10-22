@@ -4,9 +4,10 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MapPin, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { auth, db } from '../firebase/config';
+import { startIntaSendCheckout } from '../services/intasendCheckout';
 import { useAuth } from '../context/AuthContext';
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
 const EAT_TODAY = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 async function authenticatedPost(url, body) {
@@ -58,7 +59,7 @@ export default function VisitCampaignPage() {
     setPaying(true);
     try {
       const checkout = await authenticatedPost(`${BACKEND}/api/visit-campaigns/${encodeURIComponent(campaignId)}/checkout`, { attendeeName: name, phoneNumber: phone, participantCount: quantity });
-      await authenticatedPost(`${BACKEND}/api/visit-campaigns/stk-push`, { paymentRef: checkout.paymentRef });
+      await startIntaSendCheckout({ amount: checkout.amount, phoneNumber: phone, fullName: name, email: auth.currentUser.email, apiRef: checkout.paymentRef });
       const started = Date.now();
       let paid = false;
       while (Date.now() - started < 180000) {

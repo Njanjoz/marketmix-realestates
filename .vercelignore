@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.backup-*
+.tr-*
+.gradle-user-home
+android
+*.apk
+*.aab
+server-payment-*.js
+*.docx
+*.html
+*.log

@@ -1,6 +1,8 @@
 import { auth } from '../firebase/config';
+import { startIntaSendCheckout } from './intasendCheckout';
 
-const LEGACY_BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://backened-lt67.onrender.com';
+const LEGACY_BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://marketmix-api-native.johnnjanjo1.workers.dev';
+const PAYMENT_MODE = import.meta.env.VITE_PAYMENT_MODE || 'hosted_checkout';
 // Checkout, STK initiation, callback status, and confirmation must use the
 // same backend/database. Splitting these across backend URLs loses payment links.
 const BOOKING_BACKEND = LEGACY_BACKEND;
@@ -23,7 +25,9 @@ function normalizeMpesaPhone(value) {
 async function authenticatedPost(url, body) {
   const user = auth.currentUser;
   if (!user) throw new Error('Sign in to reserve a viewing.');
-  const token = await user.getIdToken();
+  // Force a refresh so a token issued before the Render-to-Worker migration
+  // cannot be rejected as expired or invalid by the native Worker verifier.
+  const token = await user.getIdToken(true);
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -76,19 +80,21 @@ export async function bookSiteSeeingWithDeposit({ property, properties = [], pac
   if (!Number.isFinite(amountToCharge) || amountToCharge <= 0) {
     throw new Error('The booking service returned an invalid payment amount. Please try again or contact support.');
   }
-  const promptResponse = await fetch(`${BOOKING_BACKEND}/api/stk-push`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
-    body: JSON.stringify({
+  if (PAYMENT_MODE === 'stk_relay') {
+    // Do not silently fall back after an unknown provider response: the STK
+    // may have been accepted even if the relay response was lost. Switch the
+    // build back to hosted_checkout for a safe fallback.
+    await authenticatedPost(`${BOOKING_BACKEND}/api/stk-push`, {
       amount: amountToCharge,
       phoneNumber: mpesaPhone,
       fullName: buyerName,
       email: buyerEmail,
       orderId: prepared.paymentRef,
-    }),
-  });
-  const prompt = await promptResponse.json().catch(() => ({}));
-  if (!promptResponse.ok || !prompt.success) throw new Error(prompt.message || 'Could not send the M-Pesa prompt.');
+    });
+  } else {
+    // Default production path while relay egress is being approved.
+    await startIntaSendCheckout({ amount: amountToCharge, phoneNumber: mpesaPhone, fullName: buyerName, email: buyerEmail, apiRef: prepared.paymentRef });
+  }
   await waitForPayment(prepared.paymentRef);
   const confirmed = await authenticatedPost(`${BOOKING_BACKEND}/api/bookings/site-seeing/confirm`, { paymentRef: prepared.paymentRef });
   return { ...prepared, ...confirmed };
