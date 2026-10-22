@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 
-const BACKEND =
-  // Keep WhatsApp control independent from any legacy VITE_BACKEND_URL value
-  // that may still exist in the hosting provider's environment.
-  import.meta.env.VITE_WHATSAPP_BACKEND_URL || "https://marketmix-api-native.johnnjanjo1.workers.dev";
+// WhatsApp admin control must use the new Cloudflare API. Do not allow stale
+// Vercel VITE_* overrides to redirect these control calls back to Render.
+const BACKEND = "https://marketmix-api-native.johnnjanjo1.workers.dev";
 
 export default function WhatsAppControl() {
   const [status, setStatus] = useState("…");
